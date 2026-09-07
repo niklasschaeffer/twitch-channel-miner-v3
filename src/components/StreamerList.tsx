@@ -8,7 +8,12 @@ import {
   Trash2,
   Flame,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  MessageSquare,
+  Terminal,
+  Power,
+  ExternalLink,
+  Gift
 } from 'lucide-react';
 import { Streamer, PriorityMode } from '../types';
 
@@ -20,6 +25,10 @@ interface StreamerListProps {
   onDeleteStreamer: (username: string) => void;
   onAddStreamerClick: () => void;
   onMovePriority: (username: string, direction: 'up' | 'down') => void;
+  selectedStreamerId?: string | null;
+  onSelectStreamer?: (streamerId: string) => void;
+  onToggleLive?: (username: string) => void;
+  onFilterConsole?: (channel: string) => void;
 }
 
 export const StreamerList: React.FC<StreamerListProps> = ({
@@ -29,7 +38,11 @@ export const StreamerList: React.FC<StreamerListProps> = ({
   onToggleEnabled,
   onDeleteStreamer,
   onAddStreamerClick,
-  onMovePriority
+  onMovePriority,
+  selectedStreamerId,
+  onSelectStreamer,
+  onToggleLive,
+  onFilterConsole
 }) => {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
@@ -41,185 +54,312 @@ export const StreamerList: React.FC<StreamerListProps> = ({
   );
 
   return (
-    <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#26262C] p-5 shadow-xs">
-      {/* Header & Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-        <div>
+    <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#26262C] p-5 shadow-xs flex flex-col h-[600px]">
+      {/* Top Header */}
+      <div className="flex items-center justify-between gap-3 pb-3 border-b border-zinc-200 dark:border-[#26262C]">
+        <div className="min-w-0">
           <div className="flex items-center space-x-2">
-            <Users className="w-4 h-4 text-[#9146FF]" />
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-[#EFEFF1]">
-              {t('streamersList.title')}
-            </h2>
+            <div className="p-1.5 bg-zinc-100 dark:bg-[#141416] border border-zinc-200 dark:border-[#26262C] text-[#9146FF]">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900 dark:text-[#EFEFF1] truncate">
+                {t('streamersList.title')}
+              </h2>
+              <p className="text-[11px] text-zinc-500 dark:text-[#ADADB8] truncate">
+                {t('streamersList.subtitle')}
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-zinc-500 dark:text-[#ADADB8] mt-0.5">
-            {t('streamersList.subtitle')}
-          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Priority Strategy dropdown */}
-          <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#0E0E10] px-2.5 py-1.5 border border-zinc-200 dark:border-[#26262C] text-xs">
-            <ArrowUpDown className="w-3.5 h-3.5 text-zinc-500 dark:text-[#ADADB8]" />
-            <span className="text-zinc-500 dark:text-[#ADADB8]">
-              {t('streamersList.strategy')}:
-            </span>
-            <select
-              value={priorityMode}
-              onChange={e => onChangePriorityMode(e.target.value as PriorityMode)}
-              className="bg-transparent text-zinc-900 dark:text-[#EFEFF1] font-medium focus:outline-hidden cursor-pointer"
-            >
-              <option value="points_asc">{t('settings.priorityAsc')}</option>
-              <option value="points_desc">{t('settings.priorityDesc')}</option>
-              <option value="streak">{t('settings.priorityStreak')}</option>
-              <option value="manual">{t('settings.priorityManual')}</option>
-            </select>
-          </div>
+        <button
+          onClick={onAddStreamerClick}
+          className="px-3 py-1.5 text-xs font-semibold bg-[#9146FF] hover:bg-[#772CE8] text-white transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>{t('actions.addChannel')}</span>
+        </button>
+      </div>
 
-          <button
-            onClick={onAddStreamerClick}
-            className="px-3 py-1.5 text-xs font-semibold bg-[#9146FF] hover:bg-[#772CE8] text-white transition flex items-center gap-1.5 cursor-pointer"
+      {/* Filter & Strategy Toolbar */}
+      <div className="py-2.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 border-b border-zinc-200 dark:border-[#26262C]">
+        <div className="relative flex-1 min-w-0">
+          <Search className="w-3.5 h-3.5 text-zinc-400 dark:text-[#71717A] absolute left-2.5 top-2" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder={t('streamersList.filterPlaceholder', 'Filter monitored channels...')}
+            className="w-full bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-200 dark:border-[#26262C] pl-8 pr-2.5 py-1 text-xs text-zinc-900 dark:text-[#EFEFF1] placeholder-zinc-400 dark:placeholder-[#71717A] focus:outline-hidden focus:border-[#9146FF] transition"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-[#0E0E10] px-2.5 py-1 border border-zinc-200 dark:border-[#26262C] text-xs shrink-0">
+          <ArrowUpDown className="w-3 h-3 text-zinc-500 dark:text-[#ADADB8]" />
+          <span className="text-zinc-500 dark:text-[#ADADB8] text-[11px]">
+            {t('streamersList.strategy', 'Strategy')}:
+          </span>
+          <select
+            value={priorityMode}
+            onChange={e => onChangePriorityMode(e.target.value as PriorityMode)}
+            className="bg-transparent text-zinc-900 dark:text-[#EFEFF1] font-medium text-xs focus:outline-hidden cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{t('actions.addChannel')}</span>
-          </button>
+            <option value="points_asc">{t('settings.priorityAsc')}</option>
+            <option value="points_desc">{t('settings.priorityDesc')}</option>
+            <option value="streak">{t('settings.priorityStreak')}</option>
+            <option value="manual">{t('settings.priorityManual')}</option>
+          </select>
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="relative mb-3">
-        <Search className="w-4 h-4 text-zinc-400 dark:text-[#71717A] absolute left-3 top-2.5" />
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder={t('streamersList.filterPlaceholder')}
-          className="w-full bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-200 dark:border-[#26262C] pl-9 pr-4 py-2 text-xs text-zinc-900 dark:text-[#EFEFF1] placeholder-zinc-400 dark:placeholder-[#71717A] focus:outline-hidden focus:border-[#9146FF] transition"
-        />
-      </div>
-
-      {/* Streamers List */}
-      <div className="space-y-2">
+      {/* Streamers Scrollable List */}
+      <div className="flex-1 overflow-y-auto my-2 space-y-2.5 pr-1 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-[#26262C]">
         {filteredStreamers.length === 0 ? (
-          <div className="text-center py-8 text-xs text-zinc-400 dark:text-[#71717A] bg-zinc-50 dark:bg-[#0E0E10]/50 border border-dashed border-zinc-200 dark:border-[#26262C]">
-            {t('streamersList.noChannels')}
+          <div className="h-full flex flex-col items-center justify-center py-12 text-center text-xs text-zinc-400 dark:text-[#71717A] bg-zinc-50/50 dark:bg-[#0E0E10]/30 border border-dashed border-zinc-200 dark:border-[#26262C] p-4">
+            <Users className="w-8 h-8 text-zinc-300 dark:text-[#363640] mb-2" />
+            <p className="font-semibold text-zinc-700 dark:text-[#ADADB8]">{t('streamersList.emptyTitle')}</p>
+            <p className="mt-1 max-w-xs">{t('streamersList.emptyDesc')}</p>
           </div>
         ) : (
-          filteredStreamers.map((streamer, index) => (
-            <div
-              key={streamer.id}
-              className={`flex items-center justify-between p-3 border transition ${
-                streamer.isMining
-                  ? 'bg-[#00a865]/5 dark:bg-[#00F593]/5 border-[#00a865]/30 dark:border-[#00F593]/30'
-                  : streamer.enabled
-                  ? 'bg-zinc-50 dark:bg-[#141416] border-zinc-200 dark:border-[#26262C] hover:border-zinc-300 dark:hover:border-[#363640]'
-                  : 'bg-zinc-100/50 dark:bg-[#0E0E10]/40 border-zinc-200 dark:border-[#26262C]/40 opacity-50'
-              }`}
-            >
-              {/* Left Info */}
-              <div className="flex items-center space-x-3 min-w-0">
-                {/* Priority order controls if in manual mode */}
-                {priorityMode === 'manual' && (
-                  <div className="flex flex-col gap-0.5 text-zinc-400 dark:text-[#71717A]">
+          filteredStreamers.map((streamer, index) => {
+            const isSelected = selectedStreamerId === streamer.id;
+            return (
+              <div
+                key={streamer.id}
+                onClick={() => onSelectStreamer?.(streamer.id)}
+                className={`p-3 border transition flex flex-col gap-2.5 cursor-pointer relative ${
+                  isSelected
+                    ? 'ring-2 ring-[#9146FF] bg-purple-50/25 dark:bg-[#9146FF]/10 border-[#9146FF]/60'
+                    : streamer.isMining
+                    ? 'bg-[#00a865]/5 dark:bg-[#00F593]/5 border-[#00a865]/35 dark:border-[#00F593]/35 hover:border-[#00a865]/60'
+                    : streamer.enabled
+                    ? 'bg-zinc-50 dark:bg-[#141416] border-zinc-200 dark:border-[#26262C] hover:border-zinc-300 dark:hover:border-[#363640]'
+                    : 'bg-zinc-100/60 dark:bg-[#0E0E10]/50 border-zinc-200/60 dark:border-[#26262C]/60 opacity-60'
+                }`}
+              >
+                {/* Row 1: Profile identity & action toolbar */}
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                    {/* Manual reordering handles */}
+                    {priorityMode === 'manual' && (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        className="flex flex-col gap-0.5 text-zinc-400 dark:text-[#71717A] shrink-0"
+                      >
+                        <button
+                          onClick={() => onMovePriority(streamer.username, 'up')}
+                          disabled={index === 0}
+                          className="hover:text-zinc-900 dark:hover:text-[#EFEFF1] disabled:opacity-20 cursor-pointer p-0.5"
+                          title="Move up in priority"
+                        >
+                          <ChevronUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => onMovePriority(streamer.username, 'down')}
+                          disabled={index === filteredStreamers.length - 1}
+                          className="hover:text-zinc-900 dark:hover:text-[#EFEFF1] disabled:opacity-20 cursor-pointer p-0.5"
+                          title="Move down in priority"
+                        >
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Avatar with Live pulse */}
+                    <div className="relative shrink-0">
+                      <img
+                        src={streamer.avatar}
+                        alt={streamer.displayName}
+                        referrerPolicy="no-referrer"
+                        className="w-9 h-9 object-cover border border-zinc-300 dark:border-[#26262C]"
+                      />
+                      {streamer.isLive ? (
+                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                        </span>
+                      ) : (
+                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-zinc-400 rounded-full" />
+                      )}
+                    </div>
+
+                    {/* Name & Handle */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-zinc-900 dark:text-[#EFEFF1] truncate">
+                          {streamer.displayName}
+                        </span>
+                        <span className="text-[10px] text-zinc-400 dark:text-[#71717A] font-mono truncate hidden sm:inline">
+                          @{streamer.username}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-zinc-500 dark:text-[#ADADB8] truncate">
+                        {streamer.game || 'Variety'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions Toolbar */}
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    className="flex items-center space-x-1 shrink-0"
+                  >
+                    {/* Chat button */}
                     <button
-                      onClick={() => onMovePriority(streamer.username, 'up')}
-                      disabled={index === 0}
-                      className="hover:text-zinc-900 dark:hover:text-[#EFEFF1] disabled:opacity-20 cursor-pointer"
+                      onClick={() => onSelectStreamer?.(streamer.id)}
+                      title={t('ircChat.openChat', 'Open IRC Chat')}
+                      className={`px-2 py-1 text-[11px] font-mono border transition cursor-pointer flex items-center gap-1 ${
+                        isSelected
+                          ? 'bg-[#9146FF] text-white border-[#9146FF]'
+                          : 'bg-white dark:bg-[#18181B] text-zinc-700 dark:text-[#ADADB8] border-zinc-200 dark:border-[#26262C] hover:border-[#9146FF] hover:text-[#9146FF]'
+                      }`}
                     >
-                      <ChevronUp className="w-3 h-3" />
+                      <MessageSquare className="w-3 h-3" />
+                      <span>Chat</span>
                     </button>
+
+                    {/* Filter Console */}
+                    {onFilterConsole && (
+                      <button
+                        onClick={() => onFilterConsole(streamer.username)}
+                        title={t('ircChat.filterConsole', 'Filter console')}
+                        className="p-1.5 text-zinc-500 hover:text-[#9146FF] border border-zinc-200 dark:border-[#26262C] bg-white dark:bg-[#18181B] hover:border-[#9146FF] transition cursor-pointer"
+                      >
+                        <Terminal className="w-3 h-3" />
+                      </button>
+                    )}
+
+                    {/* Enable/Disable Toggle */}
                     <button
-                      onClick={() => onMovePriority(streamer.username, 'down')}
-                      disabled={index === filteredStreamers.length - 1}
-                      className="hover:text-zinc-900 dark:hover:text-[#EFEFF1] disabled:opacity-20 cursor-pointer"
+                      onClick={() => onToggleEnabled(streamer.username, !streamer.enabled)}
+                      className={`text-[10px] px-2 py-1 border transition cursor-pointer font-medium ${
+                        streamer.enabled
+                          ? 'bg-white dark:bg-[#18181B] text-zinc-800 dark:text-[#EFEFF1] border-zinc-300 dark:border-[#26262C] hover:bg-zinc-50 dark:hover:bg-[#1F1F23]'
+                          : 'bg-zinc-100 dark:bg-[#0E0E10] text-zinc-400 dark:text-[#71717A] border-zinc-200 dark:border-[#26262C] hover:text-zinc-600'
+                      }`}
+                      title={streamer.enabled ? t('streamersList.active') : t('streamersList.disabled')}
                     >
-                      <ChevronDown className="w-3 h-3" />
+                      {streamer.enabled ? t('streamersList.active') : t('streamersList.disabled')}
+                    </button>
+
+                    {/* External Twitch link */}
+                    <a
+                      href={`https://twitch.tv/${streamer.username}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={t('streamersList.openTwitch')}
+                      className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:text-[#71717A] dark:hover:text-[#EFEFF1] border border-zinc-200 dark:border-[#26262C] bg-white dark:bg-[#18181B] transition"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+
+                    {/* Delete button */}
+                    <button
+                      onClick={() => onDeleteStreamer(streamer.username)}
+                      className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition cursor-pointer"
+                      title="Remove channel"
+                    >
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-                )}
+                </div>
 
-                <div className="relative shrink-0">
-                  <img
-                    src={streamer.avatar}
-                    alt={streamer.displayName}
-                    referrerPolicy="no-referrer"
-                    className="w-9 h-9 object-cover border border-zinc-300 dark:border-[#26262C]"
-                  />
-                  {streamer.isLive && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-[#141416]" />
+                {/* Row 2: Status Chips & Priority */}
+                <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono">
+                  {/* Priority rank */}
+                  <span className="px-1.5 py-0.5 bg-zinc-100 dark:bg-[#1E1E22] text-zinc-600 dark:text-[#ADADB8] border border-zinc-200 dark:border-[#26262C] font-semibold">
+                    #{index + 1}
+                  </span>
+
+                  {/* Live / Offline status toggle button */}
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      onToggleLive?.(streamer.username);
+                    }}
+                    title={t('ircChat.toggleLive', 'Click to toggle online/offline')}
+                    className={`px-1.5 py-0.5 border transition cursor-pointer flex items-center gap-1 font-semibold ${
+                      streamer.isLive
+                        ? 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/30 hover:bg-red-100 dark:hover:bg-red-500/25'
+                        : 'bg-zinc-100 dark:bg-[#1E1E22] text-zinc-500 dark:text-[#71717A] border-zinc-300 dark:border-[#26262C] hover:bg-zinc-200'
+                    }`}
+                  >
+                    <Power className="w-2.5 h-2.5" />
+                    <span>{streamer.isLive ? t('streamersList.live') : t('streamersList.offline')}</span>
+                  </button>
+
+                  {/* Mining Status */}
+                  {streamer.isMining ? (
+                    <span className="px-1.5 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/30 dark:border-[#00F593]/40 flex items-center gap-1 font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#00a865] dark:bg-[#00F593] animate-pulse" />
+                      MINING (SLOT ACTIVE)
+                    </span>
+                  ) : streamer.isLive ? (
+                    <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                      STANDBY QUEUE
+                    </span>
+                  ) : null}
+
+                  {/* Watch Streak */}
+                  {streamer.watchStreak > 0 && (
+                    <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                      <Flame className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+                      {streamer.watchStreak}d streak
+                    </span>
+                  )}
+
+                  {/* Selected Badge */}
+                  {isSelected && (
+                    <span className="px-1.5 py-0.5 bg-[#9146FF]/15 text-[#9146FF] dark:text-[#c299ff] border border-[#9146FF]/30 font-semibold">
+                      INSPECTOR ACTIVE
+                    </span>
                   )}
                 </div>
 
-                <div className="min-w-0">
+                {/* Row 3: Metrics & Chest Status Bar */}
+                <div className="pt-2 border-t border-zinc-200/70 dark:border-[#26262C]/70 flex items-center justify-between text-[11px] gap-2 flex-wrap">
+                  {/* Left: Viewers if live, or Points balance */}
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-zinc-900 dark:text-[#EFEFF1] truncate">
-                      {streamer.displayName}
+                    <span className="font-mono text-[#9146FF] font-bold">
+                      {streamer.points.toLocaleString()} pts
                     </span>
-                    {streamer.isMining ? (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 bg-[#00a865]/10 dark:bg-[#00F593]/15 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/20 dark:border-[#00F593]/30 flex items-center gap-1 font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#00a865] dark:bg-[#00F593] animate-pulse" />
-                        Mining
-                      </span>
-                    ) : streamer.isLive ? (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30 font-medium">
-                        {t('streamersList.live')}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-zinc-400 dark:text-[#71717A] font-mono">
-                        {t('streamersList.offline')}
-                      </span>
-                    )}
-
-                    {streamer.watchStreak > 0 && (
-                      <span className="text-[10px] text-amber-600 dark:text-amber-300 flex items-center gap-0.5 font-mono">
-                        <Flame className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-                        {streamer.watchStreak}d
+                    {streamer.isLive && (
+                      <span className="text-zinc-500 dark:text-[#ADADB8] font-mono text-[10px]">
+                        • {streamer.viewerCount.toLocaleString()} {t('streamersList.viewers')}
                       </span>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 text-[11px] text-zinc-500 dark:text-[#ADADB8] mt-0.5">
-                    <span className="truncate max-w-[140px]">{streamer.game}</span>
-                    <span className="text-zinc-300 dark:text-[#363640]">•</span>
-                    <span className="font-mono text-[#9146FF] font-semibold">
-                      {streamer.points.toLocaleString()} pts
-                    </span>
-                    {streamer.isLive && (
-                      <>
-                        <span className="text-zinc-300 dark:text-[#363640]">•</span>
-                        <span className="font-mono">
-                          {streamer.viewerCount.toLocaleString()} {t('streamersList.viewers')}
-                        </span>
-                      </>
+                  {/* Right: Chest timer or bonus claim */}
+                  <div className="flex items-center gap-1 font-mono text-[10px]">
+                    {streamer.chestAvailable ? (
+                      <span className="px-1.5 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/40 font-bold flex items-center gap-1 animate-pulse">
+                        <Gift className="w-3 h-3" />
+                        Chest Ready (+50)
+                      </span>
+                    ) : (
+                      <span className="text-zinc-500 dark:text-[#ADADB8]">
+                        Chest: ~{streamer.nextChestEstimateSeconds}s
+                      </span>
                     )}
                   </div>
                 </div>
               </div>
-
-              {/* Right Actions */}
-              <div className="flex items-center space-x-2 shrink-0">
-                <button
-                  onClick={() => onToggleEnabled(streamer.username, !streamer.enabled)}
-                  className={`text-xs px-2.5 py-1 border transition cursor-pointer font-medium ${
-                    streamer.enabled
-                      ? 'bg-white dark:bg-[#18181B] text-zinc-800 dark:text-[#EFEFF1] border-zinc-300 dark:border-[#26262C] hover:bg-zinc-50 dark:hover:bg-[#1F1F23]'
-                      : 'bg-zinc-100 dark:bg-[#0E0E10] text-zinc-400 dark:text-[#71717A] border-zinc-200 dark:border-[#26262C] hover:text-zinc-600'
-                  }`}
-                  title={streamer.enabled ? t('streamersList.active') : t('streamersList.disabled')}
-                >
-                  {streamer.enabled ? t('streamersList.active') : t('streamersList.disabled')}
-                </button>
-
-                <button
-                  onClick={() => onDeleteStreamer(streamer.username)}
-                  className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition cursor-pointer"
-                  title="Remove from monitoring"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
+      </div>
+
+      {/* Footer Summary */}
+      <div className="pt-3 border-t border-zinc-200 dark:border-[#26262C] flex items-center justify-between text-[11px] text-zinc-500 dark:text-[#ADADB8]">
+        <span>
+          Showing {filteredStreamers.length} channels • {filteredStreamers.filter(s => s.isLive).length} online • {filteredStreamers.filter(s => s.isMining).length} mining
+        </span>
+        <span className="font-mono font-medium text-zinc-600 dark:text-[#ADADB8]">
+          Slots: {streamers.filter(s => s.isMining).length}/2
+        </span>
       </div>
     </div>
   );

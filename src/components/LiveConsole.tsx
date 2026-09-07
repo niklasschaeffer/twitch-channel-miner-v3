@@ -11,7 +11,9 @@ import {
   Target,
   Sparkles,
   AlertTriangle,
-  Flame
+  Flame,
+  MessageSquare,
+  X
 } from 'lucide-react';
 import { LogEntry, LogLevel } from '../types';
 
@@ -19,12 +21,18 @@ interface LiveConsoleProps {
   logs: LogEntry[];
   onClearLogs: () => void;
   isConnected: boolean;
+  selectedChannel?: string | null;
+  onSelectChannel?: (channel: string | null) => void;
+  availableChannels?: string[];
 }
 
 export const LiveConsole: React.FC<LiveConsoleProps> = ({
   logs,
   onClearLogs,
-  isConnected
+  isConnected,
+  selectedChannel,
+  onSelectChannel,
+  availableChannels = []
 }) => {
   const { t } = useTranslation();
   const [filterLevel, setFilterLevel] = useState<string>('ALL');
@@ -40,6 +48,13 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
 
   const filteredLogs = logs.filter(log => {
     if (filterLevel !== 'ALL' && log.level !== filterLevel) {
+      return false;
+    }
+    if (selectedChannel && log.channel) {
+      if (log.channel.toLowerCase() !== selectedChannel.toLowerCase()) {
+        return false;
+      }
+    } else if (selectedChannel && !log.channel) {
       return false;
     }
     if (search.trim()) {
@@ -72,6 +87,20 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
           <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/40 flex items-center gap-1">
             <Flame className="w-2.5 h-2.5" />
             RAID
+          </span>
+        );
+      case 'CHAT':
+        return (
+          <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-[#9146FF]/15 text-[#9146FF] dark:text-[#c299ff] border border-[#9146FF]/40 flex items-center gap-1">
+            <MessageSquare className="w-2.5 h-2.5" />
+            CHAT
+          </span>
+        );
+      case 'CMD':
+        return (
+          <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 border border-cyan-500/40 flex items-center gap-1">
+            <Terminal className="w-2.5 h-2.5" />
+            CMD
           </span>
         );
       case 'PREDICTION':
@@ -124,7 +153,7 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#26262C] p-5 shadow-xs flex flex-col h-[580px]">
+    <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#26262C] p-5 shadow-xs flex flex-col h-[600px]">
       {/* Console Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-zinc-200 dark:border-[#26262C]">
         <div className="flex items-center space-x-2">
@@ -176,6 +205,45 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
         </div>
       </div>
 
+      {/* Channel Bridge Selector Bar (Direct link to Monitored Channels) */}
+      <div className="py-2 flex items-center gap-1.5 overflow-x-auto text-xs border-b border-zinc-200 dark:border-[#26262C] bg-zinc-50/50 dark:bg-[#121214] px-1">
+        <span className="text-[11px] font-mono text-zinc-400 dark:text-[#71717A] shrink-0 mr-1">
+          {t('logs.filterByChannel', 'Channel')}:
+        </span>
+        <button
+          onClick={() => onSelectChannel?.(null)}
+          className={`px-2 py-0.5 text-[11px] font-mono shrink-0 transition cursor-pointer border ${
+            !selectedChannel
+              ? 'bg-[#9146FF] text-white border-[#9146FF]'
+              : 'bg-white dark:bg-[#18181B] text-zinc-600 dark:text-[#ADADB8] border-zinc-200 dark:border-[#26262C] hover:border-[#9146FF]'
+          }`}
+        >
+          {t('logs.allChannels', 'All Channels')} ({logs.length})
+        </button>
+
+        {availableChannels.map(ch => {
+          const isSelected = selectedChannel?.toLowerCase() === ch.toLowerCase();
+          const count = logs.filter(l => l.channel?.toLowerCase() === ch.toLowerCase()).length;
+          return (
+            <button
+              key={ch}
+              onClick={() => onSelectChannel?.(isSelected ? null : ch)}
+              className={`px-2 py-0.5 text-[11px] font-mono shrink-0 transition cursor-pointer border flex items-center gap-1 ${
+                isSelected
+                  ? 'bg-[#9146FF] text-white border-[#9146FF] font-semibold'
+                  : 'bg-white dark:bg-[#18181B] text-zinc-600 dark:text-[#ADADB8] border-zinc-200 dark:border-[#26262C] hover:border-[#9146FF]'
+              }`}
+            >
+              <span>#{ch}</span>
+              <span className={`text-[9px] px-1 rounded-xs ${isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 dark:bg-[#26262C] text-zinc-400'}`}>
+                {count}
+              </span>
+              {isSelected && <X className="w-2.5 h-2.5 ml-0.5" />}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Filter Tabs & Search */}
       <div className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-200 dark:border-[#26262C]">
         <div className="flex items-center gap-1 overflow-x-auto text-[11px] no-scrollbar">
@@ -183,6 +251,8 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
             { id: 'ALL', label: t('console.filterAll') },
             { id: 'CLAIM', label: t('console.filterClaims') },
             { id: 'WATCH', label: t('console.filterWatch') },
+            { id: 'CHAT', label: 'Chat & IRC' },
+            { id: 'CMD', label: 'Bot Commands' },
             { id: 'RAID', label: t('console.filterRaids') },
             { id: 'PREDICTION', label: t('console.filterPreds') },
             { id: 'DROP', label: t('console.filterDrops') }
@@ -238,11 +308,15 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
                 {/* Level Tag */}
                 <span className="shrink-0">{getLevelBadge(log.level)}</span>
 
-                {/* Channel Tag if any */}
+                {/* Channel Tag: clicking filters console to this channel */}
                 {log.channel && (
-                  <span className="text-[11px] text-[#9146FF] font-semibold shrink-0 bg-[#9146FF]/10 px-1 border border-[#9146FF]/30">
-                    @{log.channel}
-                  </span>
+                  <button
+                    onClick={() => onSelectChannel?.(log.channel || null)}
+                    title="Click to filter console by this channel"
+                    className="text-[11px] text-[#9146FF] font-semibold shrink-0 bg-[#9146FF]/10 hover:bg-[#9146FF]/20 px-1 border border-[#9146FF]/30 cursor-pointer transition"
+                  >
+                    #{log.channel}
+                  </button>
                 )}
 
                 {/* Message */}
@@ -270,7 +344,10 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
 
       {/* Terminal Footer Info */}
       <div className="pt-2 border-t border-zinc-200 dark:border-[#26262C] flex items-center justify-between text-[11px] text-zinc-400 dark:text-[#71717A]">
-        <span>Showing {filteredLogs.length} of {logs.length} logged events</span>
+        <span>
+          Showing {filteredLogs.length} of {logs.length} events
+          {selectedChannel && ` (filtered to #${selectedChannel})`}
+        </span>
         <span className="font-mono text-zinc-500 dark:text-[#ADADB8]">Buffer: 500 max</span>
       </div>
     </div>

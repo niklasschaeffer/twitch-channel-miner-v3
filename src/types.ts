@@ -2,7 +2,7 @@ export type PriorityMode = 'points_asc' | 'points_desc' | 'streak' | 'manual';
 
 export type MinerState = 'running' | 'paused' | 'stopped';
 
-export type LogLevel = 'INFO' | 'SUCCESS' | 'CLAIM' | 'WATCH' | 'RAID' | 'PREDICTION' | 'DROP' | 'WARN' | 'ERROR';
+export type LogLevel = 'INFO' | 'SUCCESS' | 'CLAIM' | 'WATCH' | 'RAID' | 'PREDICTION' | 'DROP' | 'WARN' | 'ERROR' | 'CHAT' | 'CMD';
 
 export interface Streamer {
   id: string;
@@ -28,6 +28,7 @@ export interface MinerSettings {
   authToken: string;
   clientId: string;
   isSimulationMode: boolean;
+  enforceRealTwitchLive?: boolean;
   maxConcurrentStreams: number; // Twitch hard limit is 2
   priorityMode: PriorityMode;
   autoClaimBonus: boolean;
@@ -123,3 +124,18 @@ export interface StatisticalRecord {
   watchTimePoints: number;
   recordedAt: string;
 }
+
+export interface ChatMessage {
+  id: string;
+  channel: string;
+  username: string;
+  displayName: string;
+  color?: string;
+  badges: string[];
+  message: string;
+  timestamp: string;
+  isBot?: boolean;
+  isSystem?: boolean;
+  isHighlighted?: boolean;
+}
+

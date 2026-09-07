@@ -6,7 +6,8 @@ import {
   AnalyticsData,
   PriorityMode,
   LogLevel,
-  StatisticalRecord
+  StatisticalRecord,
+  ChatMessage
 } from '../src/types.js';
 import { prisma } from './db.js';
 
@@ -31,6 +32,7 @@ export class MinerEngine {
   private logs: LogEntry[] = [];
   private sseClients: SSEClient[] = [];
   private activeConnections = new Map<string, ActiveSlotConnection>();
+  private streamerChats = new Map<string, ChatMessage[]>();
   private timer: NodeJS.Timeout | null = null;
   private nextClientId = 1;
   private initialized = false;
@@ -370,6 +372,14 @@ export class MinerEngine {
     }, 2000);
   }
 
+  public destroy() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    this.disconnectAllStreamers();
+  }
+
   private tick() {
     if (this.status.state !== 'running') return;
 
@@ -512,33 +522,63 @@ export class MinerEngine {
 
           if (u) {
             const wasLive = streamer.isLive;
-            const isLive = !!u.stream;
-            const viewers = u.stream ? Number(u.stream.viewersCount || 0) : 0;
-            const game = u.stream?.game?.name || (isLive ? streamer.game : 'Offline');
+            const isTwitchLive = !!u.stream;
+            const realViewers = u.stream ? Number(u.stream.viewersCount || 0) : 0;
+            const realGame = u.stream?.game?.name || (isTwitchLive ? streamer.game : 'Offline');
             const avatar = u.profileImageURL || streamer.avatar;
             const displayName = u.displayName || streamer.displayName;
 
+            let targetLive = streamer.isLive;
+            let viewers = streamer.viewerCount;
+            let game = streamer.game;
+
+            if (isTwitchLive) {
+              // Real live stream verified on Twitch! Always promote to real live telemetry
+              targetLive = true;
+              viewers = realViewers;
+              game = realGame;
+            } else if (this.settings.enforceRealTwitchLive) {
+              // User explicitly enabled strict real Twitch status enforcement
+              targetLive = false;
+              viewers = 0;
+              game = 'Offline';
+            } else if (this.settings.isSimulationMode) {
+              // Sandbox Simulation: preserve the streamer's live setting if it was active
+              targetLive = streamer.isLive;
+              if (targetLive) {
+                viewers = streamer.viewerCount > 0 ? streamer.viewerCount : Math.floor(1800 + Math.random() * 6000);
+                game = streamer.game !== 'Offline' ? streamer.game : 'Variety Stream';
+              } else {
+                viewers = 0;
+                game = 'Offline';
+              }
+            } else {
+              targetLive = false;
+              viewers = 0;
+              game = 'Offline';
+            }
+
             if (
-              streamer.isLive !== isLive ||
+              streamer.isLive !== targetLive ||
               streamer.viewerCount !== viewers ||
               streamer.game !== game ||
               streamer.avatar !== avatar ||
               streamer.displayName !== displayName
             ) {
-              streamer.isLive = isLive;
+              streamer.isLive = targetLive;
               streamer.viewerCount = viewers;
               streamer.game = game;
               streamer.avatar = avatar;
               streamer.displayName = displayName;
               stateChanged = true;
 
-              if (!wasLive && isLive) {
+              if (!wasLive && targetLive) {
                 this.addLog(
                   'INFO',
                   streamer.username,
                   `🟢 Streamer ${streamer.displayName} is now LIVE! Playing "${game}" with ${viewers.toLocaleString()} viewers.`
                 );
-              } else if (wasLive && !isLive) {
+              } else if (wasLive && !targetLive) {
                 this.addLog(
                   'WARN',
                   streamer.username,
@@ -549,7 +589,7 @@ export class MinerEngine {
               prisma.streamer.update({
                 where: { username: streamer.username },
                 data: {
-                  isLive,
+                  isLive: targetLive,
                   viewerCount: viewers,
                   game,
                   avatar,
@@ -638,6 +678,68 @@ export class MinerEngine {
             return;
           }
 
+          if (raw.includes('PRIVMSG')) {
+            const match = raw.match(/(?:@([^ ]+) )?:([^!]+)![^ ]+ PRIVMSG #[^ ]+ :(.+)/);
+            if (match) {
+              const tagString = match[1] || '';
+              const fallbackNick = match[2];
+              const text = match[3];
+
+              let displayName = fallbackNick;
+              let color = '#9146FF';
+              const badges: string[] = [];
+
+              if (tagString) {
+                const tags = tagString.split(';');
+                for (const tag of tags) {
+                  const [k, v] = tag.split('=');
+                  if (k === 'display-name' && v) displayName = v;
+                  if (k === 'color' && v) color = v;
+                  if (k === 'badges' && v) {
+                    if (v.includes('broadcaster')) badges.push('broadcaster');
+                    if (v.includes('moderator')) badges.push('mod');
+                    if (v.includes('vip')) badges.push('vip');
+                    if (v.includes('subscriber')) badges.push('sub');
+                    if (v.includes('turbo')) badges.push('prime');
+                  }
+                }
+              }
+
+              const chatMsg: ChatMessage = {
+                id: `irc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                channel: clean,
+                username: fallbackNick,
+                displayName: displayName || fallbackNick,
+                color: color || '#9146FF',
+                badges,
+                message: text,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                isHighlighted: text.includes('!points') || text.includes('!claim') || text.toLowerCase().includes(clean)
+              };
+
+              this.addStreamerChatMessage(clean, chatMsg);
+
+              // Auto-respond to chat commands if someone asks !points or !claim
+              if (text.trim().toLowerCase() === '!points') {
+                this.addLog('CMD', clean, `IRC user '${displayName}' queried !points command on #${clean}.`);
+                setTimeout(() => {
+                  this.addStreamerChatMessage(clean, {
+                    id: `bot-cmd-${Date.now()}`,
+                    channel: clean,
+                    username: 'PointMinerBot',
+                    displayName: 'Point Miner Bot',
+                    color: '#00F593',
+                    badges: ['moderator', 'bot'],
+                    message: `🤖 @${displayName}: #${streamer.displayName} balance: ${streamer.points.toLocaleString()} pts. Mined today: ${streamer.totalPointsMined.toLocaleString()} pts. Next bonus chest in ~${streamer.nextChestEstimateSeconds}s.`,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    isBot: true,
+                    isHighlighted: true
+                  });
+                }, 300);
+              }
+            }
+          }
+
           if (raw.includes('USERNOTICE') && raw.includes('msg-id=raid')) {
             const raidMatch = raw.match(/msg-param-displayName=([^;]+)/);
             const raider = raidMatch ? raidMatch[1] : 'Raider';
@@ -647,6 +749,18 @@ export class MinerEngine {
               `Channel raid detected by ${raider} in #${targetChannel}! Raid points bonus captured (+250 pts).`,
               250
             );
+            this.addStreamerChatMessage(clean, {
+              id: `raid-${Date.now()}`,
+              channel: clean,
+              username: 'TwitchRaid',
+              displayName: 'Twitch Raid Event',
+              color: '#FFB800',
+              badges: ['mod'],
+              message: `🚀 Channel raid detected by ${raider}! Captured +250 community points bonus.`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+              isBot: true,
+              isHighlighted: true
+            });
           }
         };
 
@@ -804,6 +918,19 @@ export class MinerEngine {
       50
     );
 
+    this.addStreamerChatMessage(streamer.username, {
+      id: `claim-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      channel: streamer.username,
+      username: 'PointMinerBot',
+      displayName: 'Point Miner Bot',
+      color: '#00F593',
+      badges: ['moderator', 'bot'],
+      message: `🎁 [BONUS CLAIMED] Captured +50 community chest points for #${streamer.displayName}! Total balance: ${streamer.points.toLocaleString()} pts.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      isBot: true,
+      isHighlighted: true
+    });
+
     this.broadcastSSE('streamers', this.streamers);
   }
 
@@ -839,6 +966,18 @@ export class MinerEngine {
           `Heartbeat watch credit (+${pts} pts) received for ${chosen.displayName}.`,
           pts
         );
+
+        this.addStreamerChatMessage(chosen.username, {
+          id: `watch-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          channel: chosen.username,
+          username: 'PointMinerBot',
+          displayName: 'Point Miner Bot',
+          color: '#00F593',
+          badges: ['bot'],
+          message: `⚡ [WATCH CREDIT] +${pts} pts awarded for watch time on #${chosen.displayName}. Balance: ${chosen.points.toLocaleString()} pts.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          isBot: true
+        });
       }
     }
 
@@ -1307,7 +1446,10 @@ export class MinerEngine {
           points: updates.points !== undefined ? updates.points : undefined,
           priority: updates.priority !== undefined ? updates.priority : undefined,
           enabled: updates.enabled !== undefined ? updates.enabled : undefined,
-          isMining: updates.isMining !== undefined ? updates.isMining : undefined
+          isMining: updates.isMining !== undefined ? updates.isMining : undefined,
+          isLive: updates.isLive !== undefined ? updates.isLive : undefined,
+          viewerCount: updates.viewerCount !== undefined ? updates.viewerCount : undefined,
+          game: updates.game !== undefined ? updates.game : undefined
         }
       });
     } catch (e) {
@@ -1317,6 +1459,211 @@ export class MinerEngine {
     this.rebalanceActiveSlots();
     this.broadcastSSE('streamers', this.streamers);
     return s;
+  }
+
+  public async toggleStreamerLive(username: string, forceLive?: boolean): Promise<Streamer | null> {
+    const clean = username.trim().toLowerCase();
+    const streamer = this.streamers.find(s => s.username === clean);
+    if (!streamer) return null;
+
+    const newLive = forceLive !== undefined ? forceLive : !streamer.isLive;
+    streamer.isLive = newLive;
+
+    if (newLive) {
+      if (streamer.viewerCount <= 0) {
+        streamer.viewerCount = Math.floor(1500 + Math.random() * 8000);
+      }
+      if (streamer.game === 'Offline') {
+        streamer.game = 'Variety Stream';
+      }
+    } else {
+      streamer.viewerCount = 0;
+      streamer.isMining = false;
+    }
+
+    try {
+      await prisma.streamer.update({
+        where: { username: clean },
+        data: {
+          isLive: streamer.isLive,
+          viewerCount: streamer.viewerCount,
+          game: streamer.game,
+          isMining: streamer.isMining
+        }
+      });
+    } catch (e) {}
+
+    this.addLog(
+      newLive ? 'INFO' : 'WARN',
+      clean,
+      newLive
+        ? `🟢 Channel ${streamer.displayName} status set to ONLINE (${streamer.game}, ${streamer.viewerCount.toLocaleString()} viewers).`
+        : `🔴 Channel ${streamer.displayName} status set to OFFLINE. Released from active watch slot.`
+    );
+
+    this.rebalanceActiveSlots();
+    this.broadcastSSE('streamers', this.streamers);
+    this.broadcastSSE('status', this.getStatus());
+    return streamer;
+  }
+
+  public getStreamerChat(username: string): ChatMessage[] {
+    const clean = username.trim().toLowerCase();
+    if (!this.streamerChats.has(clean)) {
+      const streamer = this.streamers.find(s => s.username === clean);
+      const initial: ChatMessage[] = [
+        {
+          id: `init-${clean}-sys`,
+          channel: clean,
+          username: 'tmi.twitch.tv',
+          displayName: 'Twitch IRC',
+          color: '#9146FF',
+          badges: ['system'],
+          message: `Connected to channel #${streamer?.displayName || clean} via Twitch IRC protocol.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          isSystem: true
+        },
+        {
+          id: `init-${clean}-bot`,
+          channel: clean,
+          username: 'PointMinerBot',
+          displayName: 'Point Miner Bot',
+          color: '#00F593',
+          badges: ['moderator', 'bot'],
+          message: `🤖 Point Miner Bot active. Monitoring #${streamer?.displayName || clean} bonus chests (+50) and watch streaks. Type !points or !claim anytime.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          isBot: true
+        }
+      ];
+      this.streamerChats.set(clean, initial);
+    }
+    return [...(this.streamerChats.get(clean) || [])];
+  }
+
+  public addStreamerChatMessage(channel: string, msg: ChatMessage) {
+    const clean = channel.trim().toLowerCase();
+    if (!this.streamerChats.has(clean)) {
+      this.streamerChats.set(clean, []);
+    }
+    const list = this.streamerChats.get(clean)!;
+    list.push(msg);
+    if (list.length > 200) {
+      list.shift();
+    }
+    this.broadcastSSE('chat', { channel: clean, message: msg });
+  }
+
+  public handleUserChatMessage(channel: string, text: string, senderName = 'You'): ChatMessage {
+    const clean = channel.trim().toLowerCase();
+    const streamer = this.streamers.find(s => s.username === clean);
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      channel: clean,
+      username: senderName.toLowerCase().replace(/\s+/g, '_'),
+      displayName: senderName,
+      color: '#00F593',
+      badges: ['sub'],
+      message: text,
+      timestamp: time,
+      isHighlighted: text.startsWith('!')
+    };
+
+    this.addStreamerChatMessage(clean, userMsg);
+
+    // Forward to Twitch IRC WebSocket if active
+    const conn = this.activeConnections.get(clean);
+    if (conn?.ws && conn.ws.readyState === 1) {
+      try {
+        const targetChannel = clean === 'xqcow' ? 'xqc' : clean;
+        conn.ws.send(`PRIVMSG #${targetChannel} :${text}\r\n`);
+      } catch (e) {}
+    }
+
+    const trimmed = text.trim();
+    const lower = trimmed.toLowerCase();
+
+    // Command handling
+    if (lower === '!points') {
+      const balance = streamer ? streamer.points.toLocaleString() : '0';
+      const mined = streamer ? streamer.totalPointsMined.toLocaleString() : '0';
+      const nextChest = streamer ? `${streamer.nextChestEstimateSeconds}s` : 'unknown';
+
+      this.addLog('CMD', clean, `User '${senderName}' executed !points command on #${clean}. Current balance: ${balance} pts.`);
+
+      setTimeout(() => {
+        this.addStreamerChatMessage(clean, {
+          id: `bot-res-${Date.now()}`,
+          channel: clean,
+          username: 'PointMinerBot',
+          displayName: 'Point Miner Bot',
+          color: '#9146FF',
+          badges: ['moderator', 'bot'],
+          message: `🤖 @${senderName}: Current channel points for #${streamer?.displayName || clean} is ${balance} pts. Total mined today: ${mined} pts. Next bonus chest in ~${nextChest}.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          isBot: true,
+          isHighlighted: true
+        });
+      }, 250);
+    } else if (lower === '!claim' || lower === '!chest') {
+      this.addLog('CMD', clean, `User '${senderName}' executed !claim command on #${clean}. Triggering instant chest claim.`);
+
+      if (streamer) {
+        this.executeClaimBonus(streamer);
+      }
+
+      setTimeout(() => {
+        this.addStreamerChatMessage(clean, {
+          id: `bot-res-${Date.now()}`,
+          channel: clean,
+          username: 'PointMinerBot',
+          displayName: 'Point Miner Bot',
+          color: '#9146FF',
+          badges: ['moderator', 'bot'],
+          message: `🎁 @${senderName}: Triggered community chest claim (+50 pts) for #${streamer?.displayName || clean}! New Balance: ${streamer?.points.toLocaleString()} pts.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          isBot: true,
+          isHighlighted: true
+        });
+      }, 250);
+    } else if (lower === '!status') {
+      const statusText = streamer?.isMining ? 'ACTIVE (Watch Slot Engaged)' : streamer?.isLive ? 'LIVE (Standby Queue)' : 'OFFLINE';
+      this.addLog('CMD', clean, `User '${senderName}' executed !status command on #${clean}. Status: ${statusText}`);
+
+      setTimeout(() => {
+        this.addStreamerChatMessage(clean, {
+          id: `bot-res-${Date.now()}`,
+          channel: clean,
+          username: 'PointMinerBot',
+          displayName: 'Point Miner Bot',
+          color: '#9146FF',
+          badges: ['moderator', 'bot'],
+          message: `🤖 @${senderName}: #${streamer?.displayName || clean} is ${statusText} | Game: ${streamer?.game || 'Variety'} | Viewers: ${(streamer?.viewerCount || 0).toLocaleString()} | Watch Streak: ${streamer?.watchStreak || 0}d`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          isBot: true
+        });
+      }, 250);
+    } else if (lower === '!streak') {
+      this.addLog('CMD', clean, `User '${senderName}' executed !streak command on #${clean}.`);
+      setTimeout(() => {
+        this.addStreamerChatMessage(clean, {
+          id: `bot-res-${Date.now()}`,
+          channel: clean,
+          username: 'PointMinerBot',
+          displayName: 'Point Miner Bot',
+          color: '#9146FF',
+          badges: ['moderator', 'bot'],
+          message: `🔥 @${senderName}: Watch streak on #${streamer?.displayName || clean} is ${streamer?.watchStreak || 0} days! Watch multiplier active (+10 pts per interval).`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          isBot: true
+        });
+      }, 250);
+    } else {
+      this.addLog('CHAT', clean, `<${senderName}> ${text}`);
+    }
+
+    return userMsg;
   }
 
   public startMiner() {

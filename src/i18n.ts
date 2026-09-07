@@ -200,7 +200,16 @@ export const resources = {
         botHelp: 'Type !points or !chest in chat to trigger instant miner status',
         liveSync: 'Live Twitch Telemetry',
         refreshStats: 'Refresh Live Stats',
-        realTimeStats: 'Real-Time Stream Stats'
+        realTimeStats: 'Real-Time Stream Stats',
+        switchChannel: 'Switch Channel',
+        toggleLive: 'Toggle Online/Offline',
+        setOnline: 'Set Online (Simulate)',
+        setOffline: 'Set Offline',
+        filterConsole: 'Filter Console to Channel',
+        quickCmds: 'Bot Commands',
+        channelSelector: 'Monitored Channels',
+        selectedBadge: 'Active Selection',
+        openChat: 'Open IRC Chat'
       }
     }
   },
@@ -400,7 +409,16 @@ export const resources = {
         botHelp: 'Tippen Sie !points oder !chest im Chat, um sofortigen Miner-Status abzufragen',
         liveSync: 'Live-Twitch-Telemetrie',
         refreshStats: 'Live-Statistiken aktualisieren',
-        realTimeStats: 'Echtzeit-Stream-Statistiken'
+        realTimeStats: 'Echtzeit-Stream-Statistiken',
+        switchChannel: 'Kanal wechseln',
+        toggleLive: 'Online/Offline umschalten',
+        setOnline: 'Online setzen (Simulation)',
+        setOffline: 'Offline setzen',
+        filterConsole: 'Konsole auf Kanal filtern',
+        quickCmds: 'Bot-Befehle',
+        channelSelector: 'Überwachte Kanäle',
+        selectedBadge: 'Aktive Auswahl',
+        openChat: 'IRC-Chat öffnen'
       }
     }
   }

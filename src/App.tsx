@@ -17,7 +17,8 @@ import {
   LogEntry,
   AnalyticsData,
   PriorityMode,
-  User
+  User,
+  ChatMessage
 } from './types';
 
 export default function App() {
@@ -37,15 +38,47 @@ export default function App() {
   const [isClaiming, setIsClaiming] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedSlotStreamerId, setSelectedSlotStreamerId] = useState<string | null>(null);
+  const [selectedConsoleChannel, setSelectedConsoleChannel] = useState<string | null>(null);
+  const [incomingChatMessage, setIncomingChatMessage] = useState<ChatMessage | null>(null);
 
   const selectedStreamer = selectedSlotStreamerId === 'none'
     ? null
     : selectedSlotStreamerId
       ? streamers.find(s => s.id === selectedSlotStreamerId) || null
-      : streamers.find(s => s.isMining && s.isLive) || null;
+      : streamers.find(s => s.isMining && s.isLive) || streamers[0] || null;
 
-  const handleSelectSlot = (streamer: Streamer) => {
-    setSelectedSlotStreamerId(prev => (prev === streamer.id ? 'none' : streamer.id));
+  const handleSelectSlot = (input: Streamer | string) => {
+    const id = typeof input === 'string' ? input : input.id;
+    setSelectedSlotStreamerId(id);
+    const found = streamers.find(s => s.id === id);
+    if (found) {
+      setSelectedConsoleChannel(found.username);
+    }
+  };
+
+  const handleToggleLive = async (username: string) => {
+    try {
+      const res = await fetch(`/api/streamers/${username.toLowerCase()}/toggle-live`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const updated: Streamer = await res.json();
+        setStreamers(prev => prev.map(s => s.username.toLowerCase() === username.toLowerCase() ? updated : s));
+        setToastMessage(`Toggled #${updated.displayName} to ${updated.isLive ? 'ONLINE' : 'OFFLINE'}`);
+        setTimeout(() => setToastMessage(null), 3000);
+      }
+    } catch (e) {
+      console.error('Failed to toggle streamer live status', e);
+    }
+  };
+
+  const handleFilterConsole = (channel: string | null) => {
+    setSelectedConsoleChannel(channel);
+    const el = document.getElementById('live-console-section');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   };
 
   // Theme support: Bright and Dark
@@ -175,6 +208,17 @@ export default function App() {
           setSettings(newSettings);
         } catch (err) {
           console.error('Failed to parse settings event', err);
+        }
+      });
+
+      eventSource.addEventListener('chat', (e: MessageEvent) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          if (parsed && parsed.message) {
+            setIncomingChatMessage(parsed.message);
+          }
+        } catch (err) {
+          console.error('Failed to parse chat event', err);
         }
       });
 
@@ -428,19 +472,22 @@ export default function App() {
               onSelectSlot={handleSelectSlot}
             />
 
-            {/* IRC Chat of the Currently Actively Selected Watchslot Down Below */}
-            {selectedStreamer && (
-              <SlotIrcChat
-                streamer={selectedStreamer}
-                onClose={() => setSelectedSlotStreamerId(null)}
-                onClaimChest={handleClaimSpecificStreamer}
-                theme={theme}
-              />
-            )}
+            {/* IRC Chat of the Currently Selected Watchslot or Channel */}
+            <SlotIrcChat
+              streamer={selectedStreamer}
+              allStreamers={streamers}
+              onSelectStreamer={handleSelectSlot}
+              onToggleLive={handleToggleLive}
+              onClaimChest={handleClaimSpecificStreamer}
+              onFilterConsole={handleFilterConsole}
+              incomingChatMessage={incomingChatMessage}
+              onClose={() => setSelectedSlotStreamerId('none')}
+              theme={theme}
+            />
 
             {/* Split Grid: Streamer Queue on Left, Real-Time Console on Right */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-5 space-y-6">
+              <div className="lg:col-span-5 min-w-0">
                 <StreamerList
                   streamers={streamers}
                   priorityMode={settings?.priorityMode || 'points_asc'}
@@ -449,14 +496,21 @@ export default function App() {
                   onDeleteStreamer={handleDeleteStreamer}
                   onAddStreamerClick={() => setIsAddStreamerOpen(true)}
                   onMovePriority={handleMovePriority}
+                  selectedStreamerId={selectedStreamer?.id || null}
+                  onSelectStreamer={handleSelectSlot}
+                  onToggleLive={handleToggleLive}
+                  onFilterConsole={handleFilterConsole}
                 />
               </div>
 
-              <div className="lg:col-span-7">
+              <div id="live-console-section" className="lg:col-span-7 min-w-0">
                 <LiveConsole
                   logs={logs}
                   onClearLogs={handleClearLogs}
                   isConnected={isConnected}
+                  selectedChannel={selectedConsoleChannel}
+                  onSelectChannel={handleFilterConsole}
+                  availableChannels={streamers.map(s => s.username)}
                 />
               </div>
             </div>

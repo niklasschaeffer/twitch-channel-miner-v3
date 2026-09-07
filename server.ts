@@ -5,8 +5,16 @@ import { minerEngine } from './server/minerEngine.js';
 import { prisma } from './server/db.js';
 import { md5 } from './src/lib/gravatar.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Safe path resolution for both ESM (tsx dev) and CJS (dist/server.cjs bundle)
+const getDirname = () => {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.url) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {}
+  return process.cwd();
+};
+const __dirname = typeof globalThis.__dirname !== 'undefined' ? globalThis.__dirname : getDirname();
 
 const PORT = 3000;
 
@@ -221,6 +229,46 @@ async function startServer() {
     }
   });
 
+  // Toggle streamer live status manually (online/offline)
+  app.post('/api/streamers/:username/toggle-live', async (req, res) => {
+    try {
+      const { forceLive } = req.body || {};
+      const updated = await minerEngine.toggleStreamerLive(req.params.username, forceLive);
+      if (!updated) {
+        res.status(404).json({ error: 'Streamer not found' });
+        return;
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get streamer IRC chat history
+  app.get('/api/streamers/:username/chat', (req, res) => {
+    try {
+      const messages = minerEngine.getStreamerChat(req.params.username);
+      res.json(messages);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Send IRC chat message or miner command
+  app.post('/api/streamers/:username/chat', (req, res) => {
+    try {
+      const { message, senderName } = req.body || {};
+      if (!message || typeof message !== 'string') {
+        res.status(400).json({ error: 'Message is required' });
+        return;
+      }
+      const sent = minerEngine.handleUserChatMessage(req.params.username, message, senderName || 'You');
+      res.json(sent);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Refresh all streamers from live Twitch telemetry
   app.post('/api/streamers/refresh-live', async (req, res) => {
     try {
@@ -288,29 +336,36 @@ async function startServer() {
   });
 
   // Server-Sent Events (SSE) for real-time updates
+  const sseResponses = new Set<express.Response>();
   app.get('/api/logs/stream', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 
+    sseResponses.add(res);
+
     const unsubscribe = minerEngine.subscribeSSE(data => {
-      res.write(data);
+      try {
+        res.write(data);
+      } catch {}
     });
 
     req.on('close', () => {
       unsubscribe();
+      sseResponses.delete(res);
     });
   });
 
   // Vite middleware for development or static serving for production
+  let viteServer: any = null;
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
+    viteServer = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
-    app.use(vite.middlewares);
+    app.use(viteServer.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -319,9 +374,85 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Twitch Channel Points Miner running on http://0.0.0.0:${PORT} (Prisma SQLite enabled)`);
-  });
+  function listenWithRetry(retries = 5) {
+    const sockets = new Set<any>();
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Twitch Channel Points Miner running on http://0.0.0.0:${PORT} (Prisma SQLite enabled)`);
+    });
+
+    server.on('connection', (socket: any) => {
+      sockets.add(socket);
+      socket.once('close', () => {
+        sockets.delete(socket);
+      });
+    });
+
+    server.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        if (retries > 0) {
+          console.warn(`Port ${PORT} is busy, retrying in 1 second (${retries} retries remaining)...`);
+          setTimeout(() => {
+            listenWithRetry(retries - 1);
+          }, 1000);
+        } else {
+          console.error(`Port ${PORT} is still in use after retries. Exiting to allow orchestrator restart:`, err);
+          process.exit(1);
+        }
+      } else {
+        console.error('Server encountered an error:', err);
+        process.exit(1);
+      }
+    });
+
+    let isExiting = false;
+    const cleanupAndExit = async () => {
+      if (isExiting) return;
+      isExiting = true;
+
+      // Force immediate process exit if graceful teardown exceeds 600ms
+      const fallbackTimer = setTimeout(() => {
+        process.exit(0);
+      }, 600);
+      fallbackTimer.unref();
+
+      try {
+        minerEngine.destroy();
+      } catch {}
+
+      for (const res of sseResponses) {
+        try {
+          res.end();
+        } catch {}
+      }
+      sseResponses.clear();
+
+      if (viteServer) {
+        try {
+          await viteServer.close();
+        } catch {}
+      }
+
+      for (const socket of sockets) {
+        try {
+          socket.destroy();
+        } catch {}
+      }
+      sockets.clear();
+
+      try {
+        server.close(() => {
+          process.exit(0);
+        });
+      } catch {
+        process.exit(0);
+      }
+    };
+
+    process.once('SIGTERM', cleanupAndExit);
+    process.once('SIGINT', cleanupAndExit);
+  }
+
+  listenWithRetry();
 }
 
 startServer();
