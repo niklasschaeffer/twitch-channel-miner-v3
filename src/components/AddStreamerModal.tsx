@@ -29,11 +29,11 @@ export const AddStreamerModal: React.FC<AddStreamerModalProps> = ({
   existingUsernames
 }) => {
   const { t } = useTranslation();
-  if (!isOpen) return null;
-
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
+
+  if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

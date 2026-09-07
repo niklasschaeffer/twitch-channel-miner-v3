@@ -26,11 +26,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSaveSettings
 }) => {
   const { t } = useTranslation();
-  if (!isOpen || !settings) return null;
-
-  const [form, setForm] = useState<MinerSettings>({ ...settings });
+  const [form, setForm] = useState<MinerSettings>(() => settings || {
+    id: 'default',
+    authToken: '',
+    clientId: 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+    isSimulationMode: true,
+    maxConcurrentStreams: 2,
+    priorityMode: 'points_asc',
+    autoClaimBonus: true,
+    claimDelaySeconds: 4,
+    followRaids: true,
+    autoClaimDrops: true,
+    autoBetPredictions: true,
+    predictionStrategy: 'smart_ratio',
+    maxBetPoints: 100,
+    checkIntervalSeconds: 3
+  });
   const [showTokenHelp, setShowTokenHelp] = useState(false);
   const [savedAlert, setSavedAlert] = useState(false);
+
+  React.useEffect(() => {
+    if (settings) {
+      setForm({ ...settings });
+    }
+  }, [settings]);
+
+  if (!isOpen || !settings) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

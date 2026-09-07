@@ -1,6 +1,27 @@
 import { PrismaClient } from '@prisma/client';
+import { execSync } from 'child_process';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'file:./dev.db';
+}
 
 const prisma = new PrismaClient();
+
+async function ensureTablesExist() {
+  try {
+    await prisma.user.findFirst();
+  } catch (err: unknown) {
+    const error = err as { code?: string; message?: string };
+    if (error?.code === 'P2021' || error?.message?.includes('does not exist')) {
+      console.log('Database tables not yet initialized. Running prisma db push automatically...');
+      const cli = process.versions.bun ? 'bunx' : 'npx';
+      execSync(`${cli} prisma db push --skip-generate`, { stdio: 'inherit' });
+    }
+  }
+}
 
 async function main() {
   // Seed data should only be used when in a dev environment
@@ -10,6 +31,8 @@ async function main() {
   }
 
   console.log('Seeding SQLite database via Prisma ORM engine...');
+
+  await ensureTablesExist();
 
   // 1. Create or upsert test/demo user
   const user = await prisma.user.upsert({
