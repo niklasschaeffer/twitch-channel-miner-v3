@@ -1,0 +1,6 @@
+{
+  "name": "Twitch Channel Points Miner",
+  "description": "Modern TypeScript & React edition of Twitch Channel Points Miner v2 with real-time stream logging, automated bonus claiming, streamer priority queues, and live analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
