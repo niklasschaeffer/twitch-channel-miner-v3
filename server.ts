@@ -203,6 +203,30 @@ async function startServer() {
     }
   });
 
+  // Fetch real-time live stats (viewers, points, live status) for a specific streamer
+  app.get('/api/streamers/:username/live-stats', async (req, res) => {
+    try {
+      const stats = await minerEngine.getLiveStats(req.params.username);
+      if (!stats) {
+        res.status(404).json({ error: 'Streamer not found' });
+        return;
+      }
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Refresh all streamers from live Twitch telemetry
+  app.post('/api/streamers/refresh-live', async (req, res) => {
+    try {
+      const streamers = await minerEngine.refreshAllLiveStats();
+      res.json({ success: true, count: streamers.length, streamers });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Miner Settings (Stored in SQLite via Prisma)
   app.get('/api/settings', (req, res) => {
     res.json(minerEngine.getSettings());

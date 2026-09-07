@@ -1,18 +1,22 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Gift, Radio, Eye, Flame } from 'lucide-react';
+import { Gift, Radio, Eye, Flame, MessageSquare } from 'lucide-react';
 import { Streamer } from '../types';
 
 interface ActiveSlotsCardProps {
   streamers: Streamer[];
   onClaim: (streamer: Streamer) => void;
   maxSlots: number;
+  selectedStreamerId?: string | null;
+  onSelectSlot?: (streamer: Streamer) => void;
 }
 
 export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
   streamers,
   onClaim,
-  maxSlots = 2
+  maxSlots = 2,
+  selectedStreamerId,
+  onSelectSlot
 }) => {
   const { t } = useTranslation();
   const activeStreamers = streamers.filter(s => s.isMining && s.isLive);
@@ -34,9 +38,14 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
             </p>
           </div>
         </div>
-        <span className="text-xs font-mono text-zinc-600 dark:text-[#ADADB8] bg-zinc-50 dark:bg-[#0E0E10] px-2.5 py-1 border border-zinc-200 dark:border-[#26262C]">
-          {activeStreamers.length} / {maxSlots}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="hidden sm:inline text-[11px] text-zinc-400 dark:text-[#71717A] font-mono">
+            {t('chat.clickForChat')}
+          </span>
+          <span className="text-xs font-mono text-zinc-600 dark:text-[#ADADB8] bg-zinc-50 dark:bg-[#0E0E10] px-2.5 py-1 border border-zinc-200 dark:border-[#26262C]">
+            {activeStreamers.length} / {maxSlots}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -62,6 +71,7 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
             );
           }
 
+          const isSelected = selectedStreamerId === streamer.id;
           const secondsRemaining = streamer.nextChestEstimateSeconds;
           const totalCycle = 900;
           const progressPercent = Math.min(100, Math.max(0, Math.round(((totalCycle - secondsRemaining) / totalCycle) * 100)));
@@ -72,9 +82,14 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
           return (
             <div
               key={streamer.id}
-              className="relative overflow-hidden bg-zinc-50 dark:bg-[#141416] border border-zinc-200 dark:border-[#26262C] p-4.5 hover:border-[#9146FF]/50 transition group"
+              onClick={() => onSelectSlot?.(streamer)}
+              className={`relative overflow-hidden p-4.5 transition group cursor-pointer border ${
+                isSelected
+                  ? 'bg-[#9146FF]/5 dark:bg-[#9146FF]/10 border-[#9146FF] ring-2 ring-[#9146FF]/40 shadow-sm'
+                  : 'bg-zinc-50 dark:bg-[#141416] border-zinc-200 dark:border-[#26262C] hover:border-[#9146FF]/60 hover:shadow-xs'
+              }`}
             >
-              {/* Slot pill */}
+              {/* Slot pill & Chat Indicator */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-mono font-medium px-2 py-0.5 bg-[#00a865]/10 dark:bg-[#00F593]/15 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/20 dark:border-[#00F593]/30 flex items-center gap-1.5">
@@ -86,12 +101,25 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
                   </span>
                 </div>
 
-                {streamer.watchStreak > 0 && (
-                  <span className="text-[11px] text-amber-600 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 border border-amber-500/30 flex items-center gap-1 font-medium font-mono">
-                    <Flame className="w-3 h-3 fill-amber-400 text-amber-400" />
-                    {t('streamersList.watchStreak', { days: streamer.watchStreak })}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {streamer.watchStreak > 0 && (
+                    <span className="text-[11px] text-amber-600 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 border border-amber-500/30 flex items-center gap-1 font-medium font-mono">
+                      <Flame className="w-3 h-3 fill-amber-400 text-amber-400" />
+                      {t('streamersList.watchStreak', { days: streamer.watchStreak })}
+                    </span>
+                  )}
+                  {isSelected ? (
+                    <span className="text-[11px] font-mono font-semibold text-[#9146FF] bg-[#9146FF]/15 px-2 py-0.5 border border-[#9146FF]/30 flex items-center gap-1">
+                      <MessageSquare className="w-3 h-3" />
+                      {t('chat.chatActive')}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono text-zinc-400 dark:text-[#71717A] group-hover:text-[#9146FF] transition flex items-center gap-1">
+                      <MessageSquare className="w-3 h-3" />
+                      {t('chat.clickForChat')}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Streamer details */}
@@ -156,7 +184,10 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
                     {t('stats.totalMined')}: <span className="text-zinc-900 dark:text-[#EFEFF1] font-mono">+{streamer.totalPointsMined.toLocaleString()}</span>
                   </span>
                   <button
-                    onClick={() => onClaim(streamer)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClaim(streamer);
+                    }}
                     className={`px-2.5 py-1 text-xs font-medium transition flex items-center gap-1 cursor-pointer ${
                       streamer.chestAvailable
                         ? 'bg-[#9146FF] hover:bg-[#772CE8] text-white font-semibold'
@@ -175,3 +206,4 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
     </div>
   );
 };
+

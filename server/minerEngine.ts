@@ -24,6 +24,7 @@ export class MinerEngine {
   private timer: NodeJS.Timeout | null = null;
   private nextClientId = 1;
   private initialized = false;
+  private tickCount = 0;
 
   constructor() {
     this.settings = {
@@ -362,6 +363,11 @@ export class MinerEngine {
     this.status.uptimeSeconds += 2;
     this.status.lastActionTimestamp = new Date().toISOString();
 
+    this.tickCount++;
+    if (this.tickCount % 15 === 0) {
+      this.refreshActiveSlotsLiveStats().catch(() => {});
+    }
+
     // Rebalance active slots based on priority
     this.rebalanceActiveSlots();
 
@@ -386,6 +392,56 @@ export class MinerEngine {
     this.maybeSimulateEvent();
 
     this.broadcastSSE('status', this.getStatus());
+  }
+
+  public async refreshActiveSlotsLiveStats() {
+    const active = this.streamers.filter(s => s.isMining && s.enabled);
+    if (active.length === 0) return;
+
+    let changed = false;
+    for (const streamer of active) {
+      try {
+        const live = await this.fetchTwitchLiveStats(streamer.username);
+        if (live) {
+          if (live.isLive !== undefined && streamer.isLive !== live.isLive) {
+            streamer.isLive = live.isLive;
+            changed = true;
+          }
+          if (typeof live.viewerCount === 'number' && streamer.viewerCount !== live.viewerCount) {
+            streamer.viewerCount = live.viewerCount;
+            changed = true;
+          }
+          if (live.game && streamer.game !== live.game) {
+            streamer.game = live.game;
+            changed = true;
+          }
+          if (live.avatar && streamer.avatar !== live.avatar) {
+            streamer.avatar = live.avatar;
+            changed = true;
+          }
+          if (typeof live.points === 'number' && streamer.points !== live.points) {
+            streamer.points = live.points;
+            changed = true;
+          }
+
+          prisma.streamer.update({
+            where: { username: streamer.username },
+            data: {
+              isLive: streamer.isLive,
+              viewerCount: streamer.viewerCount,
+              game: streamer.game,
+              avatar: streamer.avatar,
+              points: streamer.points
+            }
+          }).catch(() => {});
+        }
+      } catch (err) {
+        // Ignored
+      }
+    }
+    if (changed) {
+      this.broadcastSSE('streamers', this.streamers);
+    }
   }
 
   private rebalanceActiveSlots() {
@@ -621,6 +677,8 @@ export class MinerEngine {
         );
       }
     }
+
+    this.broadcastSSE('streamers', this.streamers);
   }
 
   public async recordStatisticalData(data: {
@@ -724,6 +782,184 @@ export class MinerEngine {
     return [...this.streamers];
   }
 
+  public async fetchTwitchLiveStats(username: string): Promise<{
+    displayName: string;
+    avatar?: string;
+    isLive: boolean;
+    viewerCount: number;
+    game: string;
+    points?: number;
+  }> {
+    const clean = username.trim().toLowerCase();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+
+    try {
+      const headers: Record<string, string> = {
+        'Client-Id': this.settings.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+        'Content-Type': 'application/json'
+      };
+      if (this.settings.authToken) {
+        headers['Authorization'] = `OAuth ${this.settings.authToken.replace(/^oauth:/i, '')}`;
+      }
+
+      const res = await fetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify([
+          {
+            query: `query($login: String!) {
+              user(login: $login) {
+                id
+                login
+                displayName
+                profileImageURL(width: 150)
+                stream {
+                  id
+                  viewersCount
+                  game {
+                    name
+                  }
+                  title
+                  createdAt
+                }
+                channel {
+                  self {
+                    communityPoints {
+                      balance
+                    }
+                  }
+                }
+              }
+            }`,
+            variables: { login: clean }
+          }
+        ]),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeout);
+      if (res.ok) {
+        const json: any = await res.json();
+        const user = json?.[0]?.data?.user;
+        if (user) {
+          const stream = user.stream;
+          const isLive = !!stream;
+          const viewerCount = stream ? Number(stream.viewersCount || 0) : 0;
+          const game = stream?.game?.name || 'Offline';
+          const points = user.channel?.self?.communityPoints?.balance;
+          return {
+            displayName: user.displayName || clean,
+            avatar: user.profileImageURL,
+            isLive,
+            viewerCount,
+            game,
+            points: typeof points === 'number' ? points : undefined
+          };
+        }
+      }
+    } catch (err) {
+      // Network fallback
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const existing = this.streamers.find(s => s.username === clean);
+    return {
+      displayName: existing?.displayName || clean,
+      avatar: existing?.avatar,
+      isLive: existing?.isLive ?? false,
+      viewerCount: existing?.viewerCount ?? 0,
+      game: existing?.game ?? 'Variety',
+      points: existing?.points
+    };
+  }
+
+  public async getLiveStats(username: string) {
+    const clean = username.trim().toLowerCase();
+    const streamer = this.streamers.find(s => s.username === clean);
+    if (!streamer) {
+      return null;
+    }
+
+    // Refresh live stats from Twitch GQL
+    try {
+      const live = await this.fetchTwitchLiveStats(clean);
+      if (live) {
+        if (live.isLive !== undefined) streamer.isLive = live.isLive;
+        if (typeof live.viewerCount === 'number') streamer.viewerCount = live.viewerCount;
+        if (live.game) streamer.game = live.game;
+        if (live.avatar) streamer.avatar = live.avatar;
+        if (live.displayName) streamer.displayName = live.displayName;
+        if (typeof live.points === 'number') streamer.points = live.points;
+
+        await prisma.streamer.update({
+          where: { username: clean },
+          data: {
+            isLive: streamer.isLive,
+            viewerCount: streamer.viewerCount,
+            game: streamer.game,
+            avatar: streamer.avatar,
+            displayName: streamer.displayName,
+            points: streamer.points
+          }
+        }).catch(() => {});
+      }
+    } catch (e) {
+      // Return cached
+    }
+
+    return {
+      username: streamer.username,
+      displayName: streamer.displayName,
+      avatar: streamer.avatar,
+      points: streamer.points,
+      viewerCount: streamer.viewerCount,
+      isLive: streamer.isLive,
+      game: streamer.game,
+      watchStreak: streamer.watchStreak,
+      isMining: streamer.isMining,
+      priority: streamer.priority,
+      enabled: streamer.enabled,
+      chestAvailable: streamer.chestAvailable,
+      nextChestEstimateSeconds: streamer.nextChestEstimateSeconds,
+      totalPointsMined: streamer.totalPointsMined,
+      lastClaimTime: streamer.lastClaimTime,
+      uptimeMinutes: streamer.uptimeMinutes,
+      fetchedAt: new Date().toISOString()
+    };
+  }
+
+  public async refreshAllLiveStats(): Promise<Streamer[]> {
+    for (const s of this.streamers) {
+      try {
+        const live = await this.fetchTwitchLiveStats(s.username);
+        if (live) {
+          if (live.isLive !== undefined) s.isLive = live.isLive;
+          if (typeof live.viewerCount === 'number') s.viewerCount = live.viewerCount;
+          if (live.game) s.game = live.game;
+          if (live.avatar) s.avatar = live.avatar;
+          if (typeof live.points === 'number') s.points = live.points;
+
+          prisma.streamer.update({
+            where: { username: s.username },
+            data: {
+              isLive: s.isLive,
+              viewerCount: s.viewerCount,
+              game: s.game,
+              avatar: s.avatar,
+              points: s.points
+            }
+          }).catch(() => {});
+        }
+      } catch (err) {
+        // Ignored
+      }
+    }
+    this.broadcastSSE('streamers', this.streamers);
+    return this.streamers;
+  }
+
   public async addStreamer(username: string, displayName?: string): Promise<Streamer> {
     const cleanUsername = username.trim().toLowerCase();
     const existing = this.streamers.find(s => s.username === cleanUsername);
@@ -731,22 +967,25 @@ export class MinerEngine {
       return existing;
     }
 
+    // Fetch actual live stats from Twitch GraphQL API
+    const live = await this.fetchTwitchLiveStats(cleanUsername);
+
     const newStreamerData = {
       username: cleanUsername,
-      displayName: displayName || cleanUsername,
-      avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${cleanUsername}`,
-      isLive: true,
-      game: 'Variety Stream',
-      viewerCount: Math.floor(1200 + Math.random() * 8000),
-      points: Math.floor(1000 + Math.random() * 9000),
-      watchStreak: Math.floor(Math.random() * 4),
+      displayName: live.displayName || displayName || cleanUsername,
+      avatar: live.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${cleanUsername}`,
+      isLive: live.isLive,
+      game: live.game || 'Variety Stream',
+      viewerCount: live.viewerCount,
+      points: live.points ?? 0,
+      watchStreak: 1,
       isMining: false,
       priority: this.streamers.length + 1,
       enabled: true,
       chestAvailable: false,
-      nextChestEstimateSeconds: 850,
+      nextChestEstimateSeconds: 900,
       totalPointsMined: 0,
-      uptimeMinutes: 45
+      uptimeMinutes: live.isLive ? 60 : 0
     };
 
     // Store in SQLite database via Prisma ORM engine
@@ -777,7 +1016,7 @@ export class MinerEngine {
     };
 
     this.streamers.push(streamer);
-    this.addLog('INFO', cleanUsername, `Added streamer ${streamer.displayName} to mining watchlist (stored in SQLite via Prisma).`);
+    this.addLog('INFO', cleanUsername, `Added streamer ${streamer.displayName} to mining watchlist with live Twitch stats.`);
     this.rebalanceActiveSlots();
     this.broadcastSSE('streamers', this.streamers);
     return streamer;

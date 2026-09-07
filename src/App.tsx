@@ -9,6 +9,7 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { SettingsModal } from './components/SettingsModal';
 import { AddStreamerModal } from './components/AddStreamerModal';
 import { AuthModal } from './components/AuthModal';
+import { SlotIrcChat } from './components/SlotIrcChat';
 import {
   Streamer,
   MinerStatus,
@@ -35,6 +36,15 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [selectedSlotStreamerId, setSelectedSlotStreamerId] = useState<string | null>(null);
+
+  const selectedStreamer = selectedSlotStreamerId
+    ? streamers.find(s => s.id === selectedSlotStreamerId) || null
+    : null;
+
+  const handleSelectSlot = (streamer: Streamer) => {
+    setSelectedSlotStreamerId(prev => (prev === streamer.id ? null : streamer.id));
+  };
 
   // Theme support: Bright and Dark
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -412,7 +422,19 @@ export default function App() {
               streamers={streamers}
               onClaim={handleClaimSpecificStreamer}
               maxSlots={settings?.maxConcurrentStreams || 2}
+              selectedStreamerId={selectedSlotStreamerId}
+              onSelectSlot={handleSelectSlot}
             />
+
+            {/* IRC Chat of the Currently Actively Selected Watchslot Down Below */}
+            {selectedStreamer && (
+              <SlotIrcChat
+                streamer={selectedStreamer}
+                onClose={() => setSelectedSlotStreamerId(null)}
+                onClaimChest={handleClaimSpecificStreamer}
+                theme={theme}
+              />
+            )}
 
             {/* Split Grid: Streamer Queue on Left, Real-Time Console on Right */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
