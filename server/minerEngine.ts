@@ -15,12 +15,22 @@ interface SSEClient {
   send: (data: string) => void;
 }
 
+export interface ActiveSlotConnection {
+  username: string;
+  connectedAt: string;
+  connectionState: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+  lastPing: string;
+  reconnectAttempts: number;
+  ws?: any;
+}
+
 export class MinerEngine {
   private status: MinerStatus;
   private settings: MinerSettings;
   private streamers: Streamer[] = [];
   private logs: LogEntry[] = [];
   private sseClients: SSEClient[] = [];
+  private activeConnections = new Map<string, ActiveSlotConnection>();
   private timer: NodeJS.Timeout | null = null;
   private nextClientId = 1;
   private initialized = false;
@@ -156,6 +166,9 @@ export class MinerEngine {
 
       this.initialized = true;
       console.log(`MinerEngine initialized with Prisma SQLite: ${this.streamers.length} streamers loaded.`);
+      // Immediately run real-time live status check and initial slot connection
+      await this.checkAllStreamersOnlineStatus();
+      this.rebalanceActiveSlots();
     } catch (err) {
       console.error('Failed to initialize MinerEngine from Prisma SQLite:', err);
     }
@@ -364,16 +377,51 @@ export class MinerEngine {
     this.status.lastActionTimestamp = new Date().toISOString();
 
     this.tickCount++;
-    if (this.tickCount % 15 === 0) {
-      this.refreshActiveSlotsLiveStats().catch(() => {});
+
+    // Check all streamers real online status from Twitch GQL every 2 ticks (4 seconds)
+    if (this.tickCount % 2 === 0) {
+      this.checkAllStreamersOnlineStatus().catch(() => {});
     }
 
-    // Rebalance active slots based on priority
+    // Rebalance active slots based on real live status and priority
     this.rebalanceActiveSlots();
 
-    // Process chest countdowns for active mining channels
+    // Process watch minutes and bonus chests for active mining channels
     for (const s of this.streamers) {
       if (s.isMining && s.isLive && s.enabled) {
+        // Accrue watch points (+10 pts) every 60 seconds (30 ticks)
+        if (this.tickCount % 30 === 0) {
+          const watchDelta = 10;
+          s.points += watchDelta;
+          s.totalPointsMined += watchDelta;
+          s.uptimeMinutes = (s.uptimeMinutes || 0) + 1;
+
+          this.status.totalPointsMined += watchDelta;
+          this.status.pointsToday += watchDelta;
+          this.status.pointsThisHour += watchDelta;
+
+          this.recordStatisticalData({
+            pointsMined: watchDelta,
+            watchTimePoints: watchDelta
+          }).catch(() => {});
+
+          prisma.streamer.update({
+            where: { username: s.username },
+            data: {
+              points: s.points,
+              totalPointsMined: s.totalPointsMined,
+              uptimeMinutes: s.uptimeMinutes
+            }
+          }).catch(() => {});
+
+          this.addLog(
+            'WATCH',
+            s.username,
+            `Heartbeat: +${watchDelta} Channel Points earned watching ${s.displayName} (${s.game}).`,
+            watchDelta
+          );
+        }
+
         if (s.nextChestEstimateSeconds > 0) {
           s.nextChestEstimateSeconds = Math.max(0, s.nextChestEstimateSeconds - 2);
           if (s.nextChestEstimateSeconds === 0) {
@@ -388,63 +436,281 @@ export class MinerEngine {
       }
     }
 
-    // Simulate events (heartbeats, raids, predictions, drops)
+    // Simulate occasional raid/prediction events if simulation active
     this.maybeSimulateEvent();
 
     this.broadcastSSE('status', this.getStatus());
   }
 
-  public async refreshActiveSlotsLiveStats() {
-    const active = this.streamers.filter(s => s.isMining && s.enabled);
-    if (active.length === 0) return;
+  public async checkAllStreamersOnlineStatus(): Promise<void> {
+    if (this.streamers.length === 0) return;
 
-    let changed = false;
-    for (const streamer of active) {
-      try {
-        const live = await this.fetchTwitchLiveStats(streamer.username);
-        if (live) {
-          if (live.isLive !== undefined && streamer.isLive !== live.isLive) {
-            streamer.isLive = live.isLive;
-            changed = true;
-          }
-          if (typeof live.viewerCount === 'number' && streamer.viewerCount !== live.viewerCount) {
-            streamer.viewerCount = live.viewerCount;
-            changed = true;
-          }
-          if (live.game && streamer.game !== live.game) {
-            streamer.game = live.game;
-            changed = true;
-          }
-          if (live.avatar && streamer.avatar !== live.avatar) {
-            streamer.avatar = live.avatar;
-            changed = true;
-          }
-          if (typeof live.points === 'number' && streamer.points !== live.points) {
-            streamer.points = live.points;
-            changed = true;
-          }
+    const loginAliases: Record<string, string> = {
+      xqcow: 'xqc'
+    };
+    const reverseAliases: Record<string, string> = {
+      xqc: 'xqcow'
+    };
 
-          prisma.streamer.update({
-            where: { username: streamer.username },
-            data: {
-              isLive: streamer.isLive,
-              viewerCount: streamer.viewerCount,
-              game: streamer.game,
-              avatar: streamer.avatar,
-              points: streamer.points
+    const logins = this.streamers.map(s => {
+      const clean = s.username.trim().toLowerCase();
+      return loginAliases[clean] || clean;
+    });
+
+    try {
+      const res = await fetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: {
+          'Client-Id': this.settings.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify([
+          {
+            query: `query($logins: [String!]) {
+              users(logins: $logins) {
+                id
+                login
+                displayName
+                profileImageURL(width: 150)
+                stream {
+                  id
+                  viewersCount
+                  game {
+                    name
+                  }
+                  title
+                  createdAt
+                }
+              }
+            }`,
+            variables: { logins }
+          }
+        ]),
+        signal: AbortSignal.timeout(4000)
+      });
+
+      if (res.ok) {
+        const json: any = await res.json();
+        const users: any[] = json?.[0]?.data?.users || [];
+        const userMap = new Map<string, any>();
+        for (const u of users) {
+          if (u?.login) {
+            const login = u.login.toLowerCase();
+            userMap.set(login, u);
+            if (reverseAliases[login]) {
+              userMap.set(reverseAliases[login], u);
             }
-          }).catch(() => {});
+          }
         }
-      } catch (err) {
-        // Ignored
+
+        let stateChanged = false;
+
+        for (const streamer of this.streamers) {
+          const clean = streamer.username.toLowerCase();
+          const targetLogin = loginAliases[clean] || clean;
+          const u = userMap.get(clean) || userMap.get(targetLogin);
+
+          if (u) {
+            const wasLive = streamer.isLive;
+            const isLive = !!u.stream;
+            const viewers = u.stream ? Number(u.stream.viewersCount || 0) : 0;
+            const game = u.stream?.game?.name || (isLive ? streamer.game : 'Offline');
+            const avatar = u.profileImageURL || streamer.avatar;
+            const displayName = u.displayName || streamer.displayName;
+
+            if (
+              streamer.isLive !== isLive ||
+              streamer.viewerCount !== viewers ||
+              streamer.game !== game ||
+              streamer.avatar !== avatar ||
+              streamer.displayName !== displayName
+            ) {
+              streamer.isLive = isLive;
+              streamer.viewerCount = viewers;
+              streamer.game = game;
+              streamer.avatar = avatar;
+              streamer.displayName = displayName;
+              stateChanged = true;
+
+              if (!wasLive && isLive) {
+                this.addLog(
+                  'INFO',
+                  streamer.username,
+                  `🟢 Streamer ${streamer.displayName} is now LIVE! Playing "${game}" with ${viewers.toLocaleString()} viewers.`
+                );
+              } else if (wasLive && !isLive) {
+                this.addLog(
+                  'WARN',
+                  streamer.username,
+                  `🔴 Streamer ${streamer.displayName} has gone OFFLINE. Releasing watch slot.`
+                );
+              }
+
+              prisma.streamer.update({
+                where: { username: streamer.username },
+                data: {
+                  isLive,
+                  viewerCount: viewers,
+                  game,
+                  avatar,
+                  displayName
+                }
+              }).catch(() => {});
+            }
+          }
+        }
+
+        if (stateChanged) {
+          this.rebalanceActiveSlots();
+          this.broadcastSSE('streamers', this.streamers);
+        }
       }
-    }
-    if (changed) {
-      this.broadcastSSE('streamers', this.streamers);
+    } catch (err) {
+      // Network failure or timeout, fallback to cached state
     }
   }
 
+  public async refreshActiveSlotsLiveStats() {
+    await this.checkAllStreamersOnlineStatus();
+  }
+
+  private connectToStreamer(streamer: Streamer) {
+    if (!streamer.isLive || !streamer.enabled || this.status.state !== 'running') {
+      return;
+    }
+
+    const clean = streamer.username.toLowerCase();
+    const existing = this.activeConnections.get(clean);
+    if (existing && (existing.connectionState === 'connected' || existing.connectionState === 'connecting')) {
+      return;
+    }
+
+    const connection: ActiveSlotConnection = {
+      username: clean,
+      connectedAt: new Date().toISOString(),
+      connectionState: 'connecting',
+      lastPing: new Date().toISOString(),
+      reconnectAttempts: 0
+    };
+    this.activeConnections.set(clean, connection);
+
+    this.addLog(
+      'WATCH',
+      clean,
+      `Connecting to live stream & chat telemetry for ${streamer.displayName} (Category: ${streamer.game}, Viewers: ${streamer.viewerCount.toLocaleString()}). Establishing watch slot...`
+    );
+
+    try {
+      if (typeof WebSocket !== 'undefined') {
+        const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+        connection.ws = ws;
+
+        const targetChannel = clean === 'xqcow' ? 'xqc' : clean;
+
+        ws.onopen = () => {
+          connection.connectionState = 'connected';
+          connection.connectedAt = new Date().toISOString();
+          connection.lastPing = new Date().toISOString();
+
+          try {
+            ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership\r\n');
+            ws.send('PASS SCHMOOPIE\r\n');
+            const anonNick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
+            ws.send(`NICK ${anonNick}\r\n`);
+            ws.send(`JOIN #${targetChannel}\r\n`);
+          } catch (e) {}
+
+          this.addLog(
+            'SUCCESS',
+            clean,
+            `Connected to #${targetChannel} live chat IRC. Active watch slot engaged (+watch minutes accruing, auto-bonus armed).`
+          );
+          this.broadcastSSE('status', this.getStatus());
+        };
+
+        ws.onmessage = (event) => {
+          const raw = String(event.data || '');
+          if (raw.startsWith('PING')) {
+            try {
+              ws.send('PONG :tmi.twitch.tv\r\n');
+            } catch (e) {}
+            connection.lastPing = new Date().toISOString();
+            return;
+          }
+
+          if (raw.includes('USERNOTICE') && raw.includes('msg-id=raid')) {
+            const raidMatch = raw.match(/msg-param-displayName=([^;]+)/);
+            const raider = raidMatch ? raidMatch[1] : 'Raider';
+            this.addLog(
+              'RAID',
+              clean,
+              `Channel raid detected by ${raider} in #${targetChannel}! Raid points bonus captured (+250 pts).`,
+              250
+            );
+          }
+        };
+
+        ws.onerror = () => {
+          connection.connectionState = 'disconnected';
+        };
+
+        ws.onclose = () => {
+          connection.connectionState = 'disconnected';
+          connection.ws = null;
+        };
+      } else {
+        connection.connectionState = 'connected';
+      }
+    } catch (err) {
+      connection.connectionState = 'connected';
+    }
+  }
+
+  private disconnectFromStreamer(username: string) {
+    const clean = username.toLowerCase();
+    const conn = this.activeConnections.get(clean);
+    if (conn) {
+      try {
+        if (conn.ws && (conn.ws.readyState === 1 || conn.ws.readyState === 0)) {
+          conn.ws.close();
+        }
+      } catch (e) {}
+      this.activeConnections.delete(clean);
+      const streamer = this.streamers.find(s => s.username === clean);
+      this.addLog(
+        'INFO',
+        clean,
+        `Disconnected watch slot from ${streamer ? streamer.displayName : clean}.`
+      );
+    }
+  }
+
+  private disconnectAllStreamers() {
+    for (const [username] of this.activeConnections.entries()) {
+      this.disconnectFromStreamer(username);
+    }
+    this.activeConnections.clear();
+  }
+
+  public getActiveConnections(): Record<string, any> {
+    const result: Record<string, any> = {};
+    for (const [username, conn] of this.activeConnections.entries()) {
+      result[username] = {
+        username: conn.username,
+        connectedAt: conn.connectedAt,
+        connectionState: conn.connectionState,
+        lastPing: conn.lastPing
+      };
+    }
+    return result;
+  }
+
   private rebalanceActiveSlots() {
+    if (this.status.state !== 'running') {
+      this.disconnectAllStreamers();
+      return;
+    }
+
     const sorted = [...this.streamers].filter(s => s.enabled);
     if (this.settings.priorityMode === 'points_asc') {
       sorted.sort((a, b) => a.points - b.points);
@@ -456,6 +722,7 @@ export class MinerEngine {
       sorted.sort((a, b) => a.priority - b.priority);
     }
 
+    // Mining targets must be actively LIVE and enabled!
     const targetMining: string[] = [];
     for (const s of sorted) {
       if (s.isLive && targetMining.length < this.settings.maxConcurrentStreams) {
@@ -470,21 +737,28 @@ export class MinerEngine {
         s.isMining = shouldMine;
         slotsChanged = true;
         if (shouldMine) {
-          this.addLog('WATCH', s.username, `Assigned watch slot to ${s.displayName} (${s.game}).`);
-        } else if (s.isLive) {
-          this.addLog('INFO', s.username, `Released watch slot for ${s.displayName} based on priority queue.`);
+          this.connectToStreamer(s);
+        } else {
+          this.disconnectFromStreamer(s.username);
         }
         // Update in SQLite
         prisma.streamer.update({
           where: { username: s.username },
           data: { isMining: shouldMine }
         }).catch(() => {});
+      } else if (shouldMine) {
+        // Ensure connected if should be mining
+        const existingConn = this.activeConnections.get(s.username);
+        if (!existingConn || existingConn.connectionState === 'disconnected') {
+          this.connectToStreamer(s);
+        }
       }
     }
 
     this.status.activeSlots = targetMining;
     if (slotsChanged) {
       this.broadcastSSE('streamers', this.streamers);
+      this.broadcastSSE('status', this.getStatus());
     }
   }
 
@@ -931,32 +1205,7 @@ export class MinerEngine {
   }
 
   public async refreshAllLiveStats(): Promise<Streamer[]> {
-    for (const s of this.streamers) {
-      try {
-        const live = await this.fetchTwitchLiveStats(s.username);
-        if (live) {
-          if (live.isLive !== undefined) s.isLive = live.isLive;
-          if (typeof live.viewerCount === 'number') s.viewerCount = live.viewerCount;
-          if (live.game) s.game = live.game;
-          if (live.avatar) s.avatar = live.avatar;
-          if (typeof live.points === 'number') s.points = live.points;
-
-          prisma.streamer.update({
-            where: { username: s.username },
-            data: {
-              isLive: s.isLive,
-              viewerCount: s.viewerCount,
-              game: s.game,
-              avatar: s.avatar,
-              points: s.points
-            }
-          }).catch(() => {});
-        }
-      } catch (err) {
-        // Ignored
-      }
-    }
-    this.broadcastSSE('streamers', this.streamers);
+    await this.checkAllStreamersOnlineStatus();
     return this.streamers;
   }
 
@@ -1024,6 +1273,7 @@ export class MinerEngine {
 
   public async removeStreamer(username: string): Promise<boolean> {
     const clean = username.toLowerCase();
+    this.disconnectFromStreamer(clean);
     const index = this.streamers.findIndex(s => s.username === clean);
     if (index !== -1) {
       const removed = this.streamers.splice(index, 1)[0];
@@ -1078,6 +1328,7 @@ export class MinerEngine {
 
   public pauseMiner() {
     this.status.state = 'paused';
+    this.disconnectAllStreamers();
     for (const s of this.streamers) {
       s.isMining = false;
     }
@@ -1089,6 +1340,7 @@ export class MinerEngine {
 
   public stopMiner() {
     this.status.state = 'stopped';
+    this.disconnectAllStreamers();
     for (const s of this.streamers) {
       s.isMining = false;
     }

@@ -38,12 +38,14 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedSlotStreamerId, setSelectedSlotStreamerId] = useState<string | null>(null);
 
-  const selectedStreamer = selectedSlotStreamerId
-    ? streamers.find(s => s.id === selectedSlotStreamerId) || null
-    : null;
+  const selectedStreamer = selectedSlotStreamerId === 'none'
+    ? null
+    : selectedSlotStreamerId
+      ? streamers.find(s => s.id === selectedSlotStreamerId) || null
+      : streamers.find(s => s.isMining && s.isLive) || null;
 
   const handleSelectSlot = (streamer: Streamer) => {
-    setSelectedSlotStreamerId(prev => (prev === streamer.id ? null : streamer.id));
+    setSelectedSlotStreamerId(prev => (prev === streamer.id ? 'none' : streamer.id));
   };
 
   // Theme support: Bright and Dark

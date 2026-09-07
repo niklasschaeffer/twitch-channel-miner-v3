@@ -54,7 +54,7 @@ interface SlotIrcChatProps {
   theme?: 'light' | 'dark';
 }
 
-const PRESET_EMOTES = ['PogChamp', 'LUL', 'KEKW', 'GG', '!points', '!chest'];
+const PRESET_EMOTES = ['PogChamp', 'LUL', 'KEKW', 'GG', 'monkaS', 'EZ'];
 
 const SIMULATED_USERS = [
   { name: 'pixel_slayer', color: '#FF5733', badge: 'sub' },
@@ -95,7 +95,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
-  const [filter, setFilter] = useState<'all' | 'bot' | 'highlights'>('all');
+  const [filter, setFilter] = useState<'all' | 'highlights'>('all');
   const [viewMode, setViewMode] = useState<'irc' | 'embed'>('irc');
   const [isIrcConnected, setIsIrcConnected] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -153,10 +153,10 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
     return () => clearInterval(interval);
   }, [streamer?.username, fetchLiveStats]);
 
-  // Auto-scroll to bottom if enabled
+  // Auto-scroll to bottom directly inside the chat container without affecting document body
   useEffect(() => {
-    if (autoScroll && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages, autoScroll]);
 
@@ -186,19 +186,6 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
         message: `Connected to channel #${streamer.username} via Twitch IRC protocol.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         isSystem: true
-      },
-      {
-        id: `miner-init-${Date.now()}`,
-        username: 'miner_daemon',
-        displayName: 'MinerBot',
-        color: '#9146FF',
-        badges: ['mod'],
-        message: `Monitoring slot for ${streamer.displayName}. Current points: ${currentPoints.toLocaleString()} pts. Next chest: ${
-          currentChestAvailable ? 'Ready to claim!' : `${Math.floor(currentNextChestSeconds / 60)}m ${currentNextChestSeconds % 60}s`
-        }`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        isBot: true,
-        isHighlighted: true
       }
     ];
     setMessages(initialMsgs);
@@ -217,7 +204,8 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
         socket.send('PASS SCHMOOPIE\r\n');
         const anonNick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
         socket.send(`NICK ${anonNick}\r\n`);
-        socket.send(`JOIN #${streamer.username.toLowerCase()}\r\n`);
+        const channelName = streamer.username.toLowerCase() === 'xqcow' ? 'xqc' : streamer.username.toLowerCase();
+        socket.send(`JOIN #${channelName}\r\n`);
         setIsIrcConnected(true);
         isConnectedSuccessfully = true;
       };
@@ -289,67 +277,24 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
     }
 
     // Supplementary realistic simulation loop (ensures lively chat even if IRC WebSocket is restricted or streamer is currently low chat)
+    // Background simulated stream chatter for realistic stream atmosphere
     const simInterval = setInterval(() => {
       const randomUser = SIMULATED_USERS[Math.floor(Math.random() * SIMULATED_USERS.length)];
       const randomText = SIMULATED_REACTIONS[Math.floor(Math.random() * SIMULATED_REACTIONS.length)];
 
-      const isChestAlert = Math.random() < 0.12 && streamer.chestAvailable;
-      const isPointsQuery = Math.random() < 0.15;
-
-      let msgText = randomText;
-      let isBot = false;
-      let isHighlighted = false;
-      let user = randomUser.name;
-      let disp = randomUser.name;
-      let color = randomUser.color;
-      let badges = randomUser.badge ? [randomUser.badge] : [];
-
-      if (isChestAlert) {
-        user = 'miner_daemon';
-        disp = 'MinerBot';
-        color = '#00F593';
-        badges = ['mod'];
-        isBot = true;
-        isHighlighted = true;
-        msgText = `🎁 Community Bonus Chest (+50 Points) active for ${streamer.displayName}! Auto-claim triggered.`;
-      } else if (isPointsQuery) {
-        msgText = '!points';
-        isHighlighted = true;
-      }
-
       const generated: ChatMessage = {
         id: `sim-${Date.now()}-${Math.random()}`,
-        username: user,
-        displayName: disp,
-        color,
-        badges,
-        message: msgText,
+        username: randomUser.name,
+        displayName: randomUser.name,
+        color: randomUser.color,
+        badges: randomUser.badge ? [randomUser.badge] : [],
+        message: randomText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        isBot,
-        isHighlighted
+        isBot: false,
+        isHighlighted: false
       };
 
       setMessages(prev => [...prev.slice(-300), generated]);
-
-      // If user said !points in simulation, MinerBot answers
-      if (isPointsQuery) {
-        setTimeout(() => {
-          const s = streamerRef.current;
-          if (!s) return;
-          const botReply: ChatMessage = {
-            id: `sim-reply-${Date.now()}`,
-            username: 'miner_daemon',
-            displayName: 'MinerBot',
-            color: '#9146FF',
-            badges: ['mod'],
-            message: `@${randomUser.name}: Current Channel Points balance for ${s.displayName} is ${s.points.toLocaleString()} pts (${s.watchStreak} day streak).`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            isBot: true,
-            isHighlighted: true
-          };
-          setMessages(prev => [...prev.slice(-300), botReply]);
-        }, 800);
-      }
     }, Math.random() * 2500 + 2200);
 
     return () => {
@@ -362,7 +307,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
         }
       }
     };
-  }, [streamer?.username]);
+  }, [streamer?.username, streamer?.isLive]);
 
   // Handle sending a message
   const handleSendMessage = useCallback((textToSend?: string) => {
@@ -374,7 +319,8 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
     // Send through WebSocket if open
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
-        wsRef.current.send(`PRIVMSG #${streamer.username.toLowerCase()} :${text}\r\n`);
+        const channelName = streamer.username.toLowerCase() === 'xqcow' ? 'xqc' : streamer.username.toLowerCase();
+        wsRef.current.send(`PRIVMSG #${channelName} :${text}\r\n`);
       } catch {
         // Ignored
       }
@@ -383,56 +329,21 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
     const userMessage: ChatMessage = {
       id: `self-${Date.now()}`,
       username: 'you',
-      displayName: 'You (Miner)',
+      displayName: 'You',
       color: '#00F593',
-      badges: ['sub', 'mod'],
+      badges: ['sub'],
       message: text,
       timestamp: time,
-      isHighlighted: text.startsWith('!')
+      isHighlighted: false
     };
 
     setMessages(prev => [...prev.slice(-300), userMessage]);
-    setInputText('');
-
-    // Handle bot commands (!points, !chest, !status)
-    if (text.toLowerCase() === '!points') {
-      setTimeout(() => {
-        const botReply: ChatMessage = {
-          id: `bot-${Date.now()}`,
-          username: 'miner_daemon',
-          displayName: 'MinerBot',
-          color: '#9146FF',
-          badges: ['mod'],
-          message: `📊 @You: Live Channel Points balance on ${streamer.displayName}: ${currentPoints.toLocaleString()} pts. Total mined: +${currentTotalMined.toLocaleString()} pts.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          isBot: true,
-          isHighlighted: true
-        };
-        setMessages(prev => [...prev.slice(-300), botReply]);
-      }, 500);
-    } else if (text.toLowerCase() === '!chest') {
-      setTimeout(() => {
-        const mins = Math.floor(currentNextChestSeconds / 60);
-        const secs = currentNextChestSeconds % 60;
-        const chestStatus = currentChestAvailable
-          ? '🎉 Chest is available right now! Click Claim +50 in slot card.'
-          : `⏳ Estimated time until next +50 chest: ${mins}m ${secs}s`;
-
-        const botReply: ChatMessage = {
-          id: `bot-${Date.now()}`,
-          username: 'miner_daemon',
-          displayName: 'MinerBot',
-          color: '#9146FF',
-          badges: ['mod'],
-          message: `🎁 @You: ${chestStatus}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          isBot: true,
-          isHighlighted: true
-        };
-        setMessages(prev => [...prev.slice(-300), botReply]);
-      }, 500);
+    setAutoScroll(true);
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [inputText, streamer, currentPoints, currentTotalMined, currentChestAvailable, currentNextChestSeconds]);
+    setInputText('');
+  }, [inputText, streamer]);
 
   if (!streamer) {
     return (
@@ -452,8 +363,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
 
   // Filter messages
   const filteredMessages = messages.filter(m => {
-    if (filter === 'bot') return m.isBot;
-    if (filter === 'highlights') return m.isHighlighted || m.isBot;
+    if (filter === 'highlights') return m.isHighlighted;
     return true;
   });
 
@@ -624,16 +534,6 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                 {t('chat.filterAll')}
               </button>
               <button
-                onClick={() => setFilter('bot')}
-                className={`px-2 py-0.5 text-[11px] font-medium transition cursor-pointer ${
-                  filter === 'bot'
-                    ? 'bg-[#9146FF] text-white'
-                    : 'text-zinc-600 dark:text-[#ADADB8] hover:bg-zinc-200 dark:hover:bg-[#1E1E22]'
-                }`}
-              >
-                {t('chat.filterBot')}
-              </button>
-              <button
                 onClick={() => setFilter('highlights')}
                 className={`px-2 py-0.5 text-[11px] font-medium transition cursor-pointer ${
                   filter === 'highlights'
@@ -646,11 +546,19 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
             </div>
 
             <div className="flex items-center gap-3 text-[11px] text-zinc-500 dark:text-[#71717A]">
-              <span className="hidden md:inline font-mono">
-                {t('chat.botHelp')}
+              <span className="hidden md:inline font-mono text-zinc-400 dark:text-[#71717A]">
+                {t('chat.chatActive')}
               </span>
               <button
-                onClick={() => setAutoScroll(prev => !prev)}
+                onClick={() => {
+                  setAutoScroll(prev => {
+                    const next = !prev;
+                    if (next && chatContainerRef.current) {
+                      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+                    }
+                    return next;
+                  });
+                }}
                 className={`px-2 py-0.5 border text-[10px] font-mono cursor-pointer transition ${
                   autoScroll
                     ? 'border-[#00a865]/40 text-[#00a865] dark:text-[#00F593] bg-[#00a865]/10'
@@ -666,7 +574,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
           <div
             ref={chatContainerRef}
             onScroll={handleScroll}
-            className="h-80 overflow-y-auto p-4 space-y-2 font-mono text-xs bg-white dark:bg-[#0E0E10]"
+            className="h-80 overflow-y-auto overscroll-contain p-4 space-y-2 font-mono text-xs bg-white dark:bg-[#0E0E10]"
           >
             {filteredMessages.length === 0 ? (
               <div className="h-full flex items-center justify-center text-zinc-400 dark:text-[#71717A] text-xs font-sans">

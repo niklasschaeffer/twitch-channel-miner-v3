@@ -141,6 +141,10 @@ async function startServer() {
     res.json(minerEngine.getStatus());
   });
 
+  app.get('/api/miner/connections', (req, res) => {
+    res.json(minerEngine.getActiveConnections());
+  });
+
   app.post('/api/miner/start', (req, res) => {
     minerEngine.startMiner();
     res.json({ success: true, status: minerEngine.getStatus() });
