@@ -35,6 +35,7 @@ export default function App() {
   const [isAddStreamerOpen, setIsAddStreamerOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -165,9 +166,12 @@ export default function App() {
       .then(user => {
         setCurrentUser(user);
         localStorage.setItem('twitch_miner_user', JSON.stringify(user));
+        setAuthChecked(true);
       })
       .catch(() => {
         localStorage.removeItem('twitch_miner_user');
+        setCurrentUser(null);
+        setAuthChecked(true);
       });
 
   }, []);
@@ -201,11 +205,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!currentUser) return;
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, currentUser]);
 
   // Real-time Server-Sent Events (SSE) connection
   useEffect(() => {
+    if (!currentUser) return;
     let eventSource: EventSource | null = null;
     let pollInterval: NodeJS.Timeout | null = null;
 
@@ -292,7 +298,7 @@ export default function App() {
       if (eventSource) eventSource.close();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, []);
+  }, [currentUser]);
 
   // Control handlers
   const handleTogglePlay = async () => {
@@ -451,6 +457,7 @@ export default function App() {
       // Ignored
     }
     showToast(`Welcome, ${user.username}!`);
+    fetchData();
   };
 
   const handleUserLogout = async () => {
@@ -470,6 +477,17 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-100 dark:bg-[#0E0E10] text-zinc-900 dark:text-[#EFEFF1] flex flex-col font-sans selection:bg-[#9146FF] selection:text-white transition-colors duration-200">
+      {authChecked && !currentUser && (
+        <AuthModal
+          isOpen
+          onClose={() => undefined}
+          currentUser={null}
+          onLoginSuccess={handleUserAuth}
+          onLogout={handleUserLogout}
+        />
+      )}
+      {(!authChecked || currentUser) && (
+      <>
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-5 right-5 z-50 bg-white dark:bg-[#18181B] border border-zinc-300 dark:border-[#26262C] text-zinc-900 dark:text-[#EFEFF1] px-4 py-2.5 shadow-xl text-xs flex items-center gap-2">
@@ -622,6 +640,8 @@ export default function App() {
         onLoginSuccess={handleUserAuth}
         onLogout={handleUserLogout}
       />
+      </>
+      )}
     </div>
   );
 }
