@@ -35,8 +35,6 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { t, i18n } = useTranslation();
   const isRunning = status?.state === 'running';
-  const activeSlotsCount = status?.activeSlots.length || 0;
-  const maxSlots = status?.activeSlotsLimit || 2;
 
   const toggleLanguage = () => {
     const nextLang = i18n.language.startsWith('de') ? 'en' : 'de';
@@ -64,12 +62,8 @@ export const Header: React.FC<HeaderProps> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <h1 className="text-sm sm:text-base font-bold text-zinc-900 dark:text-[#EFEFF1] tracking-tight">
-                  Twitch Miner <span className="text-xs text-[#9146FF] font-mono font-semibold px-1 py-0.5 bg-[#9146FF]/10 border border-[#9146FF]/30">v2</span>
+                  Twitch Miner
                 </h1>
-                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-mono text-zinc-600 dark:text-[#ADADB8] bg-zinc-100 dark:bg-[#0E0E10] px-1.5 py-0.5 border border-zinc-200 dark:border-[#26262C]">
-                  <Database className="w-3 h-3 text-[#00a865] dark:text-[#00F593]" />
-                  {t('sqliteBadge')}
-                </span>
               </div>
               <div className="flex items-center space-x-2 sm:space-x-3 text-xs text-zinc-500 dark:text-[#ADADB8]">
                 <span className="flex items-center gap-1.5">
@@ -81,10 +75,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className={isRunning ? 'text-[#00a865] dark:text-[#00F593] font-mono font-medium' : 'text-amber-600 dark:text-amber-300 font-mono font-medium'}>
                     {isRunning ? t('status.running') : status?.state === 'paused' ? t('status.paused') : t('status.stopped')}
                   </span>
-                </span>
-                <span className="text-zinc-300 dark:text-[#363640]">•</span>
-                <span className="font-mono text-zinc-700 dark:text-[#EFEFF1]">
-                  {activeSlotsCount}/{maxSlots} {t('stats.activeSlots')}
                 </span>
                 {settings?.isSimulationMode && (
                   <>

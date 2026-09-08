@@ -155,6 +155,21 @@ export const resources = {
         errorExists: 'This channel is already in your watchlist.',
         errorRequired: 'Channel username is required.'
       },
+      console: {
+        title: 'Live Console',
+        sseConnected: 'Live (SSE)',
+        polling: 'Polling',
+        autoScroll: 'Auto-scroll',
+        clear: 'Clear logs',
+        filterAll: 'All',
+        filterClaims: 'Claims',
+        filterWatch: 'Watch',
+        filterRaids: 'Raids',
+        filterPreds: 'Predictions',
+        filterDrops: 'Drops',
+        searchPlaceholder: 'Search console logs...',
+        empty: 'No log entries found matching current filter.'
+      },
       twitch: {
         connectTwitch: 'Connect with Twitch',
         starting: 'Starting login…',
@@ -368,6 +383,21 @@ export const resources = {
         step3: 'Navigieren Sie zu Anwendung > Cookies > https://www.twitch.tv.',
         step4: 'Suchen Sie das Cookie mit dem Namen auth-token und kopieren Sie den Wert.',
         step5: 'Fügen Sie ihn unten in das Feld OAuth-Token ein.'
+      },
+      console: {
+        title: 'Live-Konsole',
+        sseConnected: 'Live (SSE)',
+        polling: 'Abruf',
+        autoScroll: 'Auto-Scroll',
+        clear: 'Protokoll löschen',
+        filterAll: 'Alle',
+        filterClaims: 'Claims',
+        filterWatch: 'Watch',
+        filterRaids: 'Raids',
+        filterPreds: 'Predictions',
+        filterDrops: 'Drops',
+        searchPlaceholder: 'Konsolenprotokoll durchsuchen...',
+        empty: 'Keine Protokolleinträge für den aktuellen Filter gefunden.'
       },
       twitch: {
         connectTwitch: 'Mit Twitch verbinden',
