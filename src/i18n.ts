@@ -155,6 +155,18 @@ export const resources = {
         errorExists: 'This channel is already in your watchlist.',
         errorRequired: 'Channel username is required.'
       },
+      twitch: {
+        connectTwitch: 'Connect with Twitch',
+        starting: 'Starting login…',
+        connecting: 'Waiting for authorization…',
+        notConnected: 'Twitch not connected',
+        tokenStale: 'Token expired — reconnect',
+        connectedAs: 'Connected as',
+        disconnect: 'Disconnect',
+        enterCodePrefix: 'Open',
+        expiresIn: 'Code expires in',
+        minutes: 'minutes'
+      },
       auth: {
         title: 'Multiuser Authentication',
         subtitle: 'Connect with GitHub, Google, or Registered Email (Gravatar Enabled)',
@@ -356,6 +368,18 @@ export const resources = {
         step3: 'Navigieren Sie zu Anwendung > Cookies > https://www.twitch.tv.',
         step4: 'Suchen Sie das Cookie mit dem Namen auth-token und kopieren Sie den Wert.',
         step5: 'Fügen Sie ihn unten in das Feld OAuth-Token ein.'
+      },
+      twitch: {
+        connectTwitch: 'Mit Twitch verbinden',
+        starting: 'Anmeldung wird gestartet…',
+        connecting: 'Warten auf Autorisierung…',
+        notConnected: 'Twitch nicht verbunden',
+        tokenStale: 'Token abgelaufen — neu verbinden',
+        connectedAs: 'Verbunden als',
+        disconnect: 'Trennen',
+        enterCodePrefix: 'Öffnen Sie',
+        expiresIn: 'Code läuft ab in',
+        minutes: 'Minuten'
       },
       addModal: {
         title: 'Streamer zur Warteschlange hinzufügen',

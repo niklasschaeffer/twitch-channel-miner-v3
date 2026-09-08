@@ -8,6 +8,7 @@ import { LiveConsole } from './components/LiveConsole';
 import { AnalyticsView } from './components/AnalyticsView';
 import { SettingsModal } from './components/SettingsModal';
 import { AddStreamerModal } from './components/AddStreamerModal';
+import { TwitchConnect } from './components/TwitchConnect';
 import { AuthModal } from './components/AuthModal';
 import { SlotIrcChat } from './components/SlotIrcChat';
 import {
@@ -552,6 +553,7 @@ export default function App() {
             <p className="text-xs text-zinc-500 dark:text-[#ADADB8]">
               {t('settings.subtitle')}
             </p>
+            <TwitchConnect />
             {settings && (
               <div className="pt-2">
                 <button

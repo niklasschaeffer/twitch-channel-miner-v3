@@ -28,6 +28,185 @@ async function startServer() {
     res.json({ status: 'ok', database: 'sqlite-prisma', time: new Date().toISOString() });
   });
 
+  // --- Twitch OAuth Device Flow (username/password-free login) ---
+  // Credential roles: the app's own client_id works for the OAuth device flow
+  // but NOT as an anonymous GQL Client-Id — the engine's GQL calls must use
+  // Twitch's public web client id (kept in MinerSettings.clientId, guarded by
+  // updateSettings). Do not swap them.
+  const TWITCH_APP_CLIENT_ID = process.env.TWITCH_CLIENT_ID || '2vdyu3fyp1kxds329vat9hbf4wzi9j';
+  const TWITCH_SCOPES = 'user_read chat:read channel_read';
+  const twitchLoginSessions = new Map<string, {
+    deviceCode: string; userCode: string; verificationUri: string;
+    interval: number; expiresAt: number; state: 'pending' | 'granted' | 'denied' | 'error';
+    token?: string; login?: string; userId?: string; error?: string;
+  }>();
+
+  interface TwitchTokenValidation {
+    login: string;
+    userId: string;
+  }
+
+  const validateTwitchToken = async (token: string): Promise<TwitchTokenValidation | null> => {
+    const res = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { 'Authorization': `OAuth ${token}` },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!res.ok) return null;
+    const v: unknown = await res.json();
+    if (typeof v !== 'object' || v === null || !('login' in v) || !('user_id' in v)) return null;
+    const login = v.login;
+    const userId = v.user_id;
+    if (typeof login !== 'string' || typeof userId !== 'string') return null;
+    return { login, userId };
+  };
+
+  // Step 1: start a device login — returns a code the user enters at twitch.tv/activate
+  app.post('/api/twitch/device/start', async (req, res) => {
+    try {
+      const r = await fetch('https://id.twitch.tv/oauth2/device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: TWITCH_APP_CLIENT_ID,
+          scopes: TWITCH_SCOPES
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const j: unknown = await r.json();
+      if (
+        !r.ok || typeof j !== 'object' || j === null ||
+        !('device_code' in j) || !('user_code' in j) || !('verification_uri' in j)
+      ) {
+        res.status(502).json({ error: 'Device flow start failed' });
+        return;
+      }
+      const deviceCode = j.device_code;
+      const userCode = j.user_code;
+      const verificationUri = j.verification_uri;
+      const intervalIn = 'interval' in j && typeof j.interval === 'number' ? j.interval : 5;
+      const expiresIn = 'expires_in' in j && typeof j.expires_in === 'number' ? j.expires_in : 1800;
+      if (typeof deviceCode !== 'string' || typeof userCode !== 'string' || typeof verificationUri !== 'string') {
+        res.status(502).json({ error: 'Device flow start failed' });
+        return;
+      }
+      const sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      twitchLoginSessions.set(sessionId, {
+        deviceCode,
+        userCode,
+        verificationUri,
+        interval: intervalIn,
+        expiresAt: Date.now() + expiresIn * 1000,
+        state: 'pending'
+      });
+      res.json({
+        sessionId,
+        userCode,
+        verificationUri,
+        interval: intervalIn,
+        expiresInSeconds: expiresIn
+      });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : 'Device flow start failed' });
+    }
+  });
+
+  // Step 2: frontend polls this while the user activates the code.
+  // NOTE: the access token is intentionally NOT returned here — it is stored
+  // server-side only. The frontend learns login name via this response and
+  // token presence via GET /api/twitch/status.
+  app.post('/api/twitch/device/poll', async (req, res) => {
+    const { sessionId } = (req.body || {}) as { sessionId?: unknown };
+    const session = typeof sessionId === 'string' ? twitchLoginSessions.get(sessionId) : undefined;
+    if (!session) {
+      res.status(404).json({ error: 'Unknown or expired login session' });
+      return;
+    }
+    if (session.state === 'granted') {
+      res.json({ state: 'granted', login: session.login, userId: session.userId });
+      return;
+    }
+    if (session.state !== 'pending') {
+      res.json({ state: session.state, error: session.error });
+      return;
+    }
+    if (Date.now() > session.expiresAt) {
+      if (typeof sessionId === 'string') {
+        twitchLoginSessions.delete(sessionId);
+      }
+      res.json({ state: 'error', error: 'Login code expired — start again.' });
+      return;
+    }
+    try {
+      const r = await fetch('https://id.twitch.tv/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: TWITCH_APP_CLIENT_ID,
+          device_code: session.deviceCode,
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      if (r.status === 200) {
+        const j: unknown = await r.json();
+        if (typeof j !== 'object' || j === null || !('access_token' in j) || typeof j.access_token !== 'string') {
+          res.json({ state: 'error', error: 'Token response missing access_token.' });
+          return;
+        }
+        const token = j.access_token;
+        const v = await validateTwitchToken(token);
+        if (!v) {
+          res.json({ state: 'error', error: 'Token received but failed validation.' });
+          return;
+        }
+        session.state = 'granted';
+        session.token = token;
+        session.login = v.login;
+        session.userId = v.userId;
+        // Persist as the engine's auth token (user-scoped: points balance + IRC)
+        await minerEngine.updateSettings({ authToken: token });
+        minerEngine.addLog('SUCCESS', undefined, `Twitch account connected: ${v.login}. Real Channel Points balance is now live.`);
+        res.json({ state: 'granted', login: v.login, userId: v.userId });
+        return;
+      }
+      // 400 = authorization_pending / slow_down — still waiting for the user.
+      // The frontend drives polling cadence using `interval` from /start.
+      const j: unknown = await r.json().catch(() => null);
+      if (typeof j === 'object' && j !== null && 'error' in j && j.error === 'slow_down') {
+        session.interval += 5;
+      }
+      res.json({ state: 'pending' });
+    } catch (err) {
+      res.json({ state: 'pending', transientError: err instanceof Error ? err.message : 'network error' });
+    }
+  });
+
+  // Current Twitch connection status (for the frontend indicator)
+  app.get('/api/twitch/status', async (req, res) => {
+    const s = minerEngine.getSettings();
+    if (!s.authToken) {
+      res.json({ connected: false });
+      return;
+    }
+    try {
+      const v = await validateTwitchToken(s.authToken);
+      if (!v) {
+        res.json({ connected: false, stale: true });
+        return;
+      }
+      res.json({ connected: true, login: v.login, userId: v.userId });
+    } catch {
+      res.json({ connected: false, unknown: true });
+    }
+  });
+
+  app.post('/api/twitch/disconnect', async (req, res) => {
+    await minerEngine.updateSettings({ authToken: '' });
+    minerEngine.addLog('INFO', undefined, 'Twitch account disconnected.');
+    res.json({ connected: false });
+  });
+
+
   // Auth endpoints (Multiuser support)
   app.get('/api/auth/me', async (req, res) => {
     try {
