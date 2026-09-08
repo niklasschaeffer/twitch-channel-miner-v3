@@ -1678,13 +1678,12 @@ export class MinerEngine {
     } else if (delta > 0) {
       this.status.pointsToday += delta;
       this.status.pointsThisHour += delta;
+      this.recordStatisticalData({
+        pointsMined: delta,
+        watchTimePoints: delta
+      }).catch(() => {});
     }
-
-    prisma.streamer.update({
-      where: { id: streamer.id },
-      data: { points: streamer.points, totalPointsMined: streamer.totalPointsMined }
-    }).catch(() => {});
-
+    this.balanceBaselines.set(streamer.username, balance);
     this.broadcastSSE('streamers', this.streamers);
     this.broadcastSSE('status', this.getStatus());
   }
