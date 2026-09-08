@@ -420,8 +420,10 @@ export class MinerEngine {
     // Rebalance active slots based on real live status and priority
     this.rebalanceActiveSlots();
 
-    // Process watch minutes and bonus chests for active mining channels
-    for (const s of this.streamers) {
+    // Watch-time accrual and chest countdowns are simulated telemetry (no real
+    // Twitch claiming exists yet) — only run them in simulation mode.
+    if (this.settings.isSimulationMode) {
+      for (const s of this.streamers) {
       if (s.isMining && s.isLive && s.enabled) {
         // Accrue watch points (+10 pts) every 60 seconds (30 ticks)
         if (this.tickCount % 30 === 0) {
@@ -468,10 +470,14 @@ export class MinerEngine {
           this.executeClaimBonus(s);
         }
       }
+      }
     }
 
-    // Simulate occasional raid/prediction events if simulation active
-    this.maybeSimulateEvent();
+    // Only fabricate raid/prediction/drop events in simulation mode.
+    // In production these must come from real Twitch events, not random rolls.
+    if (this.settings.isSimulationMode) {
+      this.maybeSimulateEvent();
+    }
 
     this.broadcastSSE('status', this.getStatus());
   }
@@ -653,6 +659,18 @@ export class MinerEngine {
     );
 
     try {
+      if (typeof WebSocket === 'undefined') {
+        // Never report success without a real socket — this was masking
+        // runtimes without WebSocket support (e.g. Node < 21) as "connected".
+        this.addLog(
+          'ERROR',
+          clean,
+          `Cannot connect to Twitch IRC for ${displayName}: this runtime has no WebSocket support. Chat stays offline.`
+        );
+        this.activeConnections.delete(clean);
+        return;
+      }
+
       if (typeof WebSocket !== 'undefined') {
         const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
         connection.ws = ws;
@@ -663,6 +681,8 @@ export class MinerEngine {
           connection.connectionState = 'connected';
           connection.connectedAt = new Date().toISOString();
           connection.lastPing = new Date().toISOString();
+          connection.reconnectAttempts = 0;
+
 
           try {
             ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership\r\n');
@@ -755,17 +775,23 @@ export class MinerEngine {
 
         ws.onerror = () => {
           connection.connectionState = 'disconnected';
+          connection.reconnectAttempts += 1;
         };
 
         ws.onclose = () => {
           connection.connectionState = 'disconnected';
           connection.ws = null;
+          connection.reconnectAttempts += 1;
         };
-      } else {
-        connection.connectionState = 'connected';
       }
     } catch (err) {
-      connection.connectionState = 'connected';
+      connection.connectionState = 'disconnected';
+      connection.reconnectAttempts += 1;
+      this.addLog(
+        'ERROR',
+        clean,
+        `Twitch IRC connection failed for #${clean}: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   }
 
@@ -866,6 +892,18 @@ export class MinerEngine {
   }
 
   public async executeClaimBonus(streamer: Streamer) {
+    // No real claiming exists yet: real bonus claims require the Twitch
+    // `ClaimCommunityPoints` GQL mutation with an authenticated claim ID from
+    // PubSub/Hermes. Never fabricate points outside simulation mode.
+    if (!this.settings.isSimulationMode) {
+      this.addLog(
+        'WARN',
+        streamer.username,
+        `Bonus claim skipped for ${streamer.displayName}: real Channel Points claiming is not implemented yet — no points credited.`
+      );
+      return;
+    }
+
     streamer.chestAvailable = false;
     streamer.nextChestEstimateSeconds = 900;
     streamer.points += 50;
@@ -1100,6 +1138,39 @@ export class MinerEngine {
   }
 
   public async updateSettings(newSettings: Partial<MinerSettings>): Promise<MinerSettings> {
+    // Guard: an invalid GQL Client-Id makes every Twitch API call fail with
+    // HTTP 400 and silently freezes live telemetry. Only accept the known-good
+    // public web client id or a non-empty custom one that was verified.
+    if (newSettings.clientId !== undefined) {
+      const candidate = newSettings.clientId.trim();
+      const PUBLIC_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+      if (!candidate) {
+        // Empty value = explicit reset to the public web client id.
+        newSettings.clientId = PUBLIC_CLIENT_ID;
+      } else if (candidate !== PUBLIC_CLIENT_ID) {
+        // Probe the candidate against GQL before trusting it: a bad id makes
+        // every Twitch call fail with HTTP 400 and silently freezes telemetry.
+        try {
+          const probe = await fetch('https://gql.twitch.tv/gql', {
+            method: 'POST',
+            headers: { 'Client-Id': candidate, 'Content-Type': 'application/json' },
+            body: JSON.stringify([{ query: 'query { user(login: "twitch") { id } }', variables: {} }]),
+            signal: AbortSignal.timeout(5000)
+          });
+          if (probe.status === 400) {
+            this.addLog(
+              'WARN',
+              undefined,
+              `Rejected invalid Twitch Client-Id "${candidate}" (GQL returned ${probe.status}). Keeping the current one.`
+            );
+            delete newSettings.clientId;
+          }
+        } catch {
+          this.addLog('WARN', undefined, 'Could not verify new Twitch Client-Id (network error). Keeping the current one.');
+          delete newSettings.clientId;
+        }
+      }
+    }
     this.settings = { ...this.settings, ...newSettings };
     if (newSettings.priorityMode) {
       this.rebalanceActiveSlots();
@@ -1622,8 +1693,14 @@ export class MinerEngine {
       target = this.streamers[0];
     }
     if (target) {
-      this.executeClaimBonus(target);
-      return { success: true, channel: target.displayName, points: 50 };
+      if (this.settings.isSimulationMode) {
+        this.executeClaimBonus(target);
+        return { success: true, channel: target.displayName, points: 50 };
+      }
+      return {
+        success: false,
+        message: 'Real bonus claim is not implemented yet (requires authenticated Twitch GQL). Enable simulation mode for a demo claim.'
+      };
     }
     return { success: false, message: 'No available channel to claim' };
   }
