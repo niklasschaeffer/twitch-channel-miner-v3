@@ -158,32 +158,18 @@ export default function App() {
     }
 
     fetch('/api/auth/me')
-      .then(r => r.json())
-      .then(data => {
-        if (data && data.user) {
-          setCurrentUser(data.user);
-          localStorage.setItem('twitch_miner_user', JSON.stringify(data.user));
-        }
+      .then(r => {
+        if (!r.ok) throw new Error('not authenticated');
+        return r.json();
       })
-      .catch(() => {});
+      .then(user => {
+        setCurrentUser(user);
+        localStorage.setItem('twitch_miner_user', JSON.stringify(user));
+      })
+      .catch(() => {
+        localStorage.removeItem('twitch_miner_user');
+      });
 
-    const params = new URLSearchParams(window.location.search);
-    const authSession = params.get('authSession');
-    if (authSession) {
-      window.history.replaceState({}, '', '/');
-      fetch(`/api/auth/session/${authSession}`)
-        .then(r => {
-          if (!r.ok) throw new Error('session exchange failed');
-          return r.json();
-        })
-        .then(user => {
-          setCurrentUser(user);
-          localStorage.setItem('twitch_miner_user', JSON.stringify(user));
-          setToastMessage(`Signed in as ${user.username}`);
-          setTimeout(() => setToastMessage(null), 3000);
-        })
-        .catch(() => {});
-    }
   }, []);
 
   const showToast = (msg: string) => {

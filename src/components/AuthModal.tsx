@@ -75,15 +75,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         window.location.href = '/api/auth/google/start';
         return;
       }
-      const res = await fetch('/api/auth/oauth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: 'github' })
-      });
-      if (!res.ok) throw new Error('GitHub login failed');
-      const user = await res.json();
-      onUserChanged(user);
-      onClose();
+      setError('GitHub login is not available — use email or Google.');
+      return;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Social login failed');
     } finally {

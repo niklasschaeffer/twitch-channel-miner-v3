@@ -26,6 +26,7 @@ export function extractTwitchUsername(raw: string): string {
 
 interface SSEClient {
   id: number;
+  userId?: string;
   send: (data: string) => void;
 }
 
@@ -141,6 +142,7 @@ export class MinerEngine {
       if (dbStreamers.length > 0) {
         this.streamers = dbStreamers.map(s => ({
           id: s.id,
+          userId: s.userId ?? undefined,
           username: s.username,
           displayName: s.displayName,
           avatar: s.avatar,
@@ -331,11 +333,8 @@ export class MinerEngine {
     ];
 
     for (const d of defaults) {
-      const created = await prisma.streamer.upsert({
-        where: { username: d.username },
-        update: {},
-        create: d
-      });
+      const existingSeed = await prisma.streamer.findFirst({ where: { username: d.username } });
+      const created = existingSeed ?? await prisma.streamer.create({ data: d });
       this.streamers.push({
         id: created.id,
         username: created.username,
@@ -364,9 +363,8 @@ export class MinerEngine {
       }
     }
   }
-
-  public subscribeSSE(send: (data: string) => void): () => void {
-    const client: SSEClient = { id: this.nextClientId++, send };
+  public subscribeSSE(send: (data: string) => void, userId?: string): () => void {
+    const client: SSEClient = { id: this.nextClientId++, userId, send };
     this.sseClients.push(client);
     send(JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() }));
 
@@ -375,16 +373,23 @@ export class MinerEngine {
     };
   }
 
-  private broadcastSSE(event: string, payload: any) {
-    const message = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+  private broadcastSSE(event: string, payload: unknown) {
+    const forClient = (client: SSEClient): string => {
+      if (event === 'streamers' && Array.isArray(payload)) {
+        const visible = (payload as Array<{ userId?: string }>).filter(s => !client.userId || !s.userId || s.userId === client.userId);
+        return `event: ${event}\ndata: ${JSON.stringify(visible)}\n\n`;
+      }
+      return `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+    };
     for (const client of this.sseClients) {
       try {
-        client.send(message);
-      } catch (err) {
-        // Ignored
+        client.send(forClient(client));
+      } catch {
+        void 0;
       }
     }
   }
+
 
   public async addLog(level: LogLevel, channel: string | undefined, message: string, pointsDelta?: number) {
     const entry: LogEntry = {
@@ -468,7 +473,7 @@ export class MinerEngine {
           }).catch(() => {});
 
           prisma.streamer.update({
-            where: { username: s.username },
+            where: { id: s.id },
             data: {
               points: s.points,
               totalPointsMined: s.totalPointsMined,
@@ -942,7 +947,7 @@ export class MinerEngine {
         }
         // Update in SQLite
         prisma.streamer.update({
-          where: { username: s.username },
+          where: { id: s.id },
           data: { isMining: shouldMine }
         }).catch(() => {});
       } else if (shouldMine) {
@@ -1137,7 +1142,7 @@ export class MinerEngine {
         });
 
         prisma.streamer.update({
-          where: { username: chosen.username },
+          where: { id: chosen.id },
           data: {
             points: chosen.points,
             totalPointsMined: chosen.totalPointsMined
@@ -1171,7 +1176,7 @@ export class MinerEngine {
         });
 
         prisma.streamer.update({
-          where: { username: chosen.username },
+          where: { id: chosen.id },
           data: {
             points: chosen.points,
             totalPointsMined: chosen.totalPointsMined
@@ -1212,7 +1217,7 @@ export class MinerEngine {
           });
 
           prisma.streamer.update({
-            where: { username: chosen.username },
+            where: { id: chosen.id },
             data: {
               points: chosen.points,
               totalPointsMined: chosen.totalPointsMined
@@ -1947,12 +1952,12 @@ export class MinerEngine {
     return this.streamers;
   }
 
-  public async addStreamer(username: string, displayName?: string): Promise<Streamer> {
+  public async addStreamer(username: string, displayName?: string, userId?: string): Promise<Streamer> {
     const cleanUsername = extractTwitchUsername(username);
     if (!cleanUsername) {
       throw new Error('Invalid Twitch channel username or URL');
     }
-    const existing = this.streamers.find(s => extractTwitchUsername(s.username) === cleanUsername);
+    const existing = this.streamers.find(s => extractTwitchUsername(s.username) === cleanUsername && (s.userId ?? null) === (userId ?? null));
     if (existing) {
       // Refresh live stats directly from Twitch
       const live = await this.fetchTwitchLiveStats(cleanUsername);
@@ -1976,10 +1981,10 @@ export class MinerEngine {
       return existing;
     }
 
-    // Fetch actual live stats from Twitch GraphQL API
     const live = await this.fetchTwitchLiveStats(cleanUsername);
 
     const newStreamerData = {
+      userId: userId ?? null,
       username: cleanUsername,
       displayName: live.displayName || displayName || cleanUsername,
       avatar: live.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${cleanUsername}`,
@@ -1999,7 +2004,7 @@ export class MinerEngine {
 
     // Store in SQLite database via Prisma ORM engine
     const savedInDb = await prisma.streamer.upsert({
-      where: { username: cleanUsername },
+      where: { userId_username: { userId: userId ?? null, username: cleanUsername } },
       update: {
         isLive: newStreamerData.isLive,
         viewerCount: newStreamerData.viewerCount,
@@ -2012,6 +2017,7 @@ export class MinerEngine {
 
     const streamer: Streamer = {
       id: savedInDb.id,
+      userId: savedInDb.userId ?? undefined,
       username: savedInDb.username,
       displayName: savedInDb.displayName,
       avatar: savedInDb.avatar,

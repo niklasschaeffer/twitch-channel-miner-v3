@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { minerEngine, extractTwitchUsername } from './server/minerEngine.js';
 import { prisma } from './server/db.js';
 import { md5 } from './src/lib/gravatar.js';
@@ -18,8 +19,64 @@ const __dirname = typeof globalThis.__dirname !== 'undefined' ? globalThis.__dir
 
 const PORT = 3000;
 
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { id: string; email: string; username: string; avatarUrl?: string | null; provider: string };
+    }
+  }
+}
+
 async function startServer() {
   const app = express();
+
+  const parseCookies = (req: express.Request): Record<string, string> => {
+    const header = req.headers.cookie;
+    const out: Record<string, string> = {};
+    if (!header) return out;
+    for (const part of header.split(';')) {
+      const idx = part.indexOf('=');
+      if (idx === -1) continue;
+      out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
+    }
+    return out;
+  };
+
+  app.use(async (req, res, next) => {
+    const sid = parseCookies(req).miner_session;
+    if (sid) {
+      const session = await prisma.session.findUnique({
+        where: { id: sid },
+        include: { user: true }
+      }).catch(() => null);
+      if (session && session.expiresAt > new Date()) {
+        req.user = { id: session.user.id, email: session.user.email, username: session.user.username, avatarUrl: session.user.avatarUrl, provider: session.user.provider };
+      }
+    }
+    next();
+  });
+
+  const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    next();
+  };
+
+  const setSessionCookie = async (res: express.Response, userId: string) => {
+    const sessionId = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000);
+    await prisma.session.create({ data: { id: sessionId, userId, expiresAt } });
+    res.setHeader('Set-Cookie', `miner_session=${sessionId}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${30 * 24 * 3600}`);
+  };
+
+  const hashPassword = (password: string) => scryptSync(password, randomBytes(16).toString('hex'), 64).toString('hex');
+  const verifyPassword = (password: string, stored: string) => {
+    const [salt, key] = [stored.slice(0, 32), stored.slice(32)];
+    const candidate = scryptSync(password, salt, 64);
+    return timingSafeEqual(Buffer.from(key, 'hex'), candidate);
+  };
 
   app.use(express.json());
 
@@ -207,7 +264,6 @@ async function startServer() {
   const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
   const googleRedirectUri = `${process.env.APP_URL || 'http://localhost:3000'}/api/auth/google/callback`;
   const googleOauthStates = new Map<string, number>();
-  const appSessions = new Map<string, string>();
 
   app.get('/api/auth/google/start', (req, res) => {
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
@@ -272,76 +328,48 @@ async function startServer() {
         update: { provider: 'google', avatarUrl },
         create: { email, username: name, avatarUrl, provider: 'google' }
       });
-      const sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      appSessions.set(sessionId, email);
-      res.redirect(`/?authSession=${sessionId}`);
+      await setSessionCookie(res, user.id);
+      res.redirect(`/`);
     } catch (err) {
       res.status(502).send(`Google OAuth error: ${err instanceof Error ? err.message : 'unknown'}`);
     }
   });
 
-  app.get('/api/auth/session/:sessionId', async (req, res) => {
-    const sessionId = req.params.sessionId;
-    const email = appSessions.get(sessionId);
-    if (!email) {
-      res.status(404).json({ error: 'Unknown session' });
+  app.get('/api/auth/me', (req, res) => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
       return;
     }
-    appSessions.delete(sessionId);
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-    res.json({ id: user.id, email: user.email, username: user.username, avatarUrl: user.avatarUrl, provider: user.provider });
-  });
-
-  app.get('/api/auth/me', async (req, res) => {
-    try {
-      const user = await prisma.user.findFirst({
-        orderBy: { createdAt: 'asc' }
-      });
-      if (!user) {
-        res.status(404).json({ error: 'No user found' });
-        return;
-      }
-      res.json({
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        avatarUrl: user.avatarUrl,
-        provider: user.provider
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
+    res.json(req.user);
   });
 
   app.post('/api/auth/register', async (req, res) => {
     const { email, username, password } = req.body;
-    if (!email || !username) {
-      res.status(400).json({ error: 'Email and username are required' });
+    if (!email || !username || typeof password !== 'string' || password.length < 8) {
+      res.status(400).json({ error: 'Email, username and a password of at least 8 characters are required' });
       return;
     }
     try {
       const cleanEmail = email.trim().toLowerCase();
+      const existing = await prisma.user.findUnique({ where: { email: cleanEmail } });
+      if (existing) {
+        res.status(409).json({ error: 'An account with this email already exists' });
+        return;
+      }
       const gravatarHash = md5(cleanEmail);
       const avatarUrl = `https://www.gravatar.com/avatar/${gravatarHash}?s=100&d=identicon`;
 
-      const user = await prisma.user.upsert({
-        where: { email: cleanEmail },
-        update: {
-          username: username.trim(),
-          avatarUrl
-        },
-        create: {
+      const passwordHash = hashPassword(password);
+      const user = await prisma.user.create({
+        data: {
           email: cleanEmail,
           username: username.trim(),
-          password: password || 'default_pass',
+          password: passwordHash,
           avatarUrl,
           provider: 'local'
         }
       });
+      await setSessionCookie(res, user.id);
 
       res.json(user);
     } catch (err: any) {
@@ -350,62 +378,35 @@ async function startServer() {
   });
 
   app.post('/api/auth/login', async (req, res) => {
-    const { email } = req.body;
-    if (!email) {
-      res.status(400).json({ error: 'Email is required' });
+    const { email, password } = req.body;
+    if (!email || typeof password !== 'string') {
+      res.status(400).json({ error: 'Email and password are required' });
       return;
     }
     try {
       const cleanEmail = email.trim().toLowerCase();
-      let user = await prisma.user.findUnique({
+      const user = await prisma.user.findUnique({
         where: { email: cleanEmail }
       });
 
-      if (!user) {
-        // Auto-provision if not found
-        const gravatarHash = md5(cleanEmail);
-        const avatarUrl = `https://www.gravatar.com/avatar/${gravatarHash}?s=100&d=identicon`;
-        const autoName = cleanEmail.split('@')[0];
-
-        user = await prisma.user.create({
-          data: {
-            email: cleanEmail,
-            username: autoName.charAt(0).toUpperCase() + autoName.slice(1),
-            avatarUrl,
-            provider: 'local'
-          }
-        });
+      if (!user || !user.password) {
+        res.status(401).json({ error: 'Invalid email or password' });
+        return;
       }
 
-      res.json(user);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+      let valid = false;
+      try {
+        valid = verifyPassword(password, user.password);
+      } catch {
+        valid = false;
+      }
+      if (!valid) {
+        res.status(401).json({ error: 'Invalid email or password' });
+        return;
+      }
 
-  app.post('/api/auth/oauth', async (req, res) => {
-    const { provider, email } = req.body;
-    const targetProvider = provider === 'github' ? 'github' : 'google';
-    const cleanEmail = (email || (targetProvider === 'github' ? 'dev@github.com' : 'user@google.com')).trim().toLowerCase();
-    const gravatarHash = md5(cleanEmail);
-    const avatarUrl = `https://www.gravatar.com/avatar/${gravatarHash}?s=100&d=identicon`;
-    const username = targetProvider === 'github' ? 'GitHub Explorer' : 'Google User';
-
-    try {
-      const user = await prisma.user.upsert({
-        where: { email: cleanEmail },
-        update: {
-          provider: targetProvider,
-          avatarUrl
-        },
-        create: {
-          email: cleanEmail,
-          username,
-          avatarUrl,
-          provider: targetProvider
-        }
-      });
-      res.json(user);
+      await setSessionCookie(res, user.id);
+      res.json({ id: user.id, email: user.email, username: user.username, avatarUrl: user.avatarUrl, provider: user.provider });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -442,12 +443,12 @@ async function startServer() {
     res.json(result);
   });
 
-  // Streamers (Stored in SQLite via Prisma)
-  app.get('/api/streamers', (req, res) => {
-    res.json(minerEngine.getStreamers());
+  app.get('/api/streamers', requireAuth, (req, res) => {
+    const all = minerEngine.getStreamers();
+    res.json(all.filter(s => s.userId === req.user!.id));
   });
 
-  app.post('/api/streamers', async (req, res) => {
+  app.post('/api/streamers', requireAuth, async (req, res) => {
     const { username, displayName } = req.body;
     const cleanUsername = extractTwitchUsername(username);
     if (!cleanUsername) {
@@ -455,16 +456,21 @@ async function startServer() {
       return;
     }
     try {
-      const streamer = await minerEngine.addStreamer(cleanUsername, displayName);
+      const streamer = await minerEngine.addStreamer(cleanUsername, displayName, req.user!.id);
       res.json(streamer);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.delete('/api/streamers/:username', async (req, res) => {
+  app.delete('/api/streamers/:username', requireAuth, async (req, res) => {
     try {
       const cleanUsername = extractTwitchUsername(req.params.username);
+      const owned = minerEngine.getStreamers().find(s => extractTwitchUsername(s.username) === cleanUsername && s.userId === req.user!.id);
+      if (!owned) {
+        res.status(404).json({ error: 'Streamer not found' });
+        return;
+      }
       const success = await minerEngine.removeStreamer(cleanUsername);
       res.json({ success });
     } catch (err: any) {
@@ -472,9 +478,14 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/streamers/:username', async (req, res) => {
+  app.patch('/api/streamers/:username', requireAuth, async (req, res) => {
     try {
       const cleanUsername = extractTwitchUsername(req.params.username);
+      const owned = minerEngine.getStreamers().find(s => extractTwitchUsername(s.username) === cleanUsername && s.userId === req.user!.id);
+      if (!owned) {
+        res.status(404).json({ error: 'Streamer not found' });
+        return;
+      }
       const updated = await minerEngine.updateStreamer(cleanUsername, req.body);
       if (!updated) {
         res.status(404).json({ error: 'Streamer not found' });
@@ -624,7 +635,7 @@ async function startServer() {
       try {
         res.write(data);
       } catch {}
-    });
+    }, req.user?.id);
 
     req.on('close', () => {
       unsubscribe();

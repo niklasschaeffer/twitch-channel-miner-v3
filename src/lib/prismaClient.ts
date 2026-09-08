@@ -99,15 +99,6 @@ export const prisma = {
         throw new Error(err.error || 'Login failed');
       }
       return res.json();
-    },
-    oauthLogin: async (provider: 'github' | 'google', email?: string): Promise<User> => {
-      const res = await fetch('/api/auth/oauth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, email })
-      });
-      if (!res.ok) throw new Error('OAuth login failed');
-      return res.json();
     }
   },
 

@@ -17,6 +17,7 @@ model User {
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
   streamers    Streamer[]
+  sessions     Session[]
   settings     MinerSetting?
   statistics   StatisticalRecord[]
   logs         LogRecord[]
@@ -25,7 +26,7 @@ model User {
 model Streamer {
   id                       String    @id @default(uuid())
   userId                   String?
-  username                 String    @unique
+  username                 String
   displayName              String
   avatar                   String
   game                     String    @default("Variety Stream")
@@ -45,6 +46,8 @@ model Streamer {
   updatedAt                DateTime  @updatedAt
 
   user                     User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, username])
 }
 
 model StatisticalRecord {
@@ -98,4 +101,13 @@ model LogRecord {
   timestamp   DateTime  @default(now())
 
   user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

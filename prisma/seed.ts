@@ -165,16 +165,9 @@ async function main() {
   ];
 
   for (const s of defaultStreamers) {
-    await prisma.streamer.upsert({
-      where: { username: s.username },
-      update: {
-        points: s.points,
-        isLive: s.isLive,
-        viewerCount: s.viewerCount,
-        game: s.game
-      },
-      create: s
-    });
+    const existingSeed = await prisma.streamer.findFirst({ where: { username: s.username } });
+    if (existingSeed) continue;
+    await prisma.streamer.create({ data: s });
   }
   console.log(`Seeded ${defaultStreamers.length} streamers into SQLite.`);
 

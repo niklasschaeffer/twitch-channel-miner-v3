@@ -6,6 +6,7 @@ export type LogLevel = 'INFO' | 'SUCCESS' | 'CLAIM' | 'WATCH' | 'RAID' | 'PREDIC
 
 export interface Streamer {
   id: string;
+  userId?: string;
   username: string;
   displayName: string;
   avatar: string;
