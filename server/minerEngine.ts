@@ -903,19 +903,116 @@ export class MinerEngine {
     }
   }
 
+  private claimInFlight = false;
+
+  public async fetchAvailableClaim(channelLogin: string): Promise<string | null> {
+    try {
+      const res = await fetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: this.authenticatedGqlHeaders(),
+        body: JSON.stringify({
+          query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { availableClaim { id } } } } } }',
+          variables: { login: channelLogin }
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const j: unknown = await res.json();
+      if (typeof j !== 'object' || j === null || !('data' in j) || typeof j.data !== 'object' || j.data === null) return null;
+      const data = j.data as { user?: { channel?: { self?: { communityPoints?: { availableClaim?: { id?: unknown } | null } | null } | null } | null } | null };
+      const id = data.user?.channel?.self?.communityPoints?.availableClaim?.id;
+      return typeof id === 'string' ? id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private authenticatedGqlHeaders(): Record<string, string> {
+    return {
+      'Authorization': `OAuth ${this.settings.authToken}`,
+      'Client-Id': 'ue6666qo983tsx6so1t0vnawi233wa',
+      'X-Device-Id': '2fKtD7vbBQY6Sg9PQkebQGxtJBHpHBlx',
+      'Content-Type': 'application/json'
+    };
+  }
+
+  public async claimRealBonus(streamer: Streamer): Promise<{ success: boolean; points: number; message: string }> {
+    if (!this.settings.authToken) {
+      return { success: false, points: 0, message: 'Not connected to Twitch.' };
+    }
+    if (this.claimInFlight) {
+      return { success: false, points: 0, message: 'A claim is already in progress.' };
+    }
+    this.claimInFlight = true;
+    try {
+      const claimId = await this.fetchAvailableClaim(streamer.username);
+      if (!claimId) {
+        return { success: false, points: 0, message: `No bonus chest available on ${streamer.displayName}'s channel right now.` };
+      }
+      const channelRes = await fetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: this.authenticatedGqlHeaders(),
+        body: JSON.stringify({
+          query: 'query($login: String!) { user(login: $login) { id } }',
+          variables: { login: streamer.username }
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const channelJson: unknown = await channelRes.json();
+      let channelId: string | undefined;
+      if (typeof channelJson === 'object' && channelJson !== null && 'data' in channelJson) {
+        const d = channelJson.data as { user?: { id?: unknown } | null } | undefined;
+        const id = d?.user?.id;
+        if (typeof id === 'string') channelId = id;
+      }
+      if (!channelId || typeof channelId !== 'string') {
+        return { success: false, points: 0, message: `Could not resolve channel id for ${streamer.username}.` };
+      }
+      const claimRes = await fetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: this.authenticatedGqlHeaders(),
+        body: JSON.stringify({
+          operationName: 'ClaimCommunityPoints',
+          extensions: { persistedQuery: { version: 1, sha256Hash: '46aaeebe02c99afdf4fc97c7c0cba964124bf6b0af229395f1f6d1feed05b3d0' } },
+          variables: { input: { channelID: channelId, claimID: claimId } }
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const claimJson: unknown = await claimRes.json();
+      if (typeof claimJson !== 'object' || claimJson === null || !('data' in claimJson) || typeof claimJson.data !== 'object' || claimJson.data === null) {
+        return { success: false, points: 0, message: 'Claim request failed.' };
+      }
+      const claimData = claimJson.data as { claimCommunityPoints?: { claim?: { pointsEarnedTotal?: unknown } | null; currentPoints?: unknown; error?: unknown } | null };
+      const payload = claimData.claimCommunityPoints;
+      if (!payload || payload.error) {
+        return { success: false, points: 0, message: `Claim rejected: ${payload?.error ?? 'unknown error'}` };
+      }
+      const earned = typeof payload.claim?.pointsEarnedTotal === 'number' ? payload.claim.pointsEarnedTotal : 0;
+      const currentPoints = typeof payload.currentPoints === 'number' ? payload.currentPoints : null;
+      if (currentPoints !== null) {
+        this.applyRealBalance(currentPoints);
+        if (this.balanceBaseline !== null) {
+          this.balanceBaseline = currentPoints - earned;
+        }
+      }
+      this.addLog('CLAIM', streamer.username, `Real bonus claimed on ${streamer.displayName}: +${earned} pts (Twitch balance: ${currentPoints?.toLocaleString() ?? '?'}).`, earned);
+      return { success: true, points: earned, message: `Claimed +${earned} pts on ${streamer.displayName}` };
+    } catch (err) {
+      return { success: false, points: 0, message: err instanceof Error ? err.message : 'Claim failed' };
+    } finally {
+      this.claimInFlight = false;
+    }
+  }
+
   public async executeClaimBonus(streamer: Streamer) {
-    // No real claiming exists yet: real bonus claims require the Twitch
-    // `ClaimCommunityPoints` GQL mutation with an authenticated claim ID from
-    // PubSub/Hermes. Never fabricate points outside simulation mode.
     if (!this.settings.isSimulationMode) {
+      const result = await this.claimRealBonus(streamer);
       this.addLog(
-        'WARN',
+        result.success ? 'CLAIM' : 'WARN',
         streamer.username,
-        `Bonus claim skipped for ${streamer.displayName}: real Channel Points claiming is not implemented yet — no points credited.`
+        result.message
       );
       return;
     }
-
     streamer.chestAvailable = false;
     streamer.nextChestEstimateSeconds = 900;
     streamer.points += 50;
@@ -927,17 +1024,15 @@ export class MinerEngine {
     this.status.pointsThisHour += 50;
     this.status.totalClaims += 1;
 
-    // Record statistical record in Prisma SQLite
     await this.recordStatisticalData({
       pointsMined: 50,
       claimsCount: 1,
       chestsPoints: 50
     });
 
-    // Update Streamer in Prisma SQLite
     try {
       await prisma.streamer.update({
-        where: { username: streamer.username },
+        where: { id: streamer.id },
         data: {
           points: streamer.points,
           totalPointsMined: streamer.totalPointsMined,
@@ -947,7 +1042,7 @@ export class MinerEngine {
         }
       });
     } catch (e) {
-      // Ignored
+      void 0;
     }
 
     this.addLog(
@@ -1860,7 +1955,7 @@ export class MinerEngine {
     this.broadcastSSE('streamers', this.streamers);
   }
 
-  public triggerTestClaim(channelUsername?: string) {
+  public async triggerTestClaim(channelUsername?: string) {
     let target = this.streamers.find(s => s.isMining && s.isLive);
     if (channelUsername) {
       target = this.streamers.find(s => s.username === channelUsername.toLowerCase());
@@ -1868,17 +1963,14 @@ export class MinerEngine {
     if (!target) {
       target = this.streamers[0];
     }
-    if (target) {
-      if (this.settings.isSimulationMode) {
-        this.executeClaimBonus(target);
-        return { success: true, channel: target.displayName, points: 50 };
-      }
-      return {
-        success: false,
-        message: 'Real bonus claim is not implemented yet (requires authenticated Twitch GQL). Enable simulation mode for a demo claim.'
-      };
+    if (!target) {
+      return { success: false, message: 'No available channel to claim' };
     }
-    return { success: false, message: 'No available channel to claim' };
+    if (this.settings.isSimulationMode) {
+      await this.executeClaimBonus(target);
+      return { success: true, channel: target.displayName, points: 50 };
+    }
+    return await this.claimRealBonus(target);
   }
 
   public getLogs(limit = 100, level?: string, search?: string): LogEntry[] {
@@ -1900,7 +1992,7 @@ export class MinerEngine {
     try {
       await prisma.logRecord.deleteMany();
     } catch (e) {
-      // Ignored
+      void 0;
     }
     this.addLog('INFO', undefined, 'Log history cleared by user.');
     return { success: true };

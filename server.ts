@@ -435,9 +435,10 @@ async function startServer() {
     res.json({ success: true, status: minerEngine.getStatus() });
   });
 
-  app.post('/api/miner/test-claim', (req, res) => {
-    const { channel } = req.body || {};
-    const result = minerEngine.triggerTestClaim(channel);
+  app.post('/api/miner/test-claim', async (req, res) => {
+    const { channel } = (req.body || {}) as { channel?: unknown };
+    const channelName = typeof channel === 'string' ? channel : undefined;
+    const result = await minerEngine.triggerTestClaim(channelName);
     res.json(result);
   });
 
