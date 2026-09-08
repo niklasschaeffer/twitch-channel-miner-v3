@@ -58,6 +58,7 @@ export class MinerEngine {
   private pubsubSnapshotTimer: NodeJS.Timeout | null = null;
   private balanceBaselines = new Map<string, number>();
   private pubsubUserId: string | null = null;
+  private channelIds = new Map<string, string>();
   private authLoginName: string | null = null;
 
   constructor() {
@@ -1326,11 +1327,22 @@ export class MinerEngine {
       this.pubsubWs = ws;
       ws.onopen = () => {
         this.addLog('SUCCESS', undefined, 'Authenticated Twitch PubSub connected — real Channel Points balance sync active.');
+        const topics = [`community-points-user-v1.${this.pubsubUserId}`];
+        for (const s of this.streamers) {
+          if (s.isMining && s.isLive && s.enabled) {
+            const channelId = this.channelIds.get(s.username);
+            if (channelId) {
+              topics.push(`raid.${channelId}`);
+              topics.push(`predictions-channel-v1.${channelId}`);
+              topics.push(`community-points-channel-v1.${channelId}`);
+            }
+          }
+        }
         ws.send(JSON.stringify({
           type: 'LISTEN',
           nonce: 'balance-listen',
           data: {
-            topics: [`community-points-user-v1.${this.pubsubUserId}`],
+            topics,
             auth_token: this.settings.authToken
           }
         }));
@@ -1351,25 +1363,54 @@ export class MinerEngine {
           }
           if (msg.type !== 'MESSAGE' || !('data' in msg) || typeof msg.data !== 'object' || msg.data === null) return;
           const data = msg.data as { topic?: unknown; message?: unknown };
-          if (typeof data.topic !== 'string' || !data.topic.startsWith('community-points-user-v1.')) return;
+          if (typeof data.topic !== 'string') return;
           const payload: unknown = typeof data.message === 'string' ? JSON.parse(data.message) : null;
-          if (typeof payload !== 'object' || payload === null || !('type' in payload)) return;
-          if (
-            payload.type !== 'points-earned' &&
-            payload.type !== 'points-spent' &&
-            payload.type !== 'claim-available' &&
-            payload.type !== 'points-reward'
-          ) return;
-          const channelLogin = 'channel' in payload && typeof payload.channel === 'string'
-            ? payload.channel.toLowerCase()
-            : this.streamers.find(s => s.isMining)?.username.toLowerCase();
-          if (!channelLogin) return;
-          const balanceData = 'balance' in payload ? payload.balance : null;
-          const balance =
-            typeof balanceData === 'object' && balanceData !== null && 'balance' in balanceData && typeof balanceData.balance === 'number'
-              ? balanceData.balance
-              : null;
-          if (balance !== null) this.applyRealBalance(channelLogin, balance);
+          if (typeof payload !== 'object' || payload === null) return;
+
+          if (data.topic.startsWith('community-points-user-v1.')) {
+            if (typeof payload !== 'object' || payload === null || !('type' in payload)) return;
+            if (
+              payload.type !== 'points-earned' &&
+              payload.type !== 'points-spent' &&
+              payload.type !== 'claim-available' &&
+              payload.type !== 'points-reward'
+            ) return;
+            const balanceData = 'balance' in payload ? payload.balance : null;
+            const balance =
+              typeof balanceData === 'object' && balanceData !== null && 'balance' in balanceData && typeof balanceData.balance === 'number'
+                ? balanceData.balance
+                : null;
+            const channelLogin = 'channel' in payload && typeof payload.channel === 'string'
+              ? payload.channel.toLowerCase()
+              : this.streamers.find(s => s.isMining)?.username.toLowerCase();
+            if (balance !== null && channelLogin) this.applyRealBalance(channelLogin, balance);
+            return;
+          }
+
+          if (data.topic.startsWith('raid.')) {
+            if (typeof payload !== 'object' || payload === null || !('type' in payload)) return;
+            if (payload.type !== 'raid_update_v2' && payload.type !== 'raid_go_v2') return;
+            const raid = 'raid' in payload && typeof payload.raid === 'object' && payload.raid !== null ? payload.raid : null;
+            if (!raid) return;
+            if (!('id' in raid) || typeof raid.id !== 'string') return;
+            if (!('target_login' in raid) || typeof raid.target_login !== 'string') return;
+            this.joinRaid(raid.id, raid.target_login);
+            return;
+          }
+
+          if (data.topic.startsWith('predictions-channel-v1.')) {
+            const event = 'event' in payload && typeof payload.event === 'object' && payload.event !== null ? payload.event : null;
+            if (!event || !('id' in event) || typeof event.id !== 'string') return;
+            if ('status' in event && event.status === 'ACTIVE') {
+              this.addLog('INFO', undefined, `Prediction event active: ${event.id} — manual strategy tuning via settings.`);
+            }
+            return;
+          }
+
+          if (data.topic.startsWith('community-points-channel-v1.')) {
+            if (typeof payload !== 'object' || payload === null || !('type' in payload)) return;
+            if (payload.type === 'claim-available') return;
+          }
         } catch { void 0; }
       };
       ws.onclose = () => {
@@ -1468,6 +1509,26 @@ export class MinerEngine {
       streamer.chestAvailable = watched >= 15;
       this.broadcastSSE('streamers', this.streamers);
     }
+  }
+
+  private joinRaid(raidId: string, targetLogin: string) {
+    const target = targetLogin.toLowerCase();
+    const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === target || s.isMining);
+    if (!streamer || !this.settings.authToken) return;
+    fetch('https://gql.twitch.tv/gql', {
+      method: 'POST',
+      headers: this.authenticatedGqlHeaders(),
+      body: JSON.stringify({
+        operationName: 'JoinRaid',
+        extensions: { persistedQuery: { version: 1, sha256Hash: 'c6a332a86d1087fbbb1a8623aa01bd1313d2386e7c63be60fdb2d1901f01a4ae' } },
+        variables: { input: { raidID: raidId } }
+      }),
+      signal: AbortSignal.timeout(8000)
+    }).then(res => {
+      this.addLog('RAID', streamer.username, `Joined raid from ${streamer.displayName} to ${targetLogin} (JoinRaid ${res.status}).`);
+    }).catch(() => {
+      this.addLog('WARN', streamer.username, `Raid join to ${targetLogin} failed.`);
+    });
   }
 
   private resetChestProgress(streamer: Streamer) {
