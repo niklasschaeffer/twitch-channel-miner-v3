@@ -72,7 +72,11 @@ export const resources = {
         openTwitch: 'Open on Twitch',
         moveUp: 'Move Up in Priority',
         moveDown: 'Move Down in Priority',
-        toggleMining: 'Enable / Disable Channel'
+        toggleMining: 'Enable / Disable Channel',
+        active: 'Active',
+        disabled: 'Disabled',
+        live: 'Live',
+        offline: 'Offline'
       },
       analytics: {
         title: 'Prisma Statistical Records & Analytics',
@@ -310,7 +314,11 @@ export const resources = {
         openTwitch: 'Auf Twitch öffnen',
         moveUp: 'In Priorität nach oben',
         moveDown: 'In Priorität nach unten',
-        toggleMining: 'Kanal aktivieren / deaktivieren'
+        toggleMining: 'Kanal aktivieren / deaktivieren',
+        active: 'Aktiv',
+        disabled: 'Deaktiviert',
+        live: 'Live',
+        offline: 'Offline'
       },
       analytics: {
         title: 'Prisma Statistische Datensätze & Analysen',

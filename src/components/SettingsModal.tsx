@@ -258,10 +258,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={e => setForm({ ...form, predictionStrategy: e.target.value as any })}
                   className="w-full bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] px-3 py-2 text-xs text-zinc-900 dark:text-[#EFEFF1] focus:outline-hidden focus:border-[#9146FF]"
                 >
-                  <option value="smart_ratio">{t('settings.stratSmart')}</option>
-                  <option value="lowest_odds">{t('settings.stratLowest')}</option>
-                  <option value="conservative">{t('settings.stratCons')}</option>
-                  <option value="highest_odds">{t('settings.stratHighest')}</option>
+                  <option value="smart_ratio" className="bg-white text-zinc-900 dark:bg-[#0E0E10] dark:text-[#EFEFF1]">{t('settings.stratSmart')}</option>
+                  <option value="lowest_odds" className="bg-white text-zinc-900 dark:bg-[#0E0E10] dark:text-[#EFEFF1]">{t('settings.stratLowest')}</option>
+                  <option value="conservative" className="bg-white text-zinc-900 dark:bg-[#0E0E10] dark:text-[#EFEFF1]">{t('settings.stratCons')}</option>
+                  <option value="highest_odds" className="bg-white text-zinc-900 dark:bg-[#0E0E10] dark:text-[#EFEFF1]">{t('settings.stratHighest')}</option>
                 </select>
               </div>
 
