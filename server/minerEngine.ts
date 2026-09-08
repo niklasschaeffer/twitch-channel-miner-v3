@@ -1036,6 +1036,13 @@ export class MinerEngine {
         this.applyRealBalance(streamer.username, currentPoints);
       }
       this.resetChestProgress(streamer);
+      this.status.totalClaims += 1;
+      await this.recordStatisticalData({
+        pointsMined: earned,
+        claimsCount: 1,
+        chestsPoints: earned
+      });
+      this.broadcastSSE('status', this.getStatus());
       this.addLog('CLAIM', streamer.username, `Real bonus claimed on ${streamer.displayName}: +${earned} pts (Twitch balance: ${currentPoints?.toLocaleString() ?? '?'}).`, earned);
       return { success: true, points: earned, message: `Claimed +${earned} pts on ${streamer.displayName}` };
     } catch (err) {
