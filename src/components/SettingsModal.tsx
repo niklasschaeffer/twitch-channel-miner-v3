@@ -115,10 +115,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={e => setForm({ ...form, priorityMode: e.target.value as PriorityMode })}
                   className="w-full bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] px-3 py-2 text-xs text-zinc-900 dark:text-[#EFEFF1] focus:outline-hidden focus:border-[#9146FF]"
                 >
-                  <option value="points_asc">{t('settings.priorityAsc')}</option>
-                  <option value="points_desc">{t('settings.priorityDesc')}</option>
-                  <option value="streak">{t('settings.priorityStreak')}</option>
-                  <option value="manual">{t('settings.priorityManual')}</option>
+                  <option value="points_asc" className="bg-white text-zinc-900 dark:bg-[#0E0E10] dark:text-[#EFEFF1]">{t('settings.priorityAsc')}</option>
+                  <option value="points_desc" className="bg-white text-zinc-900 dark:bg-[#0E0E10] dark:text-[#EFEFF1]">{t('settings.priorityDesc')}</option>
+                  <option value="streak" className="bg-white text-zinc-900 dark:bg-[#0E0E10] dark:text-[#EFEFF1]">{t('settings.priorityStreak')}</option>
+                  <option value="manual" className="bg-white text-zinc-900 dark:bg-[#0E0E10] dark:text-[#EFEFF1]">{t('settings.priorityManual')}</option>
                 </select>
                 <p className="text-[11px] text-zinc-500 dark:text-[#71717A] mt-1">
                   {t('settings.priorityHint')}
@@ -134,8 +134,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={e => setForm({ ...form, maxConcurrentStreams: parseInt(e.target.value) })}
                   className="w-full bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] px-3 py-2 text-xs text-zinc-900 dark:text-[#EFEFF1] focus:outline-hidden focus:border-[#9146FF]"
                 >
-                  <option value={1}>{t('settings.concurrency1')}</option>
-                  <option value={2}>{t('settings.concurrency2')}</option>
+                  <option value={1} className="bg-white text-zinc-900 dark:bg-[#0E0E10] dark:text-[#EFEFF1]">{t('settings.concurrency1')}</option>
+                  <option value={2} className="bg-white text-zinc-900 dark:bg-[#0E0E10] dark:text-[#EFEFF1]">{t('settings.concurrency2')}</option>
                 </select>
                 <p className="text-[11px] text-zinc-500 dark:text-[#71717A] mt-1">
                   {t('settings.concurrencyHint')}
