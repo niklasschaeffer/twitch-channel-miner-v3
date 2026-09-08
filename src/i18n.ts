@@ -184,7 +184,10 @@ export const resources = {
         disconnect: 'Disconnect',
         enterCodePrefix: 'Open',
         expiresIn: 'Code expires in',
-        minutes: 'minutes'
+        minutes: 'minutes',
+        tokenStaleBanner: 'Twitch connection expired — point earning is paused.',
+        tokenStaleAction: 'Reconnect to resume automatic claiming.',
+        reconnect: 'Reconnect'
       },
       auth: {
         title: 'Multiuser Authentication',
@@ -417,7 +420,10 @@ export const resources = {
         disconnect: 'Trennen',
         enterCodePrefix: 'Öffnen Sie',
         expiresIn: 'Code läuft ab in',
-        minutes: 'Minuten'
+        minutes: 'Minuten',
+        tokenStaleBanner: 'Twitch-Verbindung abgelaufen — Punkte sammeln ist pausiert.',
+        tokenStaleAction: 'Verbinde neu, um automatisches Einfordern fortzusetzen.',
+        reconnect: 'Neu verbinden'
       },
       addModal: {
         title: 'Streamer zur Warteschlange hinzufügen',

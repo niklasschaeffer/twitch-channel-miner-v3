@@ -500,8 +500,11 @@ export class MinerEngine {
     if (!this.settings.isSimulationMode && this.settings.autoClaimBonus && this.settings.authToken) {
       if (this.tickCount % 15 === 0) {
         for (const s of this.streamers) {
-          if (s.isMining && s.isLive && s.enabled && !this.claimInFlight) {
-            this.claimRealBonus(s).catch(() => {});
+          if (s.isMining && s.isLive && s.enabled && !this.claimsInFlight.has(s.username)) {
+            this.claimsInFlight.add(s.username);
+            this.claimRealBonus(s)
+              .catch(() => {})
+              .finally(() => this.claimsInFlight.delete(s.username));
           }
         }
       }
@@ -944,7 +947,7 @@ export class MinerEngine {
     }
   }
 
-  private claimInFlight = false;
+  private claimsInFlight = new Set<string>();
 
   public async fetchAvailableClaim(channelLogin: string): Promise<string | null> {
     try {
@@ -980,10 +983,10 @@ export class MinerEngine {
     if (!this.settings.authToken) {
       return { success: false, points: 0, message: 'Not connected to Twitch.' };
     }
-    if (this.claimInFlight) {
+    if (this.claimsInFlight.has(streamer.username)) {
       return { success: false, points: 0, message: 'A claim is already in progress.' };
     }
-    this.claimInFlight = true;
+    this.claimsInFlight.add(streamer.username);
     try {
       const claimId = await this.fetchAvailableClaim(streamer.username);
       if (!claimId) {
@@ -1038,7 +1041,7 @@ export class MinerEngine {
     } catch (err) {
       return { success: false, points: 0, message: err instanceof Error ? err.message : 'Claim failed' };
     } finally {
-      this.claimInFlight = false;
+      this.claimsInFlight.delete(streamer.username);
     }
   }
 

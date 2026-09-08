@@ -41,7 +41,9 @@ export const TwitchConnect: React.FC = () => {
 
   useEffect(() => {
     refreshStatus();
+    const statusPoll = window.setInterval(refreshStatus, 60_000);
     return () => {
+      window.clearInterval(statusPoll);
       if (pollTimer.current) window.clearInterval(pollTimer.current);
     };
   }, [refreshStatus]);

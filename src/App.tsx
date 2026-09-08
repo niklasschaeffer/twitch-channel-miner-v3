@@ -38,6 +38,21 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [twitchStale, setTwitchStale] = useState(false);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch('/api/twitch/status');
+        const d = await res.json();
+        setTwitchStale(d.connected === false && d.stale === true);
+      } catch { void 0; }
+    };
+    check();
+    const poll = window.setInterval(check, 60_000);
+    return () => window.clearInterval(poll);
+  }, []);
+
   const [selectedSlotStreamerId, setSelectedSlotStreamerId] = useState<string | null>(null);
   const [selectedConsoleChannel, setSelectedConsoleChannel] = useState<string | null>(null);
   const [incomingChatMessage, setIncomingChatMessage] = useState<ChatMessage | null>(null);
@@ -474,6 +489,21 @@ export default function App() {
         <div className="fixed bottom-5 right-5 z-50 bg-white dark:bg-[#18181B] border border-zinc-300 dark:border-[#26262C] text-zinc-900 dark:text-[#EFEFF1] px-4 py-2.5 shadow-xl text-xs flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[#00a865] dark:bg-[#00F593]" />
           <span>{toastMessage}</span>
+      {twitchStale && (
+        <div className="bg-red-600 text-white px-4 py-2 text-xs font-medium flex items-center justify-between gap-4">
+          <span>
+            {t('twitch.tokenStaleBanner')} — {t('twitch.tokenStaleAction')}
+          </span>
+          <button
+            onClick={() => { setTwitchStale(false); setIsSettingsOpen(true); }}
+            className="px-3 py-1 bg-white text-red-600 rounded font-semibold hover:bg-red-50 transition cursor-pointer shrink-0"
+          >
+            {t('twitch.reconnect')}
+          </button>
+        </div>
+      )}
+
+       {/* Header Navigation */}
         </div>
       )}
 
