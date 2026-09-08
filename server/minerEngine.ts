@@ -1406,9 +1406,63 @@ export class MinerEngine {
           if (data.topic.startsWith('predictions-channel-v1.')) {
             const event = 'event' in payload && typeof payload.event === 'object' && payload.event !== null ? payload.event : null;
             if (!event || !('id' in event) || typeof event.id !== 'string') return;
-            if ('status' in event && event.status === 'ACTIVE') {
-              this.addLog('INFO', undefined, `Prediction event active: ${event.id} — manual strategy tuning via settings.`);
+            const status = 'status' in event && typeof event.status === 'string' ? event.status : '';
+            if (status !== 'ACTIVE') return;
+            if (!('outcomes' in event) || !Array.isArray(event.outcomes)) return;
+            const outcomes = event.outcomes as Array<{ id?: unknown; title?: unknown; color?: unknown }>;
+            const outcomesTyped = outcomes.filter(o => typeof o === 'object' && o !== null && 'id' in o && typeof o.id === 'string');
+            if (outcomesTyped.length < 2) return;
+
+            const channelLogin = data.topic.split('.')[1] ?? '';
+            const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === channelLogin);
+            if (!streamer || !streamer.isMining) return;
+
+            const strategy = this.settings.predictionStrategy;
+            const maxBet = this.settings.maxBetPoints;
+            const balance = streamer.points;
+            if (balance < 10) return;
+
+            let outcomeIndex: number;
+            if (strategy === 'highest_odds') {
+              outcomeIndex = 1;
+            } else if (strategy === 'conservative') {
+              outcomeIndex = 0;
+            } else {
+              outcomeIndex = 0;
             }
+            const outcome = outcomesTyped[outcomeIndex];
+            if (!outcome || typeof outcome.id !== 'string') return;
+
+            const betAmount = Math.min(maxBet, Math.max(10, Math.floor(balance * 0.1)));
+            const transactionId = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+            fetch('https://gql.twitch.tv/gql', {
+              method: 'POST',
+              headers: this.authenticatedGqlHeaders(),
+              body: JSON.stringify({
+                operationName: 'MakePrediction',
+                extensions: { persistedQuery: { version: 1, sha256Hash: 'b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8' } },
+                variables: {
+                  input: {
+                    eventID: event.id,
+                    outcomeID: outcome.id,
+                    points: betAmount,
+                    transactionID: transactionId
+                  }
+                }
+              }),
+              signal: AbortSignal.timeout(10000)
+            }).then(res => res.json()).then((j: unknown) => {
+              const ok = typeof j === 'object' && j !== null && 'data' in j &&
+                typeof j.data === 'object' && j.data !== null &&
+                'makePrediction' in j.data && j.data.makePrediction !== null;
+              if (ok) {
+                const outcomeTitle = typeof outcome.title === 'string' ? outcome.title : outcomeIndex === 0 ? 'Blue' : 'Pink';
+                this.addLog('PREDICTION', streamer.username, `Bet ${betAmount} pts on "${outcomeTitle}" for ${streamer.displayName} (${strategy}).`);
+                this.status.totalPredictionsPlaced += 1;
+              } else {
+                this.addLog('WARN', streamer.username, `Prediction bet rejected (${JSON.stringify(j).slice(0, 120)}).`);
+              }
+            }).catch(() => {});
             return;
           }
 
