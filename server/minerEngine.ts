@@ -53,6 +53,7 @@ export class MinerEngine {
   private pubsubWs: WebSocket | null = null;
   private pubsubPingTimer: NodeJS.Timeout | null = null;
   private pubsubReconnectTimer: NodeJS.Timeout | null = null;
+  private pubsubSnapshotTimer: NodeJS.Timeout | null = null;
   private balanceBaseline: number | null = null;
   private pubsubUserId: string | null = null;
   private authLoginName: string | null = null;
@@ -1309,6 +1310,7 @@ export class MinerEngine {
           }
         }));
         this.fetchBalanceSnapshot();
+        this.pubsubSnapshotTimer = setInterval(() => this.fetchBalanceSnapshot(), 300_000);
         this.pubsubPingTimer = setInterval(() => {
           try { ws.send(JSON.stringify({ type: 'PING' })); } catch { void 0; }
         }, 120_000);
@@ -1355,6 +1357,7 @@ export class MinerEngine {
   public disconnectPubsub() {
     if (this.pubsubPingTimer) { clearInterval(this.pubsubPingTimer); this.pubsubPingTimer = null; }
     if (this.pubsubReconnectTimer) { clearTimeout(this.pubsubReconnectTimer); this.pubsubReconnectTimer = null; }
+    if (this.pubsubSnapshotTimer) { clearInterval(this.pubsubSnapshotTimer); this.pubsubSnapshotTimer = null; }
     if (this.pubsubWs) { try { this.pubsubWs.close(); } catch { void 0; } this.pubsubWs = null; }
     this.balanceBaseline = null;
     this.pubsubUserId = null;
