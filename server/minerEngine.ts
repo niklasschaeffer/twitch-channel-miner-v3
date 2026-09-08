@@ -504,6 +504,20 @@ export class MinerEngine {
       }
     }
 
+    // Real watch-time: one minute-watched heartbeat per minute per mining
+    // channel (upstream's send_minute_watched_events cadence). Twitch awards
+    // points on its own schedule from these events; the balance is synced via
+    // PubSub — never locally computed.
+    if (!this.settings.isSimulationMode && this.settings.authToken) {
+      if (this.tickCount % 30 === 0) {
+        for (const s of this.streamers) {
+          if (s.isMining && s.isLive && s.enabled) {
+            this.sendMinuteWatched(s).catch(() => {});
+          }
+        }
+      }
+    }
+
     this.broadcastSSE('status', this.getStatus());
   }
 
@@ -1352,12 +1366,7 @@ export class MinerEngine {
     try {
       const res = await fetch('https://gql.twitch.tv/gql', {
         method: 'POST',
-        headers: {
-          'Authorization': `OAuth ${this.settings.authToken}`,
-          'Client-Id': 'ue6666qo983tsx6so1t0vnawi233wa',
-          'X-Device-Id': '2fKtD7vbBQY6Sg9PQkebQGxtJBHpHBlx',
-          'Content-Type': 'application/json'
-        },
+        headers: this.authenticatedGqlHeaders(),
         body: JSON.stringify({
           query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { balance } } } } }',
           variables: { login: mining.username }
@@ -1375,6 +1384,54 @@ export class MinerEngine {
       }
     } catch (err) {
       this.addLog('WARN', mining.username, `Balance snapshot failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+  }
+
+  private async sendMinuteWatched(streamer: Streamer) {
+    const channelRes = await fetch('https://gql.twitch.tv/gql', {
+      method: 'POST',
+      headers: this.authenticatedGqlHeaders(),
+      body: JSON.stringify({
+        query: 'query($login: String!) { user(login: $login) { id stream { id } } }',
+        variables: { login: streamer.username }
+      }),
+      signal: AbortSignal.timeout(8000)
+    });
+    const channelJson: unknown = await channelRes.json();
+    if (typeof channelJson !== 'object' || channelJson === null || !('data' in channelJson) || typeof channelJson.data !== 'object' || channelJson.data === null) return;
+    const d = channelJson.data as { user?: { id?: unknown; stream?: { id?: unknown } | null } | null };
+    const channelId = d?.user?.id;
+    const broadcastId = d?.user?.stream?.id;
+    if (typeof channelId !== 'string' || typeof broadcastId !== 'string') return;
+
+    const eventProperties: Record<string, unknown> = {
+      channel_id: channelId,
+      broadcast_id: broadcastId,
+      player: 'site',
+      user_id: this.pubsubUserId,
+      live: true,
+      channel: streamer.username
+    };
+    const payload = Buffer.from(
+      JSON.stringify([{ event: 'minute-watched', properties: eventProperties }]),
+      'utf-8'
+    ).toString('base64');
+
+    const spadeRes = await fetch('https://spade.twitch.tv/track', {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({ data: payload }),
+      signal: AbortSignal.timeout(8000)
+    });
+    if (spadeRes.status === 204) {
+      streamer.uptimeMinutes = (streamer.uptimeMinutes || 0) + 1;
+      const watched = (streamer.uptimeMinutes || 0) % 15;
+      streamer.nextChestEstimateSeconds = (15 - watched) * 60;
+      streamer.chestAvailable = false;
+      this.broadcastSSE('streamers', this.streamers);
     }
   }
 
