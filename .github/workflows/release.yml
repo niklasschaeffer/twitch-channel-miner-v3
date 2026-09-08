@@ -1,0 +1,185 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run TypeScript typecheck
+        run: npm run lint
+
+  release:
+    name: Semantic Release
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: write
+      id-token: write
+    outputs:
+      new_release_published: ${{ steps.check-release.outputs.published }}
+      release_tag: ${{ steps.check-release.outputs.tag }}
+      release_version: ${{ steps.check-release.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        continue-on-error: true
+        with:
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Capture latest tag before release
+        id: pre-tag
+        run: |
+          set -euo pipefail
+          TAG=$(git tag --sort=-creatordate | sed -n "1p" || echo "")
+          echo "latest_tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+        run: npx --yes semantic-release
+
+      - name: Check if new release was published
+        id: check-release
+        run: |
+          set -euo pipefail
+          LATEST_TAG=$(git tag --sort=-creatordate | sed -n "1p" || echo "")
+          PRE_TAG="${{ steps.pre-tag.outputs.latest_tag }}"
+          if [ -n "$LATEST_TAG" ] && [ "$LATEST_TAG" != "$PRE_TAG" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+            echo "version=${LATEST_TAG#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update release with full changelog
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          LATEST_TAG=$(git tag --sort=-creatordate | sed -n "1p")
+          if [ -z "$LATEST_TAG" ]; then
+            exit 0
+          fi
+          PRE_TAG="${{ steps.pre-tag.outputs.latest_tag }}"
+          if [ "$LATEST_TAG" = "$PRE_TAG" ]; then
+            exit 0
+          fi
+          PREVIOUS_TAG=$(git tag --sort=-creatordate | sed -n '2p' || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges "${PREVIOUS_TAG}..${LATEST_TAG}")
+          fi
+          {
+            echo "## What's Changed"
+            echo ""
+            echo "$COMMITS"
+          } > /tmp/full-release-notes.md
+          NOTES_SIZE=$(wc -c < /tmp/full-release-notes.md | awk '{print $1}')
+          if [ "$NOTES_SIZE" -gt 120000 ]; then
+            head -c 120000 /tmp/full-release-notes.md > /tmp/truncated-notes.md
+            if [ "$(tail -c 1 /tmp/truncated-notes.md | wc -l)" -eq 0 ]; then
+              sed -i '$ d' /tmp/truncated-notes.md
+            fi
+            {
+              echo ""
+              echo "---"
+              echo ""
+              echo "**Note:** Release notes truncated. See [CHANGELOG.md](https://github.com/${REPO}/blob/main/CHANGELOG.md) for the full changelog."
+            } >> /tmp/truncated-notes.md
+            gh release edit "$LATEST_TAG" --notes-file /tmp/truncated-notes.md --repo "$REPO" || { echo "Failed to update release notes" >&2; exit 1; }
+          else
+            gh release edit "$LATEST_TAG" --notes-file /tmp/full-release-notes.md --repo "$REPO" || { echo "Failed to update release notes" >&2; exit 1; }
+          fi
+
+  docker:
+    name: Build & Publish Docker Image
+    needs: release
+    if: needs.release.outputs.new_release_published == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.release_tag || github.ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable=${{ needs.release.outputs.new_release_published == 'true' || github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ needs.release.outputs.release_version }},enable=${{ needs.release.outputs.new_release_published == 'true' }}
+            type=raw,value=${{ needs.release.outputs.release_tag }},enable=${{ needs.release.outputs.new_release_published == 'true' }}
+            type=sha,format=short
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
