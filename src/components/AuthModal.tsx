@@ -9,14 +9,16 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: User | null;
-  onUserChanged: (user: User) => void;
+  onLoginSuccess: (user: User) => void;
+  onLogout: () => void | Promise<void>;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   currentUser,
-  onUserChanged
+  onLoginSuccess,
+  onLogout
 }) => {
   const { t } = useTranslation();
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -45,7 +47,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (user.email) {
           getGravatarUrl(user.email);
         }
-        onUserChanged(user);
+        onLoginSuccess(user);
         onClose();
       } else {
         if (!email) {
@@ -57,7 +59,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (user.email) {
           getGravatarUrl(user.email);
         }
-        onUserChanged(user);
+        onLoginSuccess(user);
         onClose();
       }
     } catch (err: any) {
