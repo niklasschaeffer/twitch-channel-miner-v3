@@ -80,6 +80,34 @@ async function startServer() {
 
   app.use(express.json());
 
+  app.use((req, res, next) => {
+    const path = req.path;
+    const isPublic = path === '/api/health'
+      || path.startsWith('/api/auth/')
+      || path.startsWith('/api/twitch/device/')
+      || path === '/api/twitch/status'
+      || path === '/api/status'
+      || !path.startsWith('/api/');
+    if (isPublic) {
+      next();
+      return;
+    }
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    next();
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    const sid = parseCookies(req).miner_session;
+    if (sid) {
+      prisma.session.delete({ where: { id: sid } }).catch(() => {});
+    }
+    res.setHeader('Set-Cookie', 'miner_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');
+    res.json({ success: true });
+  });
+
   // Health check
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', database: 'sqlite-prisma', time: new Date().toISOString() });
