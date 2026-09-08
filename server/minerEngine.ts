@@ -55,6 +55,7 @@ export class MinerEngine {
   private pubsubReconnectTimer: NodeJS.Timeout | null = null;
   private balanceBaseline: number | null = null;
   private pubsubUserId: string | null = null;
+  private authLoginName: string | null = null;
 
   constructor() {
     const isDev = process.env.NODE_ENV === 'development';
@@ -97,6 +98,7 @@ export class MinerEngine {
       this.startLoop();
       const v = await this.validateStoredAuthToken();
       if (v) {
+        this.authLoginName = v.login;
         this.pubsubUserId = v.userId;
         this.connectPubsub();
       } else if (this.settings.authToken) {
@@ -706,12 +708,17 @@ export class MinerEngine {
           connection.lastPing = new Date().toISOString();
           connection.reconnectAttempts = 0;
 
-
           try {
             ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership\r\n');
-            ws.send('PASS SCHMOOPIE\r\n');
-            const anonNick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
-            ws.send(`NICK ${anonNick}\r\n`);
+            const authToken = this.settings.authToken.replace(/^oauth:/i, '');
+            if (authToken && this.authLoginName) {
+              ws.send(`PASS oauth:${authToken}\r\n`);
+              ws.send(`NICK ${this.authLoginName}\r\n`);
+            } else {
+              ws.send('PASS SCHMOOPIE\r\n');
+              const anonNick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
+              ws.send(`NICK ${anonNick}\r\n`);
+            }
             ws.send(`JOIN #${targetChannel}\r\n`);
           } catch (e) {}
 
@@ -1337,7 +1344,8 @@ export class MinerEngine {
     if (this.pubsubWs) { try { this.pubsubWs.close(); } catch { void 0; } this.pubsubWs = null; }
     this.balanceBaseline = null;
     this.pubsubUserId = null;
-  }
+    this.authLoginName = null;
+   }
 
   private async fetchBalanceSnapshot() {
     const mining = this.streamers.find(s => s.isMining);
