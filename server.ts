@@ -29,11 +29,11 @@ async function startServer() {
   });
 
   // --- Twitch OAuth Device Flow (username/password-free login) ---
-  // Credential roles: the app's own client_id works for the OAuth device flow
-  // but NOT as an anonymous GQL Client-Id — the engine's GQL calls must use
-  // Twitch's public web client id (kept in MinerSettings.clientId, guarded by
-  // updateSettings). Do not swap them.
-  const TWITCH_APP_CLIENT_ID = process.env.TWITCH_CLIENT_ID || '2vdyu3fyp1kxds329vat9hbf4wzi9j';
+  // Credential roles: the TV client id (ue6666...) works for BOTH the device
+  // flow AND authenticated GQL viewer context (balance binding — verified
+  // 2026-09-08). Anonymous GQL telemetry uses the public web client id
+  // (constant in the engine). Do not swap them.
+  const TWITCH_APP_CLIENT_ID = process.env.TWITCH_CLIENT_ID || 'ue6666qo983tsx6so1t0vnawi233wa';
   const TWITCH_SCOPES = 'user_read chat:read channel_read';
   const twitchLoginSessions = new Map<string, {
     deviceCode: string; userCode: string; verificationUri: string;

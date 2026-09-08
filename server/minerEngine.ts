@@ -50,6 +50,11 @@ export class MinerEngine {
   private nextClientId = 1;
   private initialized = false;
   private tickCount = 0;
+  private pubsubWs: WebSocket | null = null;
+  private pubsubPingTimer: NodeJS.Timeout | null = null;
+  private pubsubReconnectTimer: NodeJS.Timeout | null = null;
+  private balanceBaseline: number | null = null;
+  private pubsubUserId: string | null = null;
 
   constructor() {
     const isDev = process.env.NODE_ENV === 'development';
@@ -88,8 +93,15 @@ export class MinerEngine {
     };
 
     // Load or seed from Prisma SQLite
-    this.initDatabase().then(() => {
+    this.initDatabase().then(async () => {
       this.startLoop();
+      const v = await this.validateStoredAuthToken();
+      if (v) {
+        this.pubsubUserId = v.userId;
+        this.connectPubsub();
+      } else if (this.settings.authToken) {
+        this.addLog('WARN', undefined, 'Stored Twitch token is invalid — real points balance unavailable. Reconnect via the settings page.');
+      }
     });
   }
 
@@ -1151,6 +1163,152 @@ export class MinerEngine {
     const userId = v.user_id;
     if (typeof login !== 'string' || typeof userId !== 'string') return null;
     return { login, userId };
+  }
+
+  private connectPubsub() {
+    if (!this.settings.authToken || !this.pubsubUserId) return;
+    if (this.pubsubWs && this.pubsubWs.readyState === WebSocket.OPEN) return;
+    try {
+      const ws = new WebSocket('wss://pubsub-edge.twitch.tv/v1');
+      this.pubsubWs = ws;
+      ws.onopen = () => {
+        this.addLog('SUCCESS', undefined, 'Authenticated Twitch PubSub connected — real Channel Points balance sync active.');
+        ws.send(JSON.stringify({
+          type: 'LISTEN',
+          nonce: 'balance-listen',
+          data: {
+            topics: [`community-points-user-v1.${this.pubsubUserId}`],
+            auth_token: this.settings.authToken
+          }
+        }));
+        this.fetchBalanceSnapshot();
+        this.pubsubPingTimer = setInterval(() => {
+          try { ws.send(JSON.stringify({ type: 'PING' })); } catch { void 0; }
+        }, 120_000);
+      };
+      ws.onmessage = (event) => {
+        try {
+          const msg: unknown = JSON.parse(String(event.data));
+          if (typeof msg !== 'object' || msg === null || !('type' in msg)) return;
+          if (msg.type === 'RESPONSE' && 'error' in msg && typeof msg.error === 'string' && msg.error) {
+            this.addLog('ERROR', undefined, `PubSub LISTEN rejected: ${msg.error}`);
+            return;
+          }
+          if (msg.type !== 'MESSAGE' || !('data' in msg) || typeof msg.data !== 'object' || msg.data === null) return;
+          const data = msg.data as { topic?: unknown; message?: unknown };
+          if (typeof data.topic !== 'string' || !data.topic.startsWith('community-points-user-v1.')) return;
+          const payload: unknown = typeof data.message === 'string' ? JSON.parse(data.message) : null;
+          if (typeof payload !== 'object' || payload === null || !('type' in payload)) return;
+          if (
+            payload.type !== 'points-earned' &&
+            payload.type !== 'points-spent' &&
+            payload.type !== 'claim-available' &&
+            payload.type !== 'points-reward'
+          ) return;
+          const balanceData = 'balance' in payload ? payload.balance : null;
+          const balance =
+            typeof balanceData === 'object' && balanceData !== null && 'balance' in balanceData && typeof balanceData.balance === 'number'
+              ? balanceData.balance
+              : null;
+          if (balance !== null) this.applyRealBalance(balance);
+        } catch { void 0; }
+      };
+      ws.onclose = () => {
+        if (this.pubsubPingTimer) { clearInterval(this.pubsubPingTimer); this.pubsubPingTimer = null; }
+        if (this.settings.authToken && this.pubsubUserId) {
+          this.pubsubReconnectTimer = setTimeout(() => this.connectPubsub(), 10_000);
+        }
+      };
+      ws.onerror = () => { try { ws.close(); } catch { void 0; } };
+    } catch (err) {
+      this.addLog('ERROR', undefined, `PubSub connection failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+  }
+
+  public disconnectPubsub() {
+    if (this.pubsubPingTimer) { clearInterval(this.pubsubPingTimer); this.pubsubPingTimer = null; }
+    if (this.pubsubReconnectTimer) { clearTimeout(this.pubsubReconnectTimer); this.pubsubReconnectTimer = null; }
+    if (this.pubsubWs) { try { this.pubsubWs.close(); } catch { void 0; } this.pubsubWs = null; }
+    this.balanceBaseline = null;
+    this.pubsubUserId = null;
+  }
+
+  private async fetchBalanceSnapshot() {
+    const mining = this.streamers.find(s => s.isMining);
+    if (!mining) return;
+    try {
+      const res = await fetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: {
+          'Authorization': `OAuth ${this.settings.authToken}`,
+          'Client-Id': 'ue6666qo983tsx6so1t0vnawi233wa',
+          'X-Device-Id': '2fKtD7vbBQY6Sg9PQkebQGxtJBHpHBlx',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { balance } } } } }',
+          variables: { login: mining.username }
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const j: unknown = await res.json();
+      if (typeof j !== 'object' || j === null || !('data' in j) || typeof j.data !== 'object' || j.data === null) return;
+      const data = j.data as { user?: { channel?: { self?: { communityPoints?: { balance?: unknown } | null } | null } | null } | null };
+      const balance = data.user?.channel?.self?.communityPoints?.balance;
+      if (typeof balance === 'number') {
+        this.applyRealBalance(balance);
+      } else {
+        this.addLog('WARN', mining.username, 'Balance snapshot unavailable — will sync on the next points event.');
+      }
+    } catch (err) {
+      this.addLog('WARN', mining.username, `Balance snapshot failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+  }
+
+  private applyRealBalance(balance: number) {
+    const firstSync = this.balanceBaseline === null;
+    if (firstSync) {
+      this.balanceBaseline = balance;
+      this.addLog(
+        'SUCCESS',
+        undefined,
+        `Real Channel Points balance synced: ${balance.toLocaleString()} pts (baseline set, simulated counters retired).`
+      );
+    }
+    const delta = balance - (this.balanceBaseline ?? balance);
+    const primary = this.streamers.find(s => s.isMining);
+    if (primary) {
+      primary.points = balance;
+      if (firstSync) {
+        primary.totalPointsMined = balance;
+        this.status.totalPointsMined = balance;
+        this.status.pointsToday = 0;
+        this.status.pointsThisHour = 0;
+        this.status.totalClaims = 0;
+        this.status.totalRaids = 0;
+        this.status.totalPredictionsPlaced = 0;
+        this.status.totalPredictionsWon = 0;
+        this.status.netPredictionPoints = 0;
+        this.status.totalDropsClaimed = 0;
+      } else if (delta > 0) {
+        this.status.pointsToday += delta;
+        this.status.pointsThisHour += delta;
+      }
+      prisma.streamer.update({
+        where: { id: primary.id },
+        data: { points: primary.points, totalPointsMined: primary.totalPointsMined }
+      }).catch(() => {});
+    }
+    if (firstSync) {
+      for (const s of this.streamers) {
+        if (s !== primary && s.points !== 0 && !s.isMining) {
+          s.points = 0;
+          s.totalPointsMined = 0;
+        }
+      }
+    }
+    this.broadcastSSE('streamers', this.streamers);
+    this.broadcastSSE('status', this.getStatus());
   }
 
   public async updateSettings(newSettings: Partial<MinerSettings>): Promise<MinerSettings> {
