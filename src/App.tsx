@@ -322,9 +322,8 @@ export default function App() {
         body: JSON.stringify({})
       });
       const data = await res.json();
-      if (data.success) {
-        showToast(`Claimed +50 Community Points on ${data.channel}!`);
-      }
+      showToast(data.message ?? (data.success ? 'Claim processed.' : 'Claim failed.'));
+      if (!data.success) console.warn('Claim failed:', data.message);
     } catch (err) {
       console.error(err);
     } finally {
@@ -340,9 +339,8 @@ export default function App() {
         body: JSON.stringify({ channel: streamer.username })
       });
       const data = await res.json();
-      if (data.success) {
-        showToast(`Claimed +50 Community Points on ${streamer.displayName}!`);
-      }
+      showToast(data.message ?? (data.success ? 'Claim processed.' : 'Claim failed.'));
+      if (!data.success) console.warn('Claim failed:', data.message);
     } catch (err) {
       console.error(err);
     }

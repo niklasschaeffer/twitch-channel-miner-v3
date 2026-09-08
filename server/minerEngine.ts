@@ -491,6 +491,17 @@ export class MinerEngine {
       this.maybeSimulateEvent();
     }
 
+    // Real auto-claim: poll availableClaim for mining channels every ~30s.
+    if (!this.settings.isSimulationMode && this.settings.autoClaimBonus && this.settings.authToken) {
+      if (this.tickCount % 15 === 0) {
+        for (const s of this.streamers) {
+          if (s.isMining && s.isLive && s.enabled && !this.claimInFlight) {
+            this.claimRealBonus(s).catch(() => {});
+          }
+        }
+      }
+    }
+
     this.broadcastSSE('status', this.getStatus());
   }
 
