@@ -56,7 +56,7 @@ export class MinerEngine {
   private pubsubPingTimer: NodeJS.Timeout | null = null;
   private pubsubReconnectTimer: NodeJS.Timeout | null = null;
   private pubsubSnapshotTimer: NodeJS.Timeout | null = null;
-  private balanceBaseline: number | null = null;
+  private balanceBaselines = new Map<string, number>();
   private pubsubUserId: string | null = null;
   private authLoginName: string | null = null;
 
@@ -1030,10 +1030,7 @@ export class MinerEngine {
       const earned = typeof payload.claim?.pointsEarnedTotal === 'number' ? payload.claim.pointsEarnedTotal : 0;
       const currentPoints = typeof payload.currentPoints === 'number' ? payload.currentPoints : null;
       if (currentPoints !== null) {
-        this.applyRealBalance(currentPoints);
-        if (this.balanceBaseline !== null) {
-          this.balanceBaseline = currentPoints - earned;
-        }
+        this.applyRealBalance(streamer.username, currentPoints);
       }
       this.resetChestProgress(streamer);
       this.addLog('CLAIM', streamer.username, `Real bonus claimed on ${streamer.displayName}: +${earned} pts (Twitch balance: ${currentPoints?.toLocaleString() ?? '?'}).`, earned);
@@ -1344,12 +1341,16 @@ export class MinerEngine {
             payload.type !== 'claim-available' &&
             payload.type !== 'points-reward'
           ) return;
+          const channelLogin = 'channel' in payload && typeof payload.channel === 'string'
+            ? payload.channel.toLowerCase()
+            : this.streamers.find(s => s.isMining)?.username.toLowerCase();
+          if (!channelLogin) return;
           const balanceData = 'balance' in payload ? payload.balance : null;
           const balance =
             typeof balanceData === 'object' && balanceData !== null && 'balance' in balanceData && typeof balanceData.balance === 'number'
               ? balanceData.balance
               : null;
-          if (balance !== null) this.applyRealBalance(balance);
+          if (balance !== null) this.applyRealBalance(channelLogin, balance);
         } catch { void 0; }
       };
       ws.onclose = () => {
@@ -1369,34 +1370,35 @@ export class MinerEngine {
     if (this.pubsubReconnectTimer) { clearTimeout(this.pubsubReconnectTimer); this.pubsubReconnectTimer = null; }
     if (this.pubsubSnapshotTimer) { clearInterval(this.pubsubSnapshotTimer); this.pubsubSnapshotTimer = null; }
     if (this.pubsubWs) { try { this.pubsubWs.close(); } catch { void 0; } this.pubsubWs = null; }
-    this.balanceBaseline = null;
     this.pubsubUserId = null;
    }
 
   private async fetchBalanceSnapshot() {
-    const mining = this.streamers.find(s => s.isMining);
-    if (!mining) return;
-    try {
-      const res = await fetch('https://gql.twitch.tv/gql', {
-        method: 'POST',
-        headers: this.authenticatedGqlHeaders(),
-        body: JSON.stringify({
-          query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { balance } } } } }',
-          variables: { login: mining.username }
-        }),
-        signal: AbortSignal.timeout(8000)
-      });
-      const j: unknown = await res.json();
-      if (typeof j !== 'object' || j === null || !('data' in j) || typeof j.data !== 'object' || j.data === null) return;
-      const data = j.data as { user?: { channel?: { self?: { communityPoints?: { balance?: unknown } | null } | null } | null } | null };
-      const balance = data.user?.channel?.self?.communityPoints?.balance;
-      if (typeof balance === 'number') {
-        this.applyRealBalance(balance);
-      } else {
-        this.addLog('WARN', mining.username, 'Balance snapshot unavailable — will sync on the next points event.');
+    const miningStreamers = this.streamers.filter(s => s.isMining);
+    if (miningStreamers.length === 0) return;
+    for (const mining of miningStreamers) {
+      try {
+        const res = await fetch('https://gql.twitch.tv/gql', {
+          method: 'POST',
+          headers: this.authenticatedGqlHeaders(),
+          body: JSON.stringify({
+            query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { balance } } } } }',
+            variables: { login: mining.username }
+          }),
+          signal: AbortSignal.timeout(8000)
+        });
+        const j: unknown = await res.json();
+        if (typeof j !== 'object' || j === null || !('data' in j) || typeof j.data !== 'object' || j.data === null) continue;
+        const data = j.data as { user?: { channel?: { self?: { communityPoints?: { balance?: unknown } | null } | null } | null } | null };
+        const balance = data.user?.channel?.self?.communityPoints?.balance;
+        if (typeof balance === 'number') {
+          this.applyRealBalance(mining.username, balance);
+        } else {
+          this.addLog('WARN', mining.username, 'Balance snapshot unavailable — will sync on the next points event.');
+        }
+      } catch (err) {
+        this.addLog('WARN', mining.username, `Balance snapshot failed: ${err instanceof Error ? err.message : 'unknown'}`);
       }
-    } catch (err) {
-      this.addLog('WARN', mining.username, `Balance snapshot failed: ${err instanceof Error ? err.message : 'unknown'}`);
     }
   }
 
@@ -1459,48 +1461,37 @@ export class MinerEngine {
     }).catch(() => {});
   }
 
-  private applyRealBalance(balance: number) {
-    const firstSync = this.balanceBaseline === null;
+  private applyRealBalance(channelLogin: string, balance: number) {
+    const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === channelLogin)
+      ?? this.streamers.find(s => extractTwitchUsername(s.username) === channelLogin.replace(/^_+/, ''));
+    if (!streamer) return;
+
+    const firstSync = !this.balanceBaselines.has(streamer.username);
     if (firstSync) {
-      this.balanceBaseline = balance;
+      this.balanceBaselines.set(streamer.username, balance);
       this.addLog(
         'SUCCESS',
-        undefined,
-        `Real Channel Points balance synced: ${balance.toLocaleString()} pts (baseline set, simulated counters retired).`
+        streamer.username,
+        `Real Channel Points balance synced for ${streamer.displayName}: ${balance.toLocaleString()} pts (baseline set, simulated counters retired).`
       );
     }
-    const delta = balance - (this.balanceBaseline ?? balance);
-    const primary = this.streamers.find(s => s.isMining);
-    if (primary) {
-      primary.points = balance;
-      if (firstSync) {
-        primary.totalPointsMined = balance;
-        this.status.totalPointsMined = balance;
-        this.status.pointsToday = 0;
-        this.status.pointsThisHour = 0;
-        this.status.totalClaims = 0;
-        this.status.totalRaids = 0;
-        this.status.totalPredictionsPlaced = 0;
-        this.status.totalPredictionsWon = 0;
-        this.status.netPredictionPoints = 0;
-        this.status.totalDropsClaimed = 0;
-      } else if (delta > 0) {
-        this.status.pointsToday += delta;
-        this.status.pointsThisHour += delta;
-      }
-      prisma.streamer.update({
-        where: { id: primary.id },
-        data: { points: primary.points, totalPointsMined: primary.totalPointsMined }
-      }).catch(() => {});
-    }
+    const baseline = this.balanceBaselines.get(streamer.username) ?? balance;
+    const delta = balance - baseline;
+
+    streamer.points = balance;
     if (firstSync) {
-      for (const s of this.streamers) {
-        if (s !== primary && s.points !== 0 && !s.isMining) {
-          s.points = 0;
-          s.totalPointsMined = 0;
-        }
-      }
+      streamer.totalPointsMined = balance;
+      this.status.totalPointsMined = this.streamers.reduce((acc, s) => acc + s.totalPointsMined, 0);
+    } else if (delta > 0) {
+      this.status.pointsToday += delta;
+      this.status.pointsThisHour += delta;
     }
+
+    prisma.streamer.update({
+      where: { id: streamer.id },
+      data: { points: streamer.points, totalPointsMined: streamer.totalPointsMined }
+    }).catch(() => {});
+
     this.broadcastSSE('streamers', this.streamers);
     this.broadcastSSE('status', this.getStatus());
   }
