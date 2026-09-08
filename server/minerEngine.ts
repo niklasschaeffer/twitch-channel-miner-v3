@@ -1344,7 +1344,6 @@ export class MinerEngine {
     if (this.pubsubWs) { try { this.pubsubWs.close(); } catch { void 0; } this.pubsubWs = null; }
     this.balanceBaseline = null;
     this.pubsubUserId = null;
-    this.authLoginName = null;
    }
 
   private async fetchBalanceSnapshot() {
