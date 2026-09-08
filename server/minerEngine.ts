@@ -38,6 +38,8 @@ export interface ActiveSlotConnection {
   ws?: any;
 }
 
+const KNOWN_CHAT_BOTS = new Set(['streamelements', 'nightbot', 'fossabot', 'moobot', 'soundalerts', 'wizebot', 'streamlabs']);
+
 export class MinerEngine {
   private status: MinerStatus;
   private settings: MinerSettings;
@@ -790,6 +792,9 @@ export class MinerEngine {
                   }
                 }
 
+                const isKnownBot = KNOWN_CHAT_BOTS.has(fallbackNick.toLowerCase());
+                if (badges.includes('broadcaster') || isKnownBot) continue;
+
                 const chatMsg: ChatMessage = {
                   id: `irc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
                   channel: clean,
@@ -799,7 +804,7 @@ export class MinerEngine {
                   badges,
                   message: text,
                   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                  isHighlighted: badges.includes('broadcaster') || badges.includes('moderator') || badges.includes('vip'),
+                  isHighlighted: badges.includes('moderator') || badges.includes('vip'),
                   isBot: false,
                   isSystem: false
                 };
