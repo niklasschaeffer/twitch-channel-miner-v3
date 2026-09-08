@@ -39,10 +39,11 @@ export class MinerEngine {
   private tickCount = 0;
 
   constructor() {
+    const isDev = process.env.NODE_ENV === 'development';
     this.settings = {
       authToken: '',
       clientId: 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-      isSimulationMode: true,
+      isSimulationMode: isDev,
       maxConcurrentStreams: 2,
       priorityMode: 'points_asc',
       autoClaimBonus: true,
@@ -57,20 +58,20 @@ export class MinerEngine {
 
     this.status = {
       state: 'running',
-      uptimeSeconds: 1420,
-      totalPointsMined: 7340,
-      pointsToday: 2450,
-      pointsThisHour: 320,
-      activeSlots: ['tarik', 'shroud'],
+      uptimeSeconds: isDev ? 1420 : 0,
+      totalPointsMined: isDev ? 7340 : 0,
+      pointsToday: isDev ? 2450 : 0,
+      pointsThisHour: isDev ? 320 : 0,
+      activeSlots: isDev ? ['tarik', 'shroud'] : [],
       activeSlotsLimit: 2,
-      totalClaims: 48,
-      totalRaids: 3,
-      totalPredictionsPlaced: 8,
-      totalPredictionsWon: 6,
-      netPredictionPoints: 850,
-      totalDropsClaimed: 2,
+      totalClaims: isDev ? 48 : 0,
+      totalRaids: isDev ? 3 : 0,
+      totalPredictionsPlaced: isDev ? 8 : 0,
+      totalPredictionsWon: isDev ? 6 : 0,
+      netPredictionPoints: isDev ? 850 : 0,
+      totalDropsClaimed: isDev ? 2 : 0,
       lastActionTimestamp: new Date().toISOString(),
-      isSimulation: true
+      isSimulation: isDev
     };
 
     // Load or seed from Prisma SQLite
@@ -126,8 +127,8 @@ export class MinerEngine {
           lastClaimTime: s.lastClaimTime || undefined,
           uptimeMinutes: s.uptimeMinutes
         }));
-      } else {
-        // Seed default streamers in dev
+      } else if (process.env.NODE_ENV === 'development') {
+        // Seed default streamers ONLY in dev
         await this.seedDefaultData();
       }
 
@@ -177,6 +178,9 @@ export class MinerEngine {
   }
 
   private async seedDefaultData() {
+    if (process.env.NODE_ENV !== 'development') {
+      return;
+    }
     const defaults = [
       {
         username: 'tarik',
@@ -311,6 +315,13 @@ export class MinerEngine {
         lastClaimTime: created.lastClaimTime || undefined,
         uptimeMinutes: created.uptimeMinutes
       });
+    }
+
+    // Connect to Twitch IRC for all enabled channels so real Twitch chat is immediately available
+    for (const s of this.streamers) {
+      if (s.enabled) {
+        this.ensureChatConnection(s.username);
+      }
     }
   }
 
@@ -614,14 +625,27 @@ export class MinerEngine {
     await this.checkAllStreamersOnlineStatus();
   }
 
+  public ensureChatConnection(username: string) {
+    const clean = username.trim().toLowerCase();
+    const existing = this.activeConnections.get(clean);
+    if (existing && (existing.connectionState === 'connected' || existing.connectionState === 'connecting') && existing.ws) {
+      return;
+    }
+    const streamer = this.streamers.find(s => s.username === clean);
+    this.connectIrcSocket(clean, streamer?.displayName || clean);
+  }
+
   private connectToStreamer(streamer: Streamer) {
     if (!streamer.isLive || !streamer.enabled || this.status.state !== 'running') {
       return;
     }
-
     const clean = streamer.username.toLowerCase();
+    this.connectIrcSocket(clean, streamer.displayName);
+  }
+
+  private connectIrcSocket(clean: string, displayName: string) {
     const existing = this.activeConnections.get(clean);
-    if (existing && (existing.connectionState === 'connected' || existing.connectionState === 'connecting')) {
+    if (existing && (existing.connectionState === 'connected' || existing.connectionState === 'connecting') && existing.ws) {
       return;
     }
 
@@ -637,7 +661,7 @@ export class MinerEngine {
     this.addLog(
       'WATCH',
       clean,
-      `Connecting to live stream & chat telemetry for ${streamer.displayName} (Category: ${streamer.game}, Viewers: ${streamer.viewerCount.toLocaleString()}). Establishing watch slot...`
+      `Connecting to real-time Twitch IRC chat for ${displayName} on #${clean}...`
     );
 
     try {
@@ -663,104 +687,81 @@ export class MinerEngine {
           this.addLog(
             'SUCCESS',
             clean,
-            `Connected to #${targetChannel} live chat IRC. Active watch slot engaged (+watch minutes accruing, auto-bonus armed).`
+            `Connected to #${targetChannel} live Twitch IRC. Streaming 100% authentic Twitch chat.`
           );
           this.broadcastSSE('status', this.getStatus());
         };
 
         ws.onmessage = (event) => {
-          const raw = String(event.data || '');
-          if (raw.startsWith('PING')) {
-            try {
-              ws.send('PONG :tmi.twitch.tv\r\n');
-            } catch (e) {}
-            connection.lastPing = new Date().toISOString();
-            return;
-          }
+          const rawData = String(event.data || '');
+          const lines = rawData.split('\r\n');
 
-          if (raw.includes('PRIVMSG')) {
-            const match = raw.match(/(?:@([^ ]+) )?:([^!]+)![^ ]+ PRIVMSG #[^ ]+ :(.+)/);
-            if (match) {
-              const tagString = match[1] || '';
-              const fallbackNick = match[2];
-              const text = match[3];
+          for (const raw of lines) {
+            if (!raw) continue;
 
-              let displayName = fallbackNick;
-              let color = '#9146FF';
-              const badges: string[] = [];
+            if (raw.startsWith('PING')) {
+              try {
+                ws.send('PONG :tmi.twitch.tv\r\n');
+              } catch (e) {}
+              connection.lastPing = new Date().toISOString();
+              continue;
+            }
 
-              if (tagString) {
-                const tags = tagString.split(';');
-                for (const tag of tags) {
-                  const [k, v] = tag.split('=');
-                  if (k === 'display-name' && v) displayName = v;
-                  if (k === 'color' && v) color = v;
-                  if (k === 'badges' && v) {
-                    if (v.includes('broadcaster')) badges.push('broadcaster');
-                    if (v.includes('moderator')) badges.push('mod');
-                    if (v.includes('vip')) badges.push('vip');
-                    if (v.includes('subscriber')) badges.push('sub');
-                    if (v.includes('turbo')) badges.push('prime');
+            if (raw.includes('PRIVMSG')) {
+              const match = raw.match(/(?:@([^ ]+) )?:([^!]+)![^ ]+ PRIVMSG #([^ ]+) :(.+)/);
+              if (match) {
+                const tagString = match[1] || '';
+                const fallbackNick = match[2];
+                const text = match[4];
+
+                let displayName = fallbackNick;
+                let color = '#9146FF';
+                const badges: string[] = [];
+
+                if (tagString) {
+                  const tags = tagString.split(';');
+                  for (const tag of tags) {
+                    const [k, v] = tag.split('=');
+                    if (k === 'display-name' && v) displayName = v;
+                    if (k === 'color' && v) color = v;
+                    if (k === 'badges' && v) {
+                      const badgePairs = v.split(',');
+                      for (const bp of badgePairs) {
+                        const bName = bp.split('/')[0];
+                        if (bName) badges.push(bName);
+                      }
+                    }
                   }
                 }
-              }
 
-              const chatMsg: ChatMessage = {
-                id: `irc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                channel: clean,
-                username: fallbackNick,
-                displayName: displayName || fallbackNick,
-                color: color || '#9146FF',
-                badges,
-                message: text,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                isHighlighted: text.includes('!points') || text.includes('!claim') || text.toLowerCase().includes(clean)
-              };
+                const chatMsg: ChatMessage = {
+                  id: `irc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                  channel: clean,
+                  username: fallbackNick,
+                  displayName: displayName || fallbackNick,
+                  color: color || '#9146FF',
+                  badges,
+                  message: text,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                  isHighlighted: badges.includes('broadcaster') || badges.includes('moderator') || badges.includes('vip'),
+                  isBot: false,
+                  isSystem: false
+                };
 
-              this.addStreamerChatMessage(clean, chatMsg);
-
-              // Auto-respond to chat commands if someone asks !points or !claim
-              if (text.trim().toLowerCase() === '!points') {
-                this.addLog('CMD', clean, `IRC user '${displayName}' queried !points command on #${clean}.`);
-                setTimeout(() => {
-                  this.addStreamerChatMessage(clean, {
-                    id: `bot-cmd-${Date.now()}`,
-                    channel: clean,
-                    username: 'PointMinerBot',
-                    displayName: 'Point Miner Bot',
-                    color: '#00F593',
-                    badges: ['moderator', 'bot'],
-                    message: `🤖 @${displayName}: #${streamer.displayName} balance: ${streamer.points.toLocaleString()} pts. Mined today: ${streamer.totalPointsMined.toLocaleString()} pts. Next bonus chest in ~${streamer.nextChestEstimateSeconds}s.`,
-                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                    isBot: true,
-                    isHighlighted: true
-                  });
-                }, 300);
+                this.addStreamerChatMessage(clean, chatMsg);
               }
             }
-          }
 
-          if (raw.includes('USERNOTICE') && raw.includes('msg-id=raid')) {
-            const raidMatch = raw.match(/msg-param-displayName=([^;]+)/);
-            const raider = raidMatch ? raidMatch[1] : 'Raider';
-            this.addLog(
-              'RAID',
-              clean,
-              `Channel raid detected by ${raider} in #${targetChannel}! Raid points bonus captured (+250 pts).`,
-              250
-            );
-            this.addStreamerChatMessage(clean, {
-              id: `raid-${Date.now()}`,
-              channel: clean,
-              username: 'TwitchRaid',
-              displayName: 'Twitch Raid Event',
-              color: '#FFB800',
-              badges: ['mod'],
-              message: `🚀 Channel raid detected by ${raider}! Captured +250 community points bonus.`,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-              isBot: true,
-              isHighlighted: true
-            });
+            if (raw.includes('USERNOTICE') && raw.includes('msg-id=raid')) {
+              const raidMatch = raw.match(/msg-param-displayName=([^;]+)/);
+              const raider = raidMatch ? raidMatch[1] : 'Raider';
+              this.addLog(
+                'RAID',
+                clean,
+                `Channel raid detected by ${raider} in #${targetChannel}! Raid points bonus captured (+250 pts).`,
+                250
+              );
+            }
           }
         };
 
@@ -918,19 +919,6 @@ export class MinerEngine {
       50
     );
 
-    this.addStreamerChatMessage(streamer.username, {
-      id: `claim-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      channel: streamer.username,
-      username: 'PointMinerBot',
-      displayName: 'Point Miner Bot',
-      color: '#00F593',
-      badges: ['moderator', 'bot'],
-      message: `🎁 [BONUS CLAIMED] Captured +50 community chest points for #${streamer.displayName}! Total balance: ${streamer.points.toLocaleString()} pts.`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      isBot: true,
-      isHighlighted: true
-    });
-
     this.broadcastSSE('streamers', this.streamers);
   }
 
@@ -966,18 +954,6 @@ export class MinerEngine {
           `Heartbeat watch credit (+${pts} pts) received for ${chosen.displayName}.`,
           pts
         );
-
-        this.addStreamerChatMessage(chosen.username, {
-          id: `watch-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          channel: chosen.username,
-          username: 'PointMinerBot',
-          displayName: 'Point Miner Bot',
-          color: '#00F593',
-          badges: ['bot'],
-          message: `⚡ [WATCH CREDIT] +${pts} pts awarded for watch time on #${chosen.displayName}. Balance: ${chosen.points.toLocaleString()} pts.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          isBot: true
-        });
       }
     }
 
@@ -1509,33 +1485,9 @@ export class MinerEngine {
 
   public getStreamerChat(username: string): ChatMessage[] {
     const clean = username.trim().toLowerCase();
+    this.ensureChatConnection(clean);
     if (!this.streamerChats.has(clean)) {
-      const streamer = this.streamers.find(s => s.username === clean);
-      const initial: ChatMessage[] = [
-        {
-          id: `init-${clean}-sys`,
-          channel: clean,
-          username: 'tmi.twitch.tv',
-          displayName: 'Twitch IRC',
-          color: '#9146FF',
-          badges: ['system'],
-          message: `Connected to channel #${streamer?.displayName || clean} via Twitch IRC protocol.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          isSystem: true
-        },
-        {
-          id: `init-${clean}-bot`,
-          channel: clean,
-          username: 'PointMinerBot',
-          displayName: 'Point Miner Bot',
-          color: '#00F593',
-          badges: ['moderator', 'bot'],
-          message: `🤖 Point Miner Bot active. Monitoring #${streamer?.displayName || clean} bonus chests (+50) and watch streaks. Type !points or !claim anytime.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          isBot: true
-        }
-      ];
-      this.streamerChats.set(clean, initial);
+      this.streamerChats.set(clean, []);
     }
     return [...(this.streamerChats.get(clean) || [])];
   }
@@ -1567,7 +1519,9 @@ export class MinerEngine {
       badges: ['sub'],
       message: text,
       timestamp: time,
-      isHighlighted: text.startsWith('!')
+      isHighlighted: false,
+      isBot: false,
+      isSystem: false
     };
 
     this.addStreamerChatMessage(clean, userMsg);
@@ -1584,85 +1538,14 @@ export class MinerEngine {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
 
-    // Command handling
-    if (lower === '!points') {
-      const balance = streamer ? streamer.points.toLocaleString() : '0';
-      const mined = streamer ? streamer.totalPointsMined.toLocaleString() : '0';
-      const nextChest = streamer ? `${streamer.nextChestEstimateSeconds}s` : 'unknown';
-
-      this.addLog('CMD', clean, `User '${senderName}' executed !points command on #${clean}. Current balance: ${balance} pts.`);
-
-      setTimeout(() => {
-        this.addStreamerChatMessage(clean, {
-          id: `bot-res-${Date.now()}`,
-          channel: clean,
-          username: 'PointMinerBot',
-          displayName: 'Point Miner Bot',
-          color: '#9146FF',
-          badges: ['moderator', 'bot'],
-          message: `🤖 @${senderName}: Current channel points for #${streamer?.displayName || clean} is ${balance} pts. Total mined today: ${mined} pts. Next bonus chest in ~${nextChest}.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          isBot: true,
-          isHighlighted: true
-        });
-      }, 250);
-    } else if (lower === '!claim' || lower === '!chest') {
-      this.addLog('CMD', clean, `User '${senderName}' executed !claim command on #${clean}. Triggering instant chest claim.`);
-
+    // Trigger bonus claim in background if requested, but no fake bot messages
+    if (lower === '!claim' || lower === '!chest') {
       if (streamer) {
         this.executeClaimBonus(streamer);
       }
-
-      setTimeout(() => {
-        this.addStreamerChatMessage(clean, {
-          id: `bot-res-${Date.now()}`,
-          channel: clean,
-          username: 'PointMinerBot',
-          displayName: 'Point Miner Bot',
-          color: '#9146FF',
-          badges: ['moderator', 'bot'],
-          message: `🎁 @${senderName}: Triggered community chest claim (+50 pts) for #${streamer?.displayName || clean}! New Balance: ${streamer?.points.toLocaleString()} pts.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          isBot: true,
-          isHighlighted: true
-        });
-      }, 250);
-    } else if (lower === '!status') {
-      const statusText = streamer?.isMining ? 'ACTIVE (Watch Slot Engaged)' : streamer?.isLive ? 'LIVE (Standby Queue)' : 'OFFLINE';
-      this.addLog('CMD', clean, `User '${senderName}' executed !status command on #${clean}. Status: ${statusText}`);
-
-      setTimeout(() => {
-        this.addStreamerChatMessage(clean, {
-          id: `bot-res-${Date.now()}`,
-          channel: clean,
-          username: 'PointMinerBot',
-          displayName: 'Point Miner Bot',
-          color: '#9146FF',
-          badges: ['moderator', 'bot'],
-          message: `🤖 @${senderName}: #${streamer?.displayName || clean} is ${statusText} | Game: ${streamer?.game || 'Variety'} | Viewers: ${(streamer?.viewerCount || 0).toLocaleString()} | Watch Streak: ${streamer?.watchStreak || 0}d`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          isBot: true
-        });
-      }, 250);
-    } else if (lower === '!streak') {
-      this.addLog('CMD', clean, `User '${senderName}' executed !streak command on #${clean}.`);
-      setTimeout(() => {
-        this.addStreamerChatMessage(clean, {
-          id: `bot-res-${Date.now()}`,
-          channel: clean,
-          username: 'PointMinerBot',
-          displayName: 'Point Miner Bot',
-          color: '#9146FF',
-          badges: ['moderator', 'bot'],
-          message: `🔥 @${senderName}: Watch streak on #${streamer?.displayName || clean} is ${streamer?.watchStreak || 0} days! Watch multiplier active (+10 pts per interval).`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          isBot: true
-        });
-      }, 250);
-    } else {
-      this.addLog('CHAT', clean, `<${senderName}> ${text}`);
     }
 
+    this.addLog('CHAT', clean, `<${senderName}> ${text}`);
     return userMsg;
   }
 
@@ -1785,8 +1668,8 @@ export class MinerEngine {
       totalDrops += r.dropsCount * 100;
     }
 
-    // Default fallbacks if empty
-    if (hourlyMap.size === 0) {
+    // Default fallbacks if empty - ONLY in development mode
+    if (hourlyMap.size === 0 && process.env.NODE_ENV === 'development') {
       const now = new Date();
       for (let i = 8; i >= 0; i--) {
         const d = new Date(now.getTime() - i * 3600000);

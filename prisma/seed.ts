@@ -25,8 +25,8 @@ async function ensureTablesExist() {
 
 async function main() {
   // Seed data should only be used when in a dev environment
-  if (process.env.NODE_ENV === 'production') {
-    console.log('Skipping seed data in production environment.');
+  if (process.env.NODE_ENV !== 'development') {
+    console.log(`Skipping seed data: NODE_ENV is "${process.env.NODE_ENV}", seed data is only populated when NODE_ENV is specifically set to "development".`);
     return;
   }
 

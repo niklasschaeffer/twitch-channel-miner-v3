@@ -46,7 +46,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
-  const [filter, setFilter] = useState<'all' | 'highlights' | 'bot'>('all');
+  const [filter, setFilter] = useState<'all' | 'highlights'>('all');
   const [viewMode, setViewMode] = useState<'irc' | 'embed'>('irc');
   const [autoScroll, setAutoScroll] = useState(true);
   const [isSending, setIsSending] = useState(false);
@@ -132,10 +132,13 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
 
   const filteredMessages = messages.filter(msg => {
     if (filter === 'highlights') {
-      return msg.isHighlighted || msg.message.includes('+50') || msg.message.includes('+10') || msg.message.includes('+250');
-    }
-    if (filter === 'bot') {
-      return msg.isBot || msg.isSystem || msg.message.startsWith('!');
+      return (
+        msg.isHighlighted ||
+        msg.badges?.includes('broadcaster') ||
+        msg.badges?.includes('moderator') ||
+        msg.badges?.includes('vip') ||
+        (streamer && msg.message.toLowerCase().includes(streamer.username.toLowerCase()))
+      );
     }
     return true;
   });
@@ -380,7 +383,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setFilter('all')}
-                className={`px-2 py-0.5 text-[11px] font-medium transition cursor-pointer ${
+                className={`px-2.5 py-0.5 text-[11px] font-medium transition cursor-pointer ${
                   filter === 'all'
                     ? 'bg-[#9146FF] text-white'
                     : 'text-zinc-600 dark:text-[#ADADB8] hover:bg-zinc-200 dark:hover:bg-[#1E1E22]'
@@ -390,23 +393,13 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               </button>
               <button
                 onClick={() => setFilter('highlights')}
-                className={`px-2 py-0.5 text-[11px] font-medium transition cursor-pointer ${
+                className={`px-2.5 py-0.5 text-[11px] font-medium transition cursor-pointer ${
                   filter === 'highlights'
                     ? 'bg-[#9146FF] text-white'
                     : 'text-zinc-600 dark:text-[#ADADB8] hover:bg-zinc-200 dark:hover:bg-[#1E1E22]'
                 }`}
               >
                 {t('chat.filterHighlights')}
-              </button>
-              <button
-                onClick={() => setFilter('bot')}
-                className={`px-2 py-0.5 text-[11px] font-medium transition cursor-pointer ${
-                  filter === 'bot'
-                    ? 'bg-[#9146FF] text-white'
-                    : 'text-zinc-600 dark:text-[#ADADB8] hover:bg-zinc-200 dark:hover:bg-[#1E1E22]'
-                }`}
-              >
-                {t('chat.filterBot')}
               </button>
             </div>
 
@@ -552,42 +545,11 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Bot Action Chips (Direct connection to Miner Engine & Console) */}
+          {/* Quick Emote Chips */}
           <div className="flex flex-wrap items-center gap-1.5 px-4 py-2 border-t border-zinc-200 dark:border-[#26262C] bg-zinc-50 dark:bg-[#141416]">
             <span className="text-[10px] font-mono text-zinc-400 dark:text-[#71717A] uppercase mr-1">
-              {t('ircChat.quickCmds', 'Commands')}:
+              Emotes:
             </span>
-            <button
-              type="button"
-              onClick={() => handleSendMessage('!points')}
-              className="px-2 py-0.5 text-xs font-mono bg-white dark:bg-[#18181B] hover:bg-[#9146FF]/15 text-[#9146FF] border border-[#9146FF]/30 transition cursor-pointer"
-            >
-              !points
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSendMessage('!claim')}
-              className="px-2 py-0.5 text-xs font-mono bg-white dark:bg-[#18181B] hover:bg-[#00a865]/15 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/30 transition cursor-pointer"
-            >
-              !claim (+50)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSendMessage('!status')}
-              className="px-2 py-0.5 text-xs font-mono bg-white dark:bg-[#18181B] hover:bg-zinc-200 dark:hover:bg-[#26262C] text-zinc-700 dark:text-[#ADADB8] border border-zinc-200 dark:border-[#26262C] transition cursor-pointer"
-            >
-              !status
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSendMessage('!streak')}
-              className="px-2 py-0.5 text-xs font-mono bg-white dark:bg-[#18181B] hover:bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition cursor-pointer"
-            >
-              !streak
-            </button>
-
-            <span className="text-zinc-300 dark:text-[#26262C] mx-1">|</span>
-
             {PRESET_EMOTES.map(emote => (
               <button
                 key={emote}
@@ -612,7 +574,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               type="text"
               value={inputText}
               onChange={e => setInputText(e.target.value)}
-              placeholder={t('chat.sendPlaceholder')}
+              placeholder={`Send message to #${streamer.displayName}...`}
               className="flex-1 bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] px-3 py-1.5 text-xs text-zinc-900 dark:text-[#EFEFF1] font-mono focus:outline-hidden focus:border-[#9146FF]"
             />
             <button
