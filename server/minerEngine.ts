@@ -520,6 +520,11 @@ export class MinerEngine {
       }
     }
 
+    // Drop campaigns: claim completed drops from inventory (10-min sync cadence).
+    if (!this.settings.isSimulationMode && this.settings.autoClaimDrops && this.settings.authToken) {
+      this.claimDrops().catch(() => {});
+    }
+
     // Real watch-time: one minute-watched heartbeat per minute per mining
     // channel (upstream's send_minute_watched_events cadence). Twitch awards
     // points on its own schedule from these events; the balance is synced via
@@ -1459,6 +1464,60 @@ export class MinerEngine {
       } catch (err) {
         this.addLog('WARN', mining.username, `Balance snapshot failed: ${err instanceof Error ? err.message : 'unknown'}`);
       }
+    }
+  }
+
+  private lastDropSync = 0;
+
+  private async claimDrops() {
+    if (Date.now() - this.lastDropSync < 10 * 60_000) return;
+    this.lastDropSync = Date.now();
+    try {
+      const res = await fetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: this.authenticatedGqlHeaders(),
+        body: JSON.stringify({
+          operationName: 'Inventory',
+          variables: { fetchRewardCampaigns: false },
+          extensions: { persistedQuery: { version: 1, sha256Hash: '8337eb8541b314040b0edde0c09c5c7a2783ba1960aa9edfbf3bac16d0fec404' } }
+        }),
+        signal: AbortSignal.timeout(10000)
+      });
+      const j: unknown = await res.json();
+      if (typeof j !== 'object' || j === null || !('data' in j) || typeof j.data !== 'object' || j.data === null) return;
+      const data = j.data as { currentUser?: { inventory?: { dropCampaignsInProgress?: unknown } | null } | null };
+      const campaigns = data.currentUser?.inventory?.dropCampaignsInProgress;
+      if (!Array.isArray(campaigns)) return;
+      for (const campaign of campaigns) {
+        if (typeof campaign !== 'object' || campaign === null) continue;
+        const drops = 'timeBasedDrops' in campaign && Array.isArray(campaign.timeBasedDrops) ? campaign.timeBasedDrops : [];
+        for (const drop of drops) {
+          if (typeof drop !== 'object' || drop === null) continue;
+          const self = 'self' in drop && typeof drop.self === 'object' && drop.self !== null ? drop.self : {};
+          const isClaimed = 'isClaimed' in self && self.isClaimed === true;
+          const isClaimable = 'isClaimable' in self && self.isClaimable === true;
+          const instanceId = 'id' in self && typeof self.id === 'string' ? self.id : null;
+          if (isClaimed || !isClaimable || !instanceId) continue;
+          const claimRes = await fetch('https://gql.twitch.tv/gql', {
+            method: 'POST',
+            headers: this.authenticatedGqlHeaders(),
+            body: JSON.stringify({
+              operationName: 'DropsPage_ClaimDropRewards',
+              extensions: { persistedQuery: { version: 1, sha256Hash: 'a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930' } },
+              variables: { input: { dropInstanceID: instanceId } }
+            }),
+            signal: AbortSignal.timeout(10000)
+          });
+          const claimJson: unknown = await claimRes.json();
+          const ok = typeof claimJson === 'object' && claimJson !== null && 'data' in claimJson &&
+            typeof claimJson.data === 'object' && claimJson.data !== null &&
+            'claimDropRewards' in claimJson.data && claimJson.data.claimDropRewards !== null;
+          this.addLog(ok ? 'SUCCESS' : 'WARN', undefined, `Drop claim for ${instanceId.slice(0, 8)}: ${ok ? 'claimed' : 'failed'} (${claimRes.status}).`);
+          await new Promise(r => setTimeout(r, 5000 + Math.random() * 5000));
+        }
+      }
+    } catch (err) {
+      this.addLog('WARN', undefined, `Drop sync failed: ${err instanceof Error ? err.message : 'unknown'}`);
     }
   }
 
