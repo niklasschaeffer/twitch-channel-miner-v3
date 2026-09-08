@@ -180,18 +180,11 @@ async function startServer() {
       res.json({ state: 'pending', transientError: err instanceof Error ? err.message : 'network error' });
     }
   });
-
-  // Current Twitch connection status (for the frontend indicator)
   app.get('/api/twitch/status', async (req, res) => {
-    const s = minerEngine.getSettings();
-    if (!s.authToken) {
-      res.json({ connected: false });
-      return;
-    }
     try {
-      const v = await validateTwitchToken(s.authToken);
+      const v = await minerEngine.validateStoredAuthToken();
       if (!v) {
-        res.json({ connected: false, stale: true });
+        res.json({ connected: false, stale: Boolean(minerEngine.getSettings().hasAuthToken) });
         return;
       }
       res.json({ connected: true, login: v.login, userId: v.userId });
@@ -208,6 +201,101 @@ async function startServer() {
 
 
   // Auth endpoints (Multiuser support)
+
+  // --- Real Google OAuth (authorization code flow) ---
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+  const googleRedirectUri = `${process.env.APP_URL || 'http://localhost:3000'}/api/auth/google/callback`;
+  const googleOauthStates = new Map<string, number>();
+  const appSessions = new Map<string, string>();
+
+  app.get('/api/auth/google/start', (req, res) => {
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+      res.status(500).json({ error: 'Google OAuth not configured (missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in .env)' });
+      return;
+    }
+    const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    googleOauthStates.set(state, Date.now());
+    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    url.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+    url.searchParams.set('redirect_uri', googleRedirectUri);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', 'openid email profile');
+    url.searchParams.set('state', state);
+    url.searchParams.set('prompt', 'select_account');
+    res.redirect(url.toString());
+  });
+
+  app.get('/api/auth/google/callback', async (req, res) => {
+    const code = typeof req.query.code === 'string' ? req.query.code : '';
+    const state = typeof req.query.state === 'string' ? req.query.state : '';
+    const issuedAt = state ? googleOauthStates.get(state) : undefined;
+    googleOauthStates.delete(state);
+    if (!code || !issuedAt || Date.now() - issuedAt > 600_000) {
+      res.status(400).send('Google OAuth failed: invalid state or missing code.');
+      return;
+    }
+    try {
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          redirect_uri: googleRedirectUri,
+          grant_type: 'authorization_code'
+        }),
+        signal: AbortSignal.timeout(10000)
+      });
+      const tokenData: unknown = await tokenRes.json();
+      if (!tokenRes.ok || typeof tokenData !== 'object' || tokenData === null || !('access_token' in tokenData) || typeof tokenData.access_token !== 'string') {
+        res.status(502).send('Google token exchange failed.');
+        return;
+      }
+      const uiRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        signal: AbortSignal.timeout(8000)
+      });
+      const ui: unknown = await uiRes.json();
+      if (!uiRes.ok || typeof ui !== 'object' || ui === null || !('email' in ui) || typeof ui.email !== 'string') {
+        res.status(502).send('Google userinfo fetch failed.');
+        return;
+      }
+      const email = ui.email.toLowerCase();
+      const name = 'name' in ui && typeof ui.name === 'string' ? ui.name : email.split('@')[0];
+      const picture = 'picture' in ui && typeof ui.picture === 'string' ? ui.picture : undefined;
+      const gravatarHash = md5(email);
+      const avatarUrl = picture ?? `https://www.gravatar.com/avatar/${gravatarHash}?s=100&d=identicon`;
+      const user = await prisma.user.upsert({
+        where: { email },
+        update: { provider: 'google', avatarUrl },
+        create: { email, username: name, avatarUrl, provider: 'google' }
+      });
+      const sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      appSessions.set(sessionId, email);
+      res.redirect(`/?authSession=${sessionId}`);
+    } catch (err) {
+      res.status(502).send(`Google OAuth error: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+  });
+
+  app.get('/api/auth/session/:sessionId', async (req, res) => {
+    const sessionId = req.params.sessionId;
+    const email = appSessions.get(sessionId);
+    if (!email) {
+      res.status(404).json({ error: 'Unknown session' });
+      return;
+    }
+    appSessions.delete(sessionId);
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    res.json({ id: user.id, email: user.email, username: user.username, avatarUrl: user.avatarUrl, provider: user.provider });
+  });
+
   app.get('/api/auth/me', async (req, res) => {
     try {
       const user = await prisma.user.findFirst({

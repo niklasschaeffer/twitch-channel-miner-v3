@@ -71,13 +71,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setError(null);
     setLoading(true);
     try {
-      const simulatedEmail = provider === 'github' ? 'dev@github.com' : 'user@google.com';
-      const user = await prisma.user.oauthLogin(provider, simulatedEmail);
-      getGravatarUrl(user.email);
+      if (provider === 'google') {
+        window.location.href = '/api/auth/google/start';
+        return;
+      }
+      const res = await fetch('/api/auth/oauth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'github' })
+      });
+      if (!res.ok) throw new Error('GitHub login failed');
+      const user = await res.json();
       onUserChanged(user);
       onClose();
-    } catch (err: any) {
-      setError(err.message || 'Social login failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Social login failed');
     } finally {
       setLoading(false);
     }

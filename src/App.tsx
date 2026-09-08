@@ -151,6 +151,24 @@ export default function App() {
         }
       })
       .catch(() => {});
+
+    const params = new URLSearchParams(window.location.search);
+    const authSession = params.get('authSession');
+    if (authSession) {
+      window.history.replaceState({}, '', '/');
+      fetch(`/api/auth/session/${authSession}`)
+        .then(r => {
+          if (!r.ok) throw new Error('session exchange failed');
+          return r.json();
+        })
+        .then(user => {
+          setCurrentUser(user);
+          localStorage.setItem('twitch_miner_user', JSON.stringify(user));
+          setToastMessage(`Signed in as ${user.username}`);
+          setTimeout(() => setToastMessage(null), 3000);
+        })
+        .catch(() => {});
+    }
   }, []);
 
   const showToast = (msg: string) => {
@@ -226,7 +244,7 @@ export default function App() {
 
       eventSource.addEventListener('settings', (e: MessageEvent) => {
         try {
-          const newSettings: MinerSettings = JSON.parse(e.data);
+          const newSettings: MinerSettings & { hasAuthToken?: boolean } = JSON.parse(e.data);
           setSettings(newSettings);
         } catch (err) {
           console.error('Failed to parse settings event', err);

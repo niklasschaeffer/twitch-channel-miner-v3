@@ -1133,8 +1133,24 @@ export class MinerEngine {
     return { ...this.status };
   }
 
-  public getSettings(): MinerSettings {
-    return { ...this.settings };
+  public getSettings(): MinerSettings & { hasAuthToken: boolean } {
+    return { ...this.settings, authToken: '', hasAuthToken: Boolean(this.settings.authToken) };
+  }
+
+  public async validateStoredAuthToken(): Promise<{ login: string; userId: string } | null> {
+    const token = this.settings.authToken;
+    if (!token) return null;
+    const res = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { 'Authorization': `OAuth ${token}` },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!res.ok) return null;
+    const v: unknown = await res.json();
+    if (typeof v !== 'object' || v === null || !('login' in v) || !('user_id' in v)) return null;
+    const login = v.login;
+    const userId = v.user_id;
+    if (typeof login !== 'string' || typeof userId !== 'string') return null;
+    return { login, userId };
   }
 
   public async updateSettings(newSettings: Partial<MinerSettings>): Promise<MinerSettings> {
@@ -1170,6 +1186,9 @@ export class MinerEngine {
           delete newSettings.clientId;
         }
       }
+    }
+    if (newSettings.authToken === '') {
+      delete newSettings.authToken;
     }
     this.settings = { ...this.settings, ...newSettings };
     if (newSettings.priorityMode) {
@@ -1221,9 +1240,8 @@ export class MinerEngine {
     } catch (err) {
       console.error('Failed to save miner settings to Prisma SQLite:', err);
     }
-
-    this.broadcastSSE('settings', this.settings);
-    return this.settings;
+    this.broadcastSSE('settings', this.getSettings());
+    return this.getSettings();
   }
 
   public getStreamers(): Streamer[] {
