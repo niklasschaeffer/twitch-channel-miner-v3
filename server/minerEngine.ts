@@ -623,6 +623,9 @@ export class MinerEngine {
                   streamer.username,
                   `🟢 Streamer ${streamer.displayName} is now LIVE! Playing "${game}" with ${viewers.toLocaleString()} viewers.`
                 );
+                // Twitch's chest cadence is per-stream: reset progress when a
+                // new broadcast starts.
+                this.resetChestProgress(streamer);
               } else if (wasLive && !targetLive) {
                 this.addLog(
                   'WARN',
@@ -1027,6 +1030,7 @@ export class MinerEngine {
           this.balanceBaseline = currentPoints - earned;
         }
       }
+      this.resetChestProgress(streamer);
       this.addLog('CLAIM', streamer.username, `Real bonus claimed on ${streamer.displayName}: +${earned} pts (Twitch balance: ${currentPoints?.toLocaleString() ?? '?'}).`, earned);
       return { success: true, points: earned, message: `Claimed +${earned} pts on ${streamer.displayName}` };
     } catch (err) {
@@ -1432,11 +1436,22 @@ export class MinerEngine {
     });
     if (spadeRes.status === 204) {
       streamer.uptimeMinutes = (streamer.uptimeMinutes || 0) + 1;
-      const watched = (streamer.uptimeMinutes || 0) % 15;
-      streamer.nextChestEstimateSeconds = (15 - watched) * 60;
-      streamer.chestAvailable = false;
+      streamer.watchedMinutesSinceChest = (streamer.watchedMinutesSinceChest || 0) + 1;
+      const watched = Math.min(streamer.watchedMinutesSinceChest, 15);
+      streamer.nextChestEstimateSeconds = Math.max(0, (15 - watched) * 60);
+      streamer.chestAvailable = watched >= 15;
       this.broadcastSSE('streamers', this.streamers);
     }
+  }
+
+  private resetChestProgress(streamer: Streamer) {
+    streamer.watchedMinutesSinceChest = 0;
+    streamer.nextChestEstimateSeconds = 900;
+    streamer.chestAvailable = false;
+    prisma.streamer.update({
+      where: { id: streamer.id },
+      data: { nextChestEstimateSeconds: 900, chestAvailable: false }
+    }).catch(() => {});
   }
 
   private applyRealBalance(balance: number) {

@@ -19,6 +19,7 @@ export interface Streamer {
   enabled: boolean;
   chestAvailable: boolean;
   nextChestEstimateSeconds: number;
+  watchedMinutesSinceChest?: number; // watch minutes accrued toward the next bonus chest (real-claim mode)
   totalPointsMined: number;
   lastClaimTime?: string;
   uptimeMinutes?: number;
