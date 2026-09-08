@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="Twitch Channel Points Miner" width="100%" />
+</p>
+
 # Twitch Channel Points Miner
 
 A self-hosted web dashboard that **autonomously earns Twitch Channel Points** on your account: it watches channels, claims bonus chests, claims drops, follows raids, and places prediction bets — all through real Twitch APIs, never simulated. You get a live IRC chat view, per-channel point tracking, and honest analytics backed by a SQLite database you can inspect directly.
