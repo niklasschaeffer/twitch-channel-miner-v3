@@ -34,8 +34,10 @@ There is no test suite. Verification = `tsc --noEmit` plus live smoke tests agai
 - **No tiny wrapper functions** unless they encode a durable contract
 - i18n: every user-facing string needs keys in **both** `en` and `de` in `src/i18n.ts`
 
-## Data & secrets
+### Auth & user model
 
+- All `/api` routes except `health`, `auth/*`, `twitch/device/*`, `twitch/status` and `status` require a session (`miner_session` httpOnly cookie, Session table, 30-day expiry) — the global gate middleware in `server.ts` enforces this
+- Local accounts: register hashes passwords with scrypt (`hashPassword` in `server.ts`, format salt-hex(32) + key-hex(128)); login verifies with `verifyPassword`. No auto-provisioning — registration is the only way to create a local account; Google OAuth creates accounts with `provider: 'google'` and no password
 - `.env` is required by `docker-compose.yaml` (`env_file`): `TWITCH_CLIENT_ID`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `APP_URL` (must be a real origin, e.g. `http://localhost:3000` — OAuth redirects break otherwise)
 - `prisma/dev.db` (plus `-journal`/`-wal`/`-shm`) and `backups/` are gitignored — never commit the live DB
 - Dockerfile pins `node:25-alpine` — Node ≥ 21 is required (global WebSocket)
