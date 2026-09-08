@@ -15,8 +15,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - DATABASE_URL=file:/app/data/miner.db
-    volumes:
-      - miner-data:/app/data
+      - ./prisma/dev.db:/app/data/miner.db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
