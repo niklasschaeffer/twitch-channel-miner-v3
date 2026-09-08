@@ -60,6 +60,7 @@ model StatisticalRecord {
   dropsCount           Int       @default(0)
   chestsPoints         Int       @default(0)
   watchTimePoints      Int       @default(0)
+  channel              String?
   recordedAt           DateTime  @default(now())
 
   user                 User?     @relation(fields: [userId], references: [id], onDelete: Cascade)

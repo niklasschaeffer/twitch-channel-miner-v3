@@ -443,7 +443,6 @@ export class MinerEngine {
     if (this.tickCount % 2 === 0) {
       this.checkAllStreamersOnlineStatus().catch(() => {});
     }
-
     // Rebalance active slots based on real live status and priority
     this.rebalanceActiveSlots();
 
@@ -1048,7 +1047,7 @@ export class MinerEngine {
       const earned = typeof payload.claim?.pointsEarnedTotal === 'number' ? payload.claim.pointsEarnedTotal : 0;
       const currentPoints = typeof payload.currentPoints === 'number' ? payload.currentPoints : null;
       if (currentPoints !== null) {
-        this.applyRealBalance(streamer.username, currentPoints);
+        this.applyRealBalance(streamer.username, currentPoints, earned);
       }
       this.resetChestProgress(streamer);
       this.status.totalClaims += 1;
@@ -1277,6 +1276,7 @@ export class MinerEngine {
     dropsCount?: number;
     chestsPoints?: number;
     watchTimePoints?: number;
+    channel?: string;
   }) {
     const hourKey = new Date().getHours().toString().padStart(2, '0') + ':00';
     try {
@@ -1289,9 +1289,8 @@ export class MinerEngine {
           predictionsWon: data.predictionsWon ?? 0,
           predictionsLost: data.predictionsLost ?? 0,
           netPredictionPoints: data.netPredictionPoints ?? 0,
-          dropsCount: data.dropsCount ?? 0,
-          chestsPoints: data.chestsPoints ?? 0,
-          watchTimePoints: data.watchTimePoints ?? 0
+          watchTimePoints: data.watchTimePoints ?? 0,
+          channel: data.channel ?? null
         }
       });
     } catch (err) {
@@ -1654,7 +1653,7 @@ export class MinerEngine {
     }).catch(() => {});
   }
 
-  private applyRealBalance(channelLogin: string, balance: number) {
+  private applyRealBalance(channelLogin: string, balance: number, alreadyRecorded = 0) {
     const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === channelLogin)
       ?? this.streamers.find(s => extractTwitchUsername(s.username) === channelLogin.replace(/^_+/, ''));
     if (!streamer) return;
@@ -1678,10 +1677,14 @@ export class MinerEngine {
     } else if (delta > 0) {
       this.status.pointsToday += delta;
       this.status.pointsThisHour += delta;
-      this.recordStatisticalData({
-        pointsMined: delta,
-        watchTimePoints: delta
-      }).catch(() => {});
+      const watchDelta = delta - alreadyRecorded;
+      if (watchDelta > 0) {
+        this.recordStatisticalData({
+          pointsMined: watchDelta,
+          watchTimePoints: watchDelta,
+          channel: streamer.username
+        }).catch(() => {});
+      }
     }
     this.balanceBaselines.set(streamer.username, balance);
     this.broadcastSSE('streamers', this.streamers);
@@ -2307,8 +2310,8 @@ export class MinerEngine {
       orderBy: { recordedAt: 'asc' }
     });
 
-    // Group by hourKey
     const hourlyMap = new Map<string, { points: number; claims: number }>();
+    const channelEarned = new Map<string, number>();
     let totalChests = 0;
     let totalWatch = 0;
     let totalRaids = 0;
@@ -2316,6 +2319,9 @@ export class MinerEngine {
     let totalDrops = 0;
 
     for (const r of records) {
+      if (r.channel) {
+        channelEarned.set(r.channel, (channelEarned.get(r.channel) ?? 0) + r.pointsMined);
+      }
       const existing = hourlyMap.get(r.hourKey) || { points: 0, claims: 0 };
       existing.points += r.pointsMined;
       existing.claims += r.claimsCount;
@@ -2350,14 +2356,17 @@ export class MinerEngine {
     }));
 
     const colors = ['#9146FF', '#00F593', '#F59E0B', '#3B82F6', '#EC4899', '#8B5CF6'];
-    const totalPointsAll = Math.max(1, this.streamers.reduce((acc, s) => acc + s.points, 0));
+    const totalEarnedAll = Math.max(1, Array.from(channelEarned.values()).reduce((acc, v) => acc + v, 0));
 
-    const channelDistribution = this.streamers.map((s, idx) => ({
-      channel: s.displayName,
-      points: s.points,
-      percentage: Math.round((s.points / totalPointsAll) * 100),
-      color: colors[idx % colors.length]
-    }));
+    const channelDistribution = Array.from(channelEarned.entries()).map(([username, earned], idx) => {
+      const s = this.streamers.find(st => st.username === username);
+      return {
+        channel: s?.displayName ?? username,
+        points: earned,
+        percentage: Math.round((earned / totalEarnedAll) * 100),
+        color: colors[idx % colors.length]
+      };
+    });
 
     const categoryBreakdown = [
       { name: 'Community Chests (+50)', value: totalChests, points: totalChests, color: '#9146FF' },
