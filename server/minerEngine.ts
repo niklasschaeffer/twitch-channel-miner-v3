@@ -1310,6 +1310,7 @@ export class MinerEngine {
           }
         }));
         this.fetchBalanceSnapshot();
+        clearInterval(this.pubsubSnapshotTimer);
         this.pubsubSnapshotTimer = setInterval(() => this.fetchBalanceSnapshot(), 300_000);
         this.pubsubPingTimer = setInterval(() => {
           try { ws.send(JSON.stringify({ type: 'PING' })); } catch { void 0; }
