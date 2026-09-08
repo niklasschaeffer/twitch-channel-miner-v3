@@ -40,6 +40,27 @@ export default function App() {
   const [selectedSlotStreamerId, setSelectedSlotStreamerId] = useState<string | null>(null);
   const [selectedConsoleChannel, setSelectedConsoleChannel] = useState<string | null>(null);
   const [incomingChatMessage, setIncomingChatMessage] = useState<ChatMessage | null>(null);
+  const [isRefreshingLive, setIsRefreshingLive] = useState(false);
+
+  const handleRefreshLive = async () => {
+    setIsRefreshingLive(true);
+    try {
+      const res = await fetch('/api/streamers/refresh-live', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data?.streamers;
+        if (Array.isArray(list)) {
+          setStreamers(list);
+          setToastMessage(t('actions.refreshLive'));
+          setTimeout(() => setToastMessage(null), 2500);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to refresh live stats:', err);
+    } finally {
+      setIsRefreshingLive(false);
+    }
+  };
 
   const selectedStreamer = selectedSlotStreamerId === 'none'
     ? null
@@ -495,6 +516,8 @@ export default function App() {
                   onToggleEnabled={handleToggleEnabled}
                   onDeleteStreamer={handleDeleteStreamer}
                   onAddStreamerClick={() => setIsAddStreamerOpen(true)}
+                  onRefreshLive={handleRefreshLive}
+                  isRefreshingLive={isRefreshingLive}
                   onMovePriority={handleMovePriority}
                   selectedStreamerId={selectedStreamer?.id || null}
                   onSelectStreamer={handleSelectSlot}

@@ -13,7 +13,8 @@ import {
   Terminal,
   Power,
   ExternalLink,
-  Gift
+  Gift,
+  RefreshCw
 } from 'lucide-react';
 import { Streamer, PriorityMode } from '../types';
 
@@ -24,6 +25,8 @@ interface StreamerListProps {
   onToggleEnabled: (username: string, enabled: boolean) => void;
   onDeleteStreamer: (username: string) => void;
   onAddStreamerClick: () => void;
+  onRefreshLive?: () => void;
+  isRefreshingLive?: boolean;
   onMovePriority: (username: string, direction: 'up' | 'down') => void;
   selectedStreamerId?: string | null;
   onSelectStreamer?: (streamerId: string) => void;
@@ -38,6 +41,8 @@ export const StreamerList: React.FC<StreamerListProps> = ({
   onToggleEnabled,
   onDeleteStreamer,
   onAddStreamerClick,
+  onRefreshLive,
+  isRefreshingLive,
   onMovePriority,
   selectedStreamerId,
   onSelectStreamer,
@@ -73,13 +78,26 @@ export const StreamerList: React.FC<StreamerListProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={onAddStreamerClick}
-          className="px-3 py-1.5 text-xs font-semibold bg-[#9146FF] hover:bg-[#772CE8] text-white transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>{t('actions.addChannel')}</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onRefreshLive && (
+            <button
+              onClick={onRefreshLive}
+              disabled={isRefreshingLive}
+              title={t('actions.refreshLive')}
+              className="p-1.5 text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 dark:bg-[#26262C] dark:hover:bg-[#363640] text-zinc-700 dark:text-[#EFEFF1] transition flex items-center gap-1 cursor-pointer border border-zinc-200 dark:border-[#363640] disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingLive ? 'animate-spin text-[#9146FF]' : ''}`} />
+            </button>
+          )}
+
+          <button
+            onClick={onAddStreamerClick}
+            className="px-3 py-1.5 text-xs font-semibold bg-[#9146FF] hover:bg-[#772CE8] text-white transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>{t('actions.addChannel')}</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter & Strategy Toolbar */}

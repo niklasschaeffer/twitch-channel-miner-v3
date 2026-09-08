@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Plus, Users, Check } from 'lucide-react';
+import { extractTwitchUsername } from '../lib/twitch';
 
 interface AddStreamerModalProps {
   isOpen: boolean;
@@ -37,12 +38,13 @@ export const AddStreamerModal: React.FC<AddStreamerModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = username.trim().toLowerCase();
+    const clean = extractTwitchUsername(username);
     if (!clean) {
       setError(t('addModal.errorRequired'));
       return;
     }
-    if (existingUsernames.includes(clean)) {
+    const cleanExisting = existingUsernames.map(u => extractTwitchUsername(u));
+    if (cleanExisting.includes(clean)) {
       setError(t('addModal.errorExists'));
       return;
     }
@@ -55,8 +57,10 @@ export const AddStreamerModal: React.FC<AddStreamerModalProps> = ({
   };
 
   const handleQuickAdd = (s: typeof POPULAR_SUGGESTIONS[0]) => {
-    if (existingUsernames.includes(s.username.toLowerCase())) return;
-    onAdd(s.username, s.name);
+    const clean = extractTwitchUsername(s.username);
+    const cleanExisting = existingUsernames.map(u => extractTwitchUsername(u));
+    if (cleanExisting.includes(clean)) return;
+    onAdd(clean, s.name);
   };
 
   return (
@@ -100,10 +104,15 @@ export const AddStreamerModal: React.FC<AddStreamerModalProps> = ({
                 type="text"
                 value={username}
                 onChange={e => {
-                  setUsername(e.target.value);
+                  const val = e.target.value;
+                  if (val.includes('twitch.tv/') || val.includes('http') || val.startsWith('@')) {
+                    setUsername(extractTwitchUsername(val));
+                  } else {
+                    setUsername(val);
+                  }
                   setError('');
                 }}
-                placeholder="streamer_name"
+                placeholder="streamer_name or twitch URL"
                 autoFocus
                 className="w-full bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] pl-22 pr-3 py-1.5 text-xs text-zinc-900 dark:text-[#EFEFF1] font-mono focus:outline-hidden focus:border-[#9146FF]"
               />

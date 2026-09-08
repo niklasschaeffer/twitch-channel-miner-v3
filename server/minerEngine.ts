@@ -11,6 +11,19 @@ import {
 } from '../src/types.js';
 import { prisma } from './db.js';
 
+export function extractTwitchUsername(raw: string): string {
+  if (!raw) return '';
+  let cleaned = raw.trim().toLowerCase();
+  // Strip URL prefixes like https://www.twitch.tv/, twitch.tv/, etc.
+  cleaned = cleaned.replace(/^(https?:\/\/)?(www\.)?(m\.)?twitch\.tv\//i, '');
+  // Strip leading @ or /
+  cleaned = cleaned.replace(/^[@/]+/, '');
+  // Strip query parameters and trailing slashes
+  cleaned = cleaned.split('?')[0].split('#')[0].replace(/\/+$/, '');
+  const match = cleaned.match(/^[a-z0-9_]{1,35}/i);
+  return match ? match[0].toLowerCase() : cleaned;
+}
+
 interface SSEClient {
   id: number;
   send: (data: string) => void;
@@ -474,7 +487,7 @@ export class MinerEngine {
     };
 
     const logins = this.streamers.map(s => {
-      const clean = s.username.trim().toLowerCase();
+      const clean = extractTwitchUsername(s.username);
       return loginAliases[clean] || clean;
     });
 
@@ -507,7 +520,7 @@ export class MinerEngine {
             variables: { logins }
           }
         ]),
-        signal: AbortSignal.timeout(4000)
+        signal: AbortSignal.timeout(5000)
       });
 
       if (res.ok) {
@@ -527,7 +540,7 @@ export class MinerEngine {
         let stateChanged = false;
 
         for (const streamer of this.streamers) {
-          const clean = streamer.username.toLowerCase();
+          const clean = extractTwitchUsername(streamer.username);
           const targetLogin = loginAliases[clean] || clean;
           const u = userMap.get(clean) || userMap.get(targetLogin);
 
@@ -539,35 +552,10 @@ export class MinerEngine {
             const avatar = u.profileImageURL || streamer.avatar;
             const displayName = u.displayName || streamer.displayName;
 
-            let targetLive = streamer.isLive;
-            let viewers = streamer.viewerCount;
-            let game = streamer.game;
-
-            if (isTwitchLive) {
-              // Real live stream verified on Twitch! Always promote to real live telemetry
-              targetLive = true;
-              viewers = realViewers;
-              game = realGame;
-            } else if (this.settings.enforceRealTwitchLive) {
-              // User explicitly enabled strict real Twitch status enforcement
-              targetLive = false;
-              viewers = 0;
-              game = 'Offline';
-            } else if (this.settings.isSimulationMode) {
-              // Sandbox Simulation: preserve the streamer's live setting if it was active
-              targetLive = streamer.isLive;
-              if (targetLive) {
-                viewers = streamer.viewerCount > 0 ? streamer.viewerCount : Math.floor(1800 + Math.random() * 6000);
-                game = streamer.game !== 'Offline' ? streamer.game : 'Variety Stream';
-              } else {
-                viewers = 0;
-                game = 'Offline';
-              }
-            } else {
-              targetLive = false;
-              viewers = 0;
-              game = 'Offline';
-            }
+            // Telemetry strictly mirrors real Twitch stream status & viewer count
+            const targetLive = isTwitchLive;
+            const viewers = isTwitchLive ? realViewers : 0;
+            const game = isTwitchLive ? realGame : 'Offline';
 
             if (
               streamer.isLive !== targetLive ||
@@ -598,7 +586,7 @@ export class MinerEngine {
               }
 
               prisma.streamer.update({
-                where: { username: streamer.username },
+                where: { id: streamer.id },
                 data: {
                   isLive: targetLive,
                   viewerCount: viewers,
@@ -1179,9 +1167,17 @@ export class MinerEngine {
     game: string;
     points?: number;
   }> {
-    const clean = username.trim().toLowerCase();
+    const clean = extractTwitchUsername(username);
+    if (!clean) {
+      return {
+        displayName: username,
+        isLive: false,
+        viewerCount: 0,
+        game: 'Offline'
+      };
+    }
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+    const timeout = setTimeout(() => controller.abort(), 4000);
 
     try {
       const headers: Record<string, string> = {
@@ -1235,7 +1231,7 @@ export class MinerEngine {
           const stream = user.stream;
           const isLive = !!stream;
           const viewerCount = stream ? Number(stream.viewersCount || 0) : 0;
-          const game = stream?.game?.name || 'Offline';
+          const game = stream?.game?.name || (isLive ? 'Variety Stream' : 'Offline');
           const points = user.channel?.self?.communityPoints?.balance;
           return {
             displayName: user.displayName || clean,
@@ -1253,20 +1249,20 @@ export class MinerEngine {
       clearTimeout(timeout);
     }
 
-    const existing = this.streamers.find(s => s.username === clean);
+    const existing = this.streamers.find(s => extractTwitchUsername(s.username) === clean);
     return {
       displayName: existing?.displayName || clean,
       avatar: existing?.avatar,
       isLive: existing?.isLive ?? false,
-      viewerCount: existing?.viewerCount ?? 0,
-      game: existing?.game ?? 'Variety',
+      viewerCount: existing?.isLive ? (existing?.viewerCount ?? 0) : 0,
+      game: existing?.game ?? 'Offline',
       points: existing?.points
     };
   }
 
   public async getLiveStats(username: string) {
-    const clean = username.trim().toLowerCase();
-    const streamer = this.streamers.find(s => s.username === clean);
+    const clean = extractTwitchUsername(username);
+    const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === clean);
     if (!streamer) {
       return null;
     }
@@ -1283,7 +1279,7 @@ export class MinerEngine {
         if (typeof live.points === 'number') streamer.points = live.points;
 
         await prisma.streamer.update({
-          where: { username: clean },
+          where: { id: streamer.id },
           data: {
             isLive: streamer.isLive,
             viewerCount: streamer.viewerCount,
@@ -1325,9 +1321,31 @@ export class MinerEngine {
   }
 
   public async addStreamer(username: string, displayName?: string): Promise<Streamer> {
-    const cleanUsername = username.trim().toLowerCase();
-    const existing = this.streamers.find(s => s.username === cleanUsername);
+    const cleanUsername = extractTwitchUsername(username);
+    if (!cleanUsername) {
+      throw new Error('Invalid Twitch channel username or URL');
+    }
+    const existing = this.streamers.find(s => extractTwitchUsername(s.username) === cleanUsername);
     if (existing) {
+      // Refresh live stats directly from Twitch
+      const live = await this.fetchTwitchLiveStats(cleanUsername);
+      existing.isLive = live.isLive;
+      existing.viewerCount = live.viewerCount;
+      existing.game = live.game;
+      if (live.displayName) existing.displayName = live.displayName;
+      if (live.avatar) existing.avatar = live.avatar;
+      await prisma.streamer.update({
+        where: { id: existing.id },
+        data: {
+          isLive: existing.isLive,
+          viewerCount: existing.viewerCount,
+          game: existing.game,
+          avatar: existing.avatar,
+          displayName: existing.displayName
+        }
+      }).catch(() => {});
+      this.rebalanceActiveSlots();
+      this.broadcastSSE('streamers', this.streamers);
       return existing;
     }
 
@@ -1339,8 +1357,8 @@ export class MinerEngine {
       displayName: live.displayName || displayName || cleanUsername,
       avatar: live.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${cleanUsername}`,
       isLive: live.isLive,
-      game: live.game || 'Variety Stream',
-      viewerCount: live.viewerCount,
+      game: live.game || (live.isLive ? 'Variety Stream' : 'Offline'),
+      viewerCount: live.isLive ? live.viewerCount : 0,
       points: live.points ?? 0,
       watchStreak: 1,
       isMining: false,
@@ -1355,7 +1373,13 @@ export class MinerEngine {
     // Store in SQLite database via Prisma ORM engine
     const savedInDb = await prisma.streamer.upsert({
       where: { username: cleanUsername },
-      update: {},
+      update: {
+        isLive: newStreamerData.isLive,
+        viewerCount: newStreamerData.viewerCount,
+        game: newStreamerData.game,
+        avatar: newStreamerData.avatar,
+        displayName: newStreamerData.displayName
+      },
       create: newStreamerData
     });
 
@@ -1380,28 +1404,32 @@ export class MinerEngine {
     };
 
     this.streamers.push(streamer);
-    this.addLog('INFO', cleanUsername, `Added streamer ${streamer.displayName} to mining watchlist with live Twitch stats.`);
+    this.addLog(
+      'INFO',
+      cleanUsername,
+      `Added streamer ${streamer.displayName} to mining watchlist (${streamer.isLive ? `LIVE with ${streamer.viewerCount.toLocaleString()} viewers playing ${streamer.game}` : 'Offline'}).`
+    );
     this.rebalanceActiveSlots();
     this.broadcastSSE('streamers', this.streamers);
     return streamer;
   }
 
   public async removeStreamer(username: string): Promise<boolean> {
-    const clean = username.toLowerCase();
+    const clean = extractTwitchUsername(username);
     this.disconnectFromStreamer(clean);
-    const index = this.streamers.findIndex(s => s.username === clean);
+    const index = this.streamers.findIndex(s => extractTwitchUsername(s.username) === clean);
     if (index !== -1) {
       const removed = this.streamers.splice(index, 1)[0];
       // Remove from SQLite database via Prisma ORM engine
       try {
         await prisma.streamer.delete({
-          where: { username: clean }
+          where: { id: removed.id }
         });
       } catch (err) {
         console.error('Failed to delete streamer from Prisma SQLite:', err);
       }
 
-      this.addLog('INFO', username, `Removed streamer ${removed.displayName} from mining watchlist.`);
+      this.addLog('INFO', clean, `Removed streamer ${removed.displayName} from mining watchlist.`);
       this.rebalanceActiveSlots();
       this.broadcastSSE('streamers', this.streamers);
       return true;
@@ -1410,14 +1438,15 @@ export class MinerEngine {
   }
 
   public async updateStreamer(username: string, updates: Partial<Streamer>): Promise<Streamer | null> {
-    const s = this.streamers.find(item => item.username === username.toLowerCase());
+    const clean = extractTwitchUsername(username);
+    const s = this.streamers.find(item => extractTwitchUsername(item.username) === clean);
     if (!s) return null;
     Object.assign(s, updates);
 
     // Persist changes in Prisma SQLite
     try {
       await prisma.streamer.update({
-        where: { username: s.username },
+        where: { id: s.id },
         data: {
           points: updates.points !== undefined ? updates.points : undefined,
           priority: updates.priority !== undefined ? updates.priority : undefined,
@@ -1438,19 +1467,23 @@ export class MinerEngine {
   }
 
   public async toggleStreamerLive(username: string, forceLive?: boolean): Promise<Streamer | null> {
-    const clean = username.trim().toLowerCase();
-    const streamer = this.streamers.find(s => s.username === clean);
+    const clean = extractTwitchUsername(username);
+    const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === clean);
     if (!streamer) return null;
 
     const newLive = forceLive !== undefined ? forceLive : !streamer.isLive;
     streamer.isLive = newLive;
 
     if (newLive) {
-      if (streamer.viewerCount <= 0) {
-        streamer.viewerCount = Math.floor(1500 + Math.random() * 8000);
-      }
-      if (streamer.game === 'Offline') {
-        streamer.game = 'Variety Stream';
+      // Query Twitch to get real live status & real viewer count
+      const live = await this.fetchTwitchLiveStats(clean);
+      if (live && live.isLive) {
+        streamer.viewerCount = live.viewerCount;
+        streamer.game = live.game;
+        if (live.avatar) streamer.avatar = live.avatar;
+        if (live.displayName) streamer.displayName = live.displayName;
+      } else {
+        streamer.viewerCount = 0;
       }
     } else {
       streamer.viewerCount = 0;
@@ -1459,7 +1492,7 @@ export class MinerEngine {
 
     try {
       await prisma.streamer.update({
-        where: { username: clean },
+        where: { id: streamer.id },
         data: {
           isLive: streamer.isLive,
           viewerCount: streamer.viewerCount,

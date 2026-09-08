@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { minerEngine } from './server/minerEngine.js';
+import { minerEngine, extractTwitchUsername } from './server/minerEngine.js';
 import { prisma } from './server/db.js';
 import { md5 } from './src/lib/gravatar.js';
 
@@ -181,12 +181,13 @@ async function startServer() {
 
   app.post('/api/streamers', async (req, res) => {
     const { username, displayName } = req.body;
-    if (!username) {
-      res.status(400).json({ error: 'Username is required' });
+    const cleanUsername = extractTwitchUsername(username);
+    if (!cleanUsername) {
+      res.status(400).json({ error: 'Valid channel username or Twitch URL is required' });
       return;
     }
     try {
-      const streamer = await minerEngine.addStreamer(username, displayName);
+      const streamer = await minerEngine.addStreamer(cleanUsername, displayName);
       res.json(streamer);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -195,7 +196,8 @@ async function startServer() {
 
   app.delete('/api/streamers/:username', async (req, res) => {
     try {
-      const success = await minerEngine.removeStreamer(req.params.username);
+      const cleanUsername = extractTwitchUsername(req.params.username);
+      const success = await minerEngine.removeStreamer(cleanUsername);
       res.json({ success });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -204,7 +206,8 @@ async function startServer() {
 
   app.patch('/api/streamers/:username', async (req, res) => {
     try {
-      const updated = await minerEngine.updateStreamer(req.params.username, req.body);
+      const cleanUsername = extractTwitchUsername(req.params.username);
+      const updated = await minerEngine.updateStreamer(cleanUsername, req.body);
       if (!updated) {
         res.status(404).json({ error: 'Streamer not found' });
         return;
@@ -218,7 +221,8 @@ async function startServer() {
   // Fetch real-time live stats (viewers, points, live status) for a specific streamer
   app.get('/api/streamers/:username/live-stats', async (req, res) => {
     try {
-      const stats = await minerEngine.getLiveStats(req.params.username);
+      const cleanUsername = extractTwitchUsername(req.params.username);
+      const stats = await minerEngine.getLiveStats(cleanUsername);
       if (!stats) {
         res.status(404).json({ error: 'Streamer not found' });
         return;
@@ -232,8 +236,9 @@ async function startServer() {
   // Toggle streamer live status manually (online/offline)
   app.post('/api/streamers/:username/toggle-live', async (req, res) => {
     try {
+      const cleanUsername = extractTwitchUsername(req.params.username);
       const { forceLive } = req.body || {};
-      const updated = await minerEngine.toggleStreamerLive(req.params.username, forceLive);
+      const updated = await minerEngine.toggleStreamerLive(cleanUsername, forceLive);
       if (!updated) {
         res.status(404).json({ error: 'Streamer not found' });
         return;
@@ -247,7 +252,8 @@ async function startServer() {
   // Get streamer IRC chat history
   app.get('/api/streamers/:username/chat', (req, res) => {
     try {
-      const messages = minerEngine.getStreamerChat(req.params.username);
+      const cleanUsername = extractTwitchUsername(req.params.username);
+      const messages = minerEngine.getStreamerChat(cleanUsername);
       res.json(messages);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -257,12 +263,13 @@ async function startServer() {
   // Send IRC chat message or miner command
   app.post('/api/streamers/:username/chat', (req, res) => {
     try {
+      const cleanUsername = extractTwitchUsername(req.params.username);
       const { message, senderName } = req.body || {};
       if (!message || typeof message !== 'string') {
         res.status(400).json({ error: 'Message is required' });
         return;
       }
-      const sent = minerEngine.handleUserChatMessage(req.params.username, message, senderName || 'You');
+      const sent = minerEngine.handleUserChatMessage(cleanUsername, message, senderName || 'You');
       res.json(sent);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
