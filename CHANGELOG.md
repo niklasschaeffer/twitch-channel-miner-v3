@@ -1,3 +1,10 @@
+## [1.9.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.0...v1.9.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* raid join never subscribed to PubSub raid topics; record raids only on real follows ([a755290](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/a7552906aeffae58f0bf3654b0b6128afdd4dd71))
+
 # [1.9.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.8.0...v1.9.0) (2026-09-09)
 
 
