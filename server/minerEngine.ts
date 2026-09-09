@@ -1501,8 +1501,11 @@ export class MinerEngine {
 
   private async fetchBalanceSnapshot() {
     const miningStreamers = this.streamers.filter(s => s.isMining);
-    if (miningStreamers.length === 0) return;
-    for (const mining of miningStreamers) {
+    const relationshipStreamers = this.streamers.filter(s => s.enabled && !(s.isMining && miningStreamers.includes(s)));
+    const relationshipOnly = new Set(relationshipStreamers.map(s => s.username));
+    if (miningStreamers.length === 0 && relationshipStreamers.length === 0) return;
+    for (const mining of [...miningStreamers, ...relationshipStreamers]) {
+      const relationshipOnlyLogin = relationshipOnly.has(mining.username) && !mining.isMining;
       try {
         const res = await fetch('https://gql.twitch.tv/gql', {
           method: 'POST',
@@ -1523,10 +1526,12 @@ export class MinerEngine {
           } | null;
         };
         const balance = data.user?.channel?.self?.communityPoints?.balance;
-        if (typeof balance === 'number') {
-          this.applyRealBalance(mining.username, balance);
-        } else {
-          this.addLog('WARN', mining.username, 'Balance snapshot unavailable — will sync on the next points event.');
+        if (!relationshipOnlyLogin) {
+          if (typeof balance === 'number') {
+            this.applyRealBalance(mining.username, balance);
+          } else {
+            this.addLog('WARN', mining.username, 'Balance snapshot unavailable — will sync on the next points event.');
+          }
         }
 
         const user = data.user;
