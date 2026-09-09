@@ -355,7 +355,8 @@ export class MinerEngine {
         totalPointsMined: created.totalPointsMined,
         lastClaimTime: created.lastClaimTime || undefined,
         uptimeMinutes: created.uptimeMinutes,
-        isFollowing: created.isFollowing
+        isFollowing: created.isFollowing,
+        subscriptionTier: created.subscriptionTier ?? undefined
       });
     }
 
@@ -1518,6 +1519,7 @@ export class MinerEngine {
         });
         const j: unknown = await res.json();
         if (typeof j !== 'object' || j === null || !('data' in j) || typeof j.data !== 'object' || j.data === null) continue;
+        if ('errors' in j && Array.isArray(j.errors) && j.errors.length > 0) continue;
         const data = j.data as {
           user?: {
             channel?: { self?: { communityPoints?: { balance?: unknown } | null } | null } | null;
@@ -1850,11 +1852,12 @@ export class MinerEngine {
 
     try {
       const headers: Record<string, string> = {
-        'Client-Id': this.settings.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-        'Content-Type': 'application/json'
+        ...this.authenticatedGqlHeaders()
       };
-      if (this.settings.authToken) {
-        headers['Authorization'] = `OAuth ${this.settings.authToken.replace(/^oauth:/i, '')}`;
+      if (!this.settings.authToken) {
+        headers['Client-Id'] = this.settings.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+        delete headers['Authorization'];
+        delete headers['X-Device-Id'];
       }
 
       const res = await fetch('https://gql.twitch.tv/gql', {
