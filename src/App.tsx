@@ -441,7 +441,7 @@ export default function App() {
     }
   };
 
-  const handleMovePriority = (username: string, direction: 'up' | 'down') => {
+  const handleMovePriority = async (username: string, direction: 'up' | 'down') => {
     const idx = streamers.findIndex(s => s.username === username);
     if (idx === -1) return;
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -456,6 +456,18 @@ export default function App() {
       s.priority = i + 1;
     });
     setStreamers(copy);
+
+    try {
+      await Promise.all(copy.map(s =>
+        fetch(`/api/streamers/${s.username}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ priority: s.priority })
+        })
+      ));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleClearLogs = async () => {

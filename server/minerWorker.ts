@@ -2243,6 +2243,7 @@ export class MinerWorker {
       // Ignored
     }
 
+    this.streamers.sort((a, b) => a.priority - b.priority);
     this.rebalanceActiveSlots();
     this.hooks.broadcast('streamers', this.streamers);
     return s;
