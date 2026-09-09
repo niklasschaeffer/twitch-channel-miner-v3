@@ -1454,7 +1454,7 @@ export class MinerWorker {
             if (!('target_login' in raid) || typeof raid.target_login !== 'string') return;
             if (payload.type === 'raid_go_v2' && this.settings.followRaids) {
               this.status.totalRaids += 1;
-              this.recordStatisticalData({ raidsCount: 1, channel: this.streamers.find(s => s.isMining)?.username.toLowerCase() });
+              this.recordStatisticalData({ raidsCount: 1, channel: raid.target_login.toLowerCase() });
             }
             this.joinRaid(raid.id, raid.target_login);
             return;
