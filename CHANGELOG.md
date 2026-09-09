@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.4.1...v1.5.0) (2026-09-09)
+
+
+### Features
+
+* per-user miner workers replace singleton engine ([67fd504](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/67fd504e6d8fb4e831c4d446aaf6f4ebc57c4f29))
+
 ## [1.4.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.4.0...v1.4.1) (2026-09-09)
 
 
