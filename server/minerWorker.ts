@@ -1453,10 +1453,15 @@ export class MinerWorker {
             if (!('id' in raid) || typeof raid.id !== 'string') return;
             if (!('target_login' in raid) || typeof raid.target_login !== 'string') return;
             if (payload.type === 'raid_go_v2' && this.settings.followRaids) {
-              this.status.totalRaids += 1;
-              this.recordStatisticalData({ raidsCount: 1, channel: raid.target_login.toLowerCase() });
+              const topicId = data.topic.split('.')[1];
+              const watchedLogin = [...this.channelIds.entries()].find(([, id]) => id === topicId)?.[0]?.toLowerCase();
+              const watched = watchedLogin ? this.streamers.find(s => extractTwitchUsername(s.username) === watchedLogin) : undefined;
+              if (watched) {
+                this.status.totalRaids += 1;
+                this.recordStatisticalData({ raidsCount: 1, channel: watchedLogin });
+                this.joinRaid(raid.id, raid.target_login, watched);
+              }
             }
-            this.joinRaid(raid.id, raid.target_login);
             return;
           }
 
@@ -1712,9 +1717,9 @@ export class MinerWorker {
     }
   }
 
-  private joinRaid(raidId: string, targetLogin: string) {
+  private joinRaid(raidId: string, targetLogin: string, watched?: Streamer) {
     const target = targetLogin.toLowerCase();
-    const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === target || s.isMining);
+    const streamer = watched ?? this.streamers.find(s => extractTwitchUsername(s.username) === target);
     if (!streamer || !this.settings.authToken) return;
     fetch('https://gql.twitch.tv/gql', {
       method: 'POST',
