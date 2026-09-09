@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.0.0...v1.1.0) (2026-09-09)
+
+
+### Features
+
+* add favicon and unraid logo assets ([849d253](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/849d253bcdd1c2d888aba14470791ad87bc3c774))
+
 # 1.0.0 (2026-09-08)
 
 
