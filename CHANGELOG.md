@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.3.0...v1.3.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* transparent background for logo and navbar icon ([5e2e39e](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/5e2e39e2dc636e053d75113fcadf1795ede9119a))
+
 # [1.3.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.2.0...v1.3.0) (2026-09-09)
 
 
