@@ -1,3 +1,15 @@
+# [1.2.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.1.0...v1.2.0) (2026-09-09)
+
+
+### Bug Fixes
+
+* restore og:type and twitter:card metas ([32b1d72](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/32b1d72dcc0934c9e306578ba56ad10714b4ddde))
+
+
+### Features
+
+* use generated chest logo in navbar ([8a3b04b](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/8a3b04b6b73643f67957dc1f49086117597c71b8))
+
 # [1.1.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.0.0...v1.1.0) (2026-09-09)
 
 
