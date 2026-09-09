@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.2.0...v1.3.0) (2026-09-09)
+
+
+### Features
+
+* add minimal footer with github and package links ([86fb18b](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/86fb18b2c8a9da5ed773e63d1475a58af5b29f86))
+
 # [1.2.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.1.0...v1.2.0) (2026-09-09)
 
 
