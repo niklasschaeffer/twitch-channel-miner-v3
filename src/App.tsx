@@ -11,6 +11,7 @@ import { AddStreamerModal } from './components/AddStreamerModal';
 import { TwitchConnect } from './components/TwitchConnect';
 import { AuthModal } from './components/AuthModal';
 import { SlotIrcChat } from './components/SlotIrcChat';
+import pkg from '../package.json';
 import {
   Streamer,
   MinerStatus,
@@ -617,6 +618,19 @@ export default function App() {
           </div>
         )}
       </main>
+
+      <footer className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 text-xs text-zinc-500 dark:text-[#ADADB8] flex items-center gap-4">
+        <a
+          href="https://github.com/niklasschaeffer/twitch-channel-miner-v3"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-[#9146FF] transition-colors"
+        >
+          {t('footer.source')}
+        </a>
+        <span className="text-zinc-300 dark:text-[#363640]">•</span>
+        <span>twitch-channel-miner-v3 v{pkg.version} · {t('footer.license')}</span>
+      </footer>
 
       {/* Modals */}
       <SettingsModal

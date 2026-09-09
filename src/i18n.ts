@@ -56,6 +56,10 @@ export const resources = {
         logout: 'Sign Out',
         profile: 'User Profile'
       },
+      footer: {
+        source: 'GitHub',
+        license: 'MIT'
+      },
       streamersList: {
         title: 'Monitored Channels',
         subtitle: 'Auto-balanced watch queue (max 2 active streams)',
@@ -300,6 +304,10 @@ export const resources = {
         register: 'Registrieren',
         logout: 'Abmelden',
         profile: 'Benutzerprofil'
+      },
+      footer: {
+        source: 'GitHub',
+        license: 'MIT'
       },
       streamersList: {
         title: 'Überwachte Kanäle',
