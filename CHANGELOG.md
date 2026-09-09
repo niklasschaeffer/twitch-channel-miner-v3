@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.3.3...v1.4.0) (2026-09-09)
+
+
+### Features
+
+* show follow and subscription tier badges next to streamers and in active IRC chat ([5e24e98](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/5e24e9841d68befbd80642972b80d9e3a91b6bf8))
+
 ## [1.3.3](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.3.2...v1.3.3) (2026-09-09)
 
 
