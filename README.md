@@ -20,7 +20,7 @@ A self-hosted web dashboard that **autonomously earns Twitch Channel Points** on
 
 ## What it does
 
-Once your Twitch account is connected and channels are on the watchlist, the engine runs a 2-second tick loop and does the following **with your real account**:
+Once your Twitch account is connected and channels are on the watchlist, **your personal miner worker** runs a 2-second tick loop and does the following **with your real account** — every account with a stored token gets its own isolated engine (connections, timers, balances), so users never share mining state:
 
 | Feature | Mechanism |
 |---|---|
@@ -100,7 +100,7 @@ The app is now at `http://localhost:3000`. The SQLite database lives at `prisma/
 - Auto-claim bonus, auto-claim drops, follow raids toggles
 - Prediction strategy (`highest_odds` / others) and max bet points
 - Twitch connection (device flow) + disconnect
-- The engine only mines for the **authenticated user who owns each channel entry** — other app users never see or touch your watchlist.
+- The engine only mines for the **authenticated user who owns each channel entry** — each account runs its own worker with its own Twitch connection; other app users never see or touch your watchlist, and an anonymous device-flow grant is refused server-side.
 
 ## How earning works
 
@@ -127,6 +127,7 @@ Analytics record **only actual earned deltas** — a claim logs its earned point
 - ✅ Prediction auto-betting (MakePrediction, max-bet cap, per-event dedup)
 - ✅ Multi-user auth: scrypt-hashed passwords, DB-backed sessions (30-day httpOnly cookie), global API gate — all `/api` routes except health/auth/twitch-device/status require a session
 - ✅ Per-user streamer ownership (`@@unique([userId, username])`, scoped CRUD + SSE)
+- ✅ Per-user mining workers: each account with a stored Twitch token gets an isolated engine (own PubSub/IRC connections, timers, balances); tokens persist only with an owning session; legacy NULL-owner rows are auto-adopted at boot
 - ✅ Login gate: unauthenticated visitors get the login screen, not a broken dashboard
 - ✅ Honest analytics: per-channel earnings attribution, claim/watch dedupe, no fabricated dev-mode numbers in production
 - ✅ Session persistence across restarts (SQLite `Session` table)
@@ -136,12 +137,12 @@ Analytics record **only actual earned deltas** — a claim logs its earned point
 
 - ⚠️ Prediction strategy is outcome-index-based; porting upstream's odds-ratio expected-value calculation (`Bet.calculate()`) would improve bet quality
 - ⚠️ Drop claiming checks `is_claimable` only; upstream also gates on `has_preconditions_met` and watched-minutes thresholds
-- ⚠️ The mining engine is a process-wide singleton — streamer rows are user-scoped in the API, but all users' channels feed one shared mining pool with one Twitch connection
+- ⚠️ Per-user mining workers (`server/minerWorker.ts`) each run their own Twitch connections; two users mining the same channel open duplicate IRC/PubSub sockets by design (no shared connection pool)
 - ⚠️ No test suite; verification is `tsc --noEmit` + live smoke tests against the running container
 - ⚠️ Google-login users have no local password; add one via re-register or a manual hash reset if you want email login too
 
 **Recent history highlights** (full log: `git log --oneline`):
-
+- `1920cfd` — per-user miner workers replace the singleton engine; auto-adopt legacy NULL-owner rows at boot
 - `d4bc078` — auth modal prop fix (fullscreen gate now opens correctly after login)
 - `35c7295` — global API gate + logout endpoint
 - `cb472b7` — per-user streamer scoping, scrypt passwords, DB sessions

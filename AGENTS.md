@@ -15,7 +15,8 @@ There is no test suite. Verification = `tsc --noEmit` plus live smoke tests agai
 ## Architecture
 
 - `server.ts` — Express app: auth routes (Twitch device flow, Google OAuth, local email login), streamer CRUD, SSE broadcast, session endpoints
-- `server/minerEngine.ts` (~2400 lines) — the core engine. `tick()` every 2 s; PubSub websocket for real-time Twitch events (balance, claims, raids, predictions); GQL polling for snapshots; spade minute-watched heartbeats for watch earning; IRC websocket for chat presence
+- `server/minerEngine.ts` — engine manager: per-user `MinerWorker` registry (`ensureWorker`/`disposeWorker`), boot spawn from stored tokens (`spawnWorkersFromDb`, which also adopts legacy NULL-`userId` rows into the oldest account), SSE fan-out scoped per user, and a userId-threaded delegation API consumed by `server.ts`
+- `server/minerWorker.ts` — one worker per user with a stored Twitch token: owns its state (tick loop, PubSub + IRC websockets, spade heartbeats, balances, chat buffers, logs/stats) and scopes every Prisma query by `userId`; `dispose()` is leak-free (guards the dispose-during-init race). Device flow persists tokens only with an owning session (`ownerUserId` captured at `/api/twitch/device/start`)
 - `src/` — React 19 + Vite + Tailwind 4 frontend; `src/i18n.ts` holds all translation resources (en + de)
 - `prisma/schema.prisma` — SQLite schema; the live DB is `prisma/dev.db` (gitignored, bind-mounted to `/app/data/miner.db` in the container)
 
