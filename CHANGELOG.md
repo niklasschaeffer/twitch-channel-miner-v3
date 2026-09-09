@@ -1,3 +1,10 @@
+## [1.9.3](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.2...v1.9.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* resolve watched channel from raid topic for stat attribution and join logging ([fdfe300](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/fdfe300f1de875fffa3259fb14bbb41bf066a2e8))
+
 ## [1.9.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.1...v1.9.2) (2026-09-09)
 
 
