@@ -44,6 +44,8 @@ export class MinerWorker {
   private pubsubUserId: string | null = null;
   private channelIds = new Map<string, string>();
   private authLoginName: string | null = null;
+  private hasChatEditScope = false;
+  private warnedMissingChatEdit = false;
 
   constructor(userId: string, hooks: { broadcast(event: string, payload: unknown): void }) {
     this.userId = userId;
@@ -90,6 +92,7 @@ export class MinerWorker {
       const v = await this.validateStoredAuthToken();
       if (v) {
         this.authLoginName = v.login;
+        this.hasChatEditScope = v.hasChatEdit;
         this.pubsubUserId = v.userId;
         this.connectPubsub();
       } else if (this.settings.authToken) {
@@ -140,6 +143,9 @@ export class MinerWorker {
           watchStreak: s.watchStreak,
           lastWatchDay: s.lastWatchDay ?? undefined,
           isMining: s.isMining,
+          lurkEnabled: s.lurkEnabled,
+          lurkMessage: s.lurkMessage,
+          lastLurkDay: s.lastLurkDay ?? undefined,
           priority: s.priority,
           enabled: s.enabled,
           chestAvailable: s.chestAvailable,
@@ -633,9 +639,50 @@ export class MinerWorker {
                   streamer.username,
                   `🟢 Streamer ${streamer.displayName} is now LIVE! Playing "${game}" with ${viewers.toLocaleString()} viewers.`
                 );
-                // Twitch's chest cadence is per-stream: reset progress when a
-                // new broadcast starts.
                 this.resetChestProgress(streamer);
+                const today = new Date().toISOString().slice(0, 10);
+                const message = streamer.lurkMessage || '!lurk';
+                const alreadySentToday = streamer.lastLurkDay === today || this.hasRecentLurkMessage(streamer.username, message);
+                if (streamer.lurkEnabled && !this.hasChatEditScope) {
+                  if (!this.warnedMissingChatEdit) {
+                    this.warnedMissingChatEdit = true;
+                    this.addLog('WARN', streamer.username, 'Lurk disabled — the Twitch token predates chat:edit. Reconnect Twitch via settings to enable chat posting.');
+                  }
+                } else if (streamer.lurkEnabled && !alreadySentToday) {
+                  this.ensureChatConnection(streamer.username);
+                  setTimeout(() => {
+                    this.sendIrcMessageWhenOpen(streamer.username, message).then(sent => {
+                      if (sent) {
+                        streamer.lastLurkDay = today;
+                        prisma.streamer.update({ where: { id: streamer.id }, data: { lastLurkDay: today } }).catch(() => {});
+                        if (this.authLoginName && !this.hasRecentLurkMessage(streamer.username, message)) {
+                          this.addStreamerChatMessage(streamer.username, {
+                            id: `lurk-${Date.now()}`,
+                            channel: streamer.username.toLowerCase(),
+                            username: this.authLoginName.toLowerCase(),
+                            displayName: this.authLoginName,
+                            color: '#9146FF',
+                            badges: [],
+                            message,
+                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                            isHighlighted: false,
+                            isBot: false,
+                            isSystem: false
+                          });
+                        }
+                      }
+                      this.addLog(
+                        sent ? 'INFO' : 'WARN',
+                        streamer.username,
+                        sent
+                          ? `Posted "${message}" to #${streamer.username} chat (lurk).`
+                          : `Lurk message not sent to #${streamer.username} — IRC socket did not open in time.`
+                      );
+                    });
+                  }, 500);
+                } else if (streamer.lurkEnabled) {
+                  this.addLog('INFO', streamer.username, `Skipped lurk post to #${streamer.username} — "${message}" already sent today.`);
+                }
               } else if (wasLive && !targetLive) {
                 this.addLog(
                   'WARN',
@@ -1301,7 +1348,7 @@ export class MinerWorker {
     return { ...this.settings, authToken: '', hasAuthToken: Boolean(this.settings.authToken) };
   }
 
-  public async validateStoredAuthToken(): Promise<{ login: string; userId: string } | null> {
+  public async validateStoredAuthToken(): Promise<{ login: string; userId: string; hasChatEdit: boolean } | null> {
     const token = this.settings.authToken;
     if (!token) return null;
     const res = await fetch('https://id.twitch.tv/oauth2/validate', {
@@ -1313,8 +1360,9 @@ export class MinerWorker {
     if (typeof v !== 'object' || v === null || !('login' in v) || !('user_id' in v)) return null;
     const login = v.login;
     const userId = v.user_id;
+    const scopes = 'scopes' in v && Array.isArray(v.scopes) ? v.scopes : [];
     if (typeof login !== 'string' || typeof userId !== 'string') return null;
-    return { login, userId };
+    return { login, userId, hasChatEdit: scopes.includes('chat:edit') };
   }
 
   private connectPubsub() {
@@ -2065,6 +2113,8 @@ export class MinerWorker {
       viewerCount: live.isLive ? live.viewerCount : 0,
       points: live.points ?? 0,
       isMining: false,
+      lurkEnabled: false,
+      lurkMessage: '!lurk',
       priority: this.streamers.length + 1,
       watchStreak: 0,
       nextChestEstimateSeconds: 900,
@@ -2101,6 +2151,9 @@ export class MinerWorker {
       points: savedInDb.points,
       watchStreak: savedInDb.watchStreak,
       isMining: savedInDb.isMining,
+      lurkEnabled: savedInDb.lurkEnabled,
+      lurkMessage: savedInDb.lurkMessage,
+      lastLurkDay: savedInDb.lastLurkDay ?? undefined,
       priority: savedInDb.priority,
       enabled: savedInDb.enabled,
       chestAvailable: savedInDb.chestAvailable,
@@ -2150,7 +2203,13 @@ export class MinerWorker {
     const clean = extractTwitchUsername(username);
     const s = this.streamers.find(item => extractTwitchUsername(item.username) === clean);
     if (!s) return null;
-    Object.assign(s, patch as Partial<Streamer>);
+    const p = patch as Partial<Streamer>;
+    const allowed: Array<keyof Streamer> = ['points', 'priority', 'enabled', 'isMining', 'isLive', 'viewerCount', 'game', 'lurkEnabled', 'lurkMessage'];
+    for (const key of allowed) {
+      if (p[key] !== undefined) {
+        (s as Record<keyof Streamer, unknown>)[key] = p[key];
+      }
+    }
 
     // Persist changes in Prisma SQLite
     try {
@@ -2163,7 +2222,9 @@ export class MinerWorker {
           isMining: (patch as Partial<Streamer>).isMining !== undefined ? (patch as Partial<Streamer>).isMining : undefined,
           isLive: (patch as Partial<Streamer>).isLive !== undefined ? (patch as Partial<Streamer>).isLive : undefined,
           viewerCount: (patch as Partial<Streamer>).viewerCount !== undefined ? (patch as Partial<Streamer>).viewerCount : undefined,
-          game: (patch as Partial<Streamer>).game !== undefined ? (patch as Partial<Streamer>).game : undefined
+          game: (patch as Partial<Streamer>).game !== undefined ? (patch as Partial<Streamer>).game : undefined,
+          lurkEnabled: (patch as Partial<Streamer>).lurkEnabled !== undefined ? (patch as Partial<Streamer>).lurkEnabled : undefined,
+          lurkMessage: (patch as Partial<Streamer>).lurkMessage !== undefined ? (patch as Partial<Streamer>).lurkMessage : undefined
         }
       });
     } catch (e) {
@@ -2280,7 +2341,6 @@ export class MinerWorker {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
 
-    // Trigger bonus claim in background if requested, but no fake bot messages
     if (lower === '!claim' || lower === '!chest') {
       if (streamer) {
         this.executeClaimBonus(streamer);
@@ -2289,6 +2349,43 @@ export class MinerWorker {
 
     this.addLog('CHAT', clean, `<${senderName}> ${text}`);
     return userMsg;
+  }
+
+  private sendIrcMessage(channel: string, text: string) {
+    const conn = this.activeConnections.get(channel.toLowerCase());
+    if (!conn?.ws || conn.ws.readyState !== 1) return false;
+    try {
+      conn.ws.send(`PRIVMSG #${channel} :${text}\r\n`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async sendIrcMessageWhenOpen(channel: string, text: string): Promise<boolean> {
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      const conn = this.activeConnections.get(channel.toLowerCase());
+      if (conn?.ws && conn.ws.readyState === 1) {
+        try {
+          conn.ws.send(`PRIVMSG #${channel} :${text}\r\n`);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      if (!conn || conn.connectionState === 'disconnected') return false;
+      await new Promise<void>(resolve => setTimeout(resolve, 500));
+    }
+    return false;
+  }
+
+  private hasRecentLurkMessage(channel: string, message: string): boolean {
+    const history = this.streamerChats.get(channel.toLowerCase()) ?? [];
+    return history.some(m =>
+      m.message.trim().toLowerCase() === message.trim().toLowerCase() &&
+      m.username === this.authLoginName?.toLowerCase()
+    );
   }
 
   public startMiner() {

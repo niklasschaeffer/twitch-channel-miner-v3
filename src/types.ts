@@ -17,6 +17,9 @@ export interface Streamer {
   watchStreak: number; // consecutive UTC days with an accepted watch heartbeat
   lastWatchDay?: string; // last UTC day (YYYY-MM-DD) a heartbeat was accepted
   isMining: boolean; // currently occupying one of the active slots (max 2)
+  lurkEnabled?: boolean; // post the lurk command in chat when the channel goes live
+  lurkMessage?: string;
+  lastLurkDay?: string; // last UTC day (YYYY-MM-DD) the lurk message was posted
   priority: number; // order rank
   enabled: boolean;
   chestAvailable: boolean;

@@ -24,7 +24,7 @@ interface StreamerListProps {
   priorityMode: PriorityMode;
   onChangePriorityMode: (mode: PriorityMode) => void;
   onToggleEnabled: (username: string, enabled: boolean) => void;
-  onDeleteStreamer: (username: string) => void;
+  onToggleLurk: (username: string, lurkEnabled: boolean) => void;
   onAddStreamerClick: () => void;
   onRefreshLive?: () => void;
   isRefreshingLive?: boolean;
@@ -40,6 +40,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
   priorityMode,
   onChangePriorityMode,
   onToggleEnabled,
+  onToggleLurk,
   onDeleteStreamer,
   onAddStreamerClick,
   onRefreshLive,
@@ -276,6 +277,18 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                       title={streamer.enabled ? t('streamersList.active') : t('streamersList.disabled')}
                     >
                       {streamer.enabled ? t('streamersList.active') : t('streamersList.disabled')}
+                    </button>
+                    {/* Lurk Toggle */}
+                    <button
+                      onClick={() => onToggleLurk(streamer.username, !streamer.lurkEnabled)}
+                      className={`text-[10px] px-2 py-1 border transition cursor-pointer font-medium ${
+                        streamer.lurkEnabled
+                          ? 'bg-[#9146FF]/10 dark:bg-[#9146FF]/20 text-[#9146FF] border-[#9146FF]/40 hover:border-[#9146FF]/70'
+                          : 'bg-zinc-100 dark:bg-[#0E0E10] text-zinc-400 dark:text-[#71717A] border-zinc-200 dark:border-[#26262C] hover:text-zinc-600'
+                      }`}
+                      title={streamer.lurkEnabled ? t('streamersList.lurkOn') : t('streamersList.lurkOff')}
+                    >
+                      {streamer.lurkEnabled ? t('streamersList.lurkOn') : t('streamersList.lurkOff')}
                     </button>
 
                     {/* External Twitch link */}

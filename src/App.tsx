@@ -391,6 +391,24 @@ export default function App() {
     }
   };
 
+  const handleToggleLurk = async (username: string, lurkEnabled: boolean) => {
+    try {
+      const res = await fetch(`/api/streamers/${username}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lurkEnabled })
+      });
+      if (res.ok) {
+        setStreamers(prev =>
+          prev.map(s => (s.username === username ? { ...s, lurkEnabled } : s))
+        );
+        showToast(`Lurk ${lurkEnabled ? 'enabled' : 'disabled'} for @${username}.`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleDeleteStreamer = async (username: string) => {
     try {
       const res = await fetch(`/api/streamers/${username}`, { method: 'DELETE' });
@@ -566,7 +584,7 @@ export default function App() {
                   priorityMode={settings?.priorityMode || 'points_asc'}
                   onChangePriorityMode={handleChangePriorityMode}
                   onToggleEnabled={handleToggleEnabled}
-                  onDeleteStreamer={handleDeleteStreamer}
+                  onToggleLurk={handleToggleLurk}
                   onAddStreamerClick={() => setIsAddStreamerOpen(true)}
                   onRefreshLive={handleRefreshLive}
                   isRefreshingLive={isRefreshingLive}

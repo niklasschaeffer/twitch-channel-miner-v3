@@ -36,6 +36,9 @@ model Streamer {
   lastWatchDay             String?
   isMining                 Boolean   @default(false)
   isLive                   Boolean   @default(true)
+  lurkEnabled              Boolean   @default(false)
+  lurkMessage              String    @default("!lurk")
+  lastLurkDay              String?
   isFollowing              Boolean   @default(false)
   priority                 Int       @default(1)
   enabled                  Boolean   @default(true)

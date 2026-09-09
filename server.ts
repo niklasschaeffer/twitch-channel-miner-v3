@@ -119,7 +119,7 @@ async function startServer() {
   // 2026-09-08). Anonymous GQL telemetry uses the public web client id
   // (constant in the engine). Do not swap them.
   const TWITCH_APP_CLIENT_ID = process.env.TWITCH_CLIENT_ID || 'ue6666qo983tsx6so1t0vnawi233wa';
-  const TWITCH_SCOPES = 'user_read chat:read channel_read';
+  const TWITCH_SCOPES = 'user_read chat:read chat:edit channel_read';
   const twitchLoginSessions = new Map<string, {
     deviceCode: string; userCode: string; verificationUri: string;
     interval: number; expiresAt: number; state: 'pending' | 'granted' | 'denied' | 'error';
