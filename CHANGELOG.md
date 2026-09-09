@@ -1,3 +1,10 @@
+## [1.9.5](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.4...v1.9.5) (2026-09-09)
+
+
+### Bug Fixes
+
+* persist manual channel ordering to server and re-sort worker list ([7264add](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/7264add91b8ab2a0eeb548bf00aa37a68a11ab43))
+
 ## [1.9.4](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.3...v1.9.4) (2026-09-09)
 
 
