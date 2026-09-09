@@ -465,13 +465,7 @@ export class MinerWorker {
             }
           }).catch(() => {});
 
-          const watchDay = new Date().toISOString().slice(0, 10);
-          if (s.lastWatchDay !== watchDay) {
-            const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-            s.watchStreak = s.lastWatchDay === yesterday ? s.watchStreak + 1 : 1;
-            s.lastWatchDay = watchDay;
-            prisma.streamer.update({ where: { id: s.id }, data: { watchStreak: s.watchStreak, lastWatchDay: watchDay } }).catch(() => {});
-          }
+          this.noteWatchedDay(s);
 
           this.addLog(
             'WATCH',
@@ -1380,6 +1374,7 @@ export class MinerWorker {
               payload.type !== 'claim-available' &&
               payload.type !== 'points-reward'
             ) return;
+            const reasonCode = 'reason_code' in payload && typeof payload.reason_code === 'string' ? payload.reason_code : null;
             const balanceData = 'balance' in payload ? payload.balance : null;
             const balance =
               typeof balanceData === 'object' && balanceData !== null && 'balance' in balanceData && typeof balanceData.balance === 'number'
@@ -1389,6 +1384,13 @@ export class MinerWorker {
               ? payload.channel.toLowerCase()
               : this.streamers.find(s => s.isMining)?.username.toLowerCase();
             if (balance !== null && channelLogin) this.applyRealBalance(channelLogin, balance);
+            if (reasonCode === 'WATCH_STREAK' && channelLogin) {
+              const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === channelLogin);
+              if (streamer) {
+                this.noteWatchedDay(streamer);
+                this.hooks.broadcast('streamers', this.streamers);
+              }
+            }
             return;
           }
 
@@ -1650,17 +1652,7 @@ export class MinerWorker {
       const watched = Math.min(streamer.watchedMinutesSinceChest, 15);
       streamer.nextChestEstimateSeconds = Math.max(0, (15 - watched) * 60);
       streamer.chestAvailable = watched >= 15;
-      const watchDay = new Date().toISOString().slice(0, 10);
-      if (streamer.lastWatchDay !== watchDay) {
-        const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-        streamer.watchStreak = streamer.lastWatchDay === yesterday ? streamer.watchStreak + 1 : 1;
-        streamer.lastWatchDay = watchDay;
-        prisma.streamer.update({
-          where: { id: streamer.id },
-          data: { watchStreak: streamer.watchStreak, lastWatchDay: watchDay }
-        }).catch(() => {});
-        this.addLog('WATCH', streamer.username, `Watch streak day ${streamer.watchStreak} for ${streamer.displayName}.`);
-      }
+      this.noteWatchedDay(streamer);
       this.hooks.broadcast('streamers', this.streamers);
     }
   }
@@ -1733,6 +1725,19 @@ export class MinerWorker {
     this.hooks.broadcast('streamers', this.streamers);
     this.hooks.broadcast('status', this.getStatus());
   }
+  private noteWatchedDay(streamer: Streamer) {
+    const watchDay = new Date().toISOString().slice(0, 10);
+    if (streamer.lastWatchDay === watchDay) return;
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    streamer.watchStreak = streamer.lastWatchDay === yesterday ? streamer.watchStreak + 1 : 1;
+    streamer.lastWatchDay = watchDay;
+    prisma.streamer.update({
+      where: { id: streamer.id },
+      data: { watchStreak: streamer.watchStreak, lastWatchDay: watchDay }
+    }).catch(() => {});
+    this.addLog('WATCH', streamer.username, `Watch streak day ${streamer.watchStreak} for ${streamer.displayName}.`);
+  }
+
 
   public async updateSettings(newSettings: Partial<MinerSettings>): Promise<MinerSettings & { hasAuthToken: boolean }> {
     // Guard: an invalid GQL Client-Id makes every Twitch API call fail with
