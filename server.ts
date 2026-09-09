@@ -123,7 +123,7 @@ async function startServer() {
   const twitchLoginSessions = new Map<string, {
     deviceCode: string; userCode: string; verificationUri: string;
     interval: number; expiresAt: number; state: 'pending' | 'granted' | 'denied' | 'error';
-    token?: string; login?: string; userId?: string; error?: string;
+    token?: string; login?: string; userId?: string; error?: string; ownerUserId?: string;
   }>();
 
   interface TwitchTokenValidation {
@@ -181,7 +181,8 @@ async function startServer() {
         verificationUri,
         interval: intervalIn,
         expiresAt: Date.now() + expiresIn * 1000,
-        state: 'pending'
+        state: 'pending',
+        ownerUserId: req.user?.id
       });
       res.json({
         sessionId,
@@ -244,15 +245,20 @@ async function startServer() {
           res.json({ state: 'error', error: 'Token received but failed validation.' });
           return;
         }
+        if (!session.ownerUserId) {
+          if (typeof sessionId === 'string') {
+            twitchLoginSessions.delete(sessionId);
+          }
+          res.json({ state: 'error', error: 'Login required — your dashboard session expired. Log in and try again.' });
+          return;
+        }
         session.state = 'granted';
         session.token = token;
         session.login = v.login;
         session.userId = v.userId;
-        // Persist as the engine's auth token (user-scoped: points balance + IRC)
-        await minerEngine.updateSettings({ authToken: token });
-        minerEngine.addLog('SUCCESS', undefined, `Twitch account connected: ${v.login}. Real Channel Points balance is now live.`);
+        await minerEngine.updateSettings({ authToken: token }, session.ownerUserId);
+        minerEngine.addLog('SUCCESS', undefined, `Twitch account connected: ${v.login}. Real Channel Points balance is now live.`, session.ownerUserId);
         res.json({ state: 'granted', login: v.login, userId: v.userId });
-        return;
       }
       // 400 = authorization_pending / slow_down — still waiting for the user.
       // The frontend drives polling cadence using `interval` from /start.
@@ -266,10 +272,15 @@ async function startServer() {
     }
   });
   app.get('/api/twitch/status', async (req, res) => {
+    const uid = req.user?.id;
+    if (!uid) {
+      res.json({ connected: false });
+      return;
+    }
     try {
-      const v = await minerEngine.validateStoredAuthToken();
+      const v = await minerEngine.validateStoredAuthToken(uid);
       if (!v) {
-        res.json({ connected: false, stale: Boolean(minerEngine.getSettings().hasAuthToken) });
+        res.json({ connected: false, stale: Boolean(minerEngine.getSettings(uid).hasAuthToken) });
         return;
       }
       res.json({ connected: true, login: v.login, userId: v.userId });
@@ -279,8 +290,8 @@ async function startServer() {
   });
 
   app.post('/api/twitch/disconnect', async (req, res) => {
-    await minerEngine.updateSettings({ authToken: '' });
-    minerEngine.addLog('INFO', undefined, 'Twitch account disconnected.');
+    await minerEngine.updateSettings({ authToken: '' }, req.user!.id);
+    minerEngine.addLog('INFO', undefined, 'Twitch account disconnected.', req.user!.id);
     res.json({ connected: false });
   });
 
@@ -442,37 +453,37 @@ async function startServer() {
 
   // Miner Control & Status
   app.get('/api/status', (req, res) => {
-    res.json(minerEngine.getStatus());
+    res.json(minerEngine.getStatus(req.user?.id));
   });
 
   app.get('/api/miner/connections', (req, res) => {
-    res.json(minerEngine.getActiveConnections());
+    res.json(minerEngine.getActiveConnections(req.user!.id));
   });
 
   app.post('/api/miner/start', (req, res) => {
-    minerEngine.startMiner();
-    res.json({ success: true, status: minerEngine.getStatus() });
+    minerEngine.startMiner(req.user!.id);
+    res.json({ success: true, status: minerEngine.getStatus(req.user!.id) });
   });
 
   app.post('/api/miner/pause', (req, res) => {
-    minerEngine.pauseMiner();
-    res.json({ success: true, status: minerEngine.getStatus() });
+    minerEngine.pauseMiner(req.user!.id);
+    res.json({ success: true, status: minerEngine.getStatus(req.user!.id) });
   });
 
   app.post('/api/miner/stop', (req, res) => {
-    minerEngine.stopMiner();
-    res.json({ success: true, status: minerEngine.getStatus() });
+    minerEngine.stopMiner(req.user!.id);
+    res.json({ success: true, status: minerEngine.getStatus(req.user!.id) });
   });
 
   app.post('/api/miner/test-claim', async (req, res) => {
     const { channel } = (req.body || {}) as { channel?: unknown };
     const channelName = typeof channel === 'string' ? channel : undefined;
-    const result = await minerEngine.triggerTestClaim(channelName);
+    const result = await minerEngine.triggerTestClaim(channelName, req.user!.id);
     res.json(result);
   });
 
   app.get('/api/streamers', requireAuth, (req, res) => {
-    const all = minerEngine.getStreamers();
+    const all = minerEngine.getStreamers(req.user!.id);
     res.json(all.filter(s => s.userId === req.user!.id));
   });
 
@@ -494,12 +505,12 @@ async function startServer() {
   app.delete('/api/streamers/:username', requireAuth, async (req, res) => {
     try {
       const cleanUsername = extractTwitchUsername(req.params.username);
-      const owned = minerEngine.getStreamers().find(s => extractTwitchUsername(s.username) === cleanUsername && s.userId === req.user!.id);
+      const owned = minerEngine.getStreamers(req.user!.id).find(s => extractTwitchUsername(s.username) === cleanUsername && s.userId === req.user!.id);
       if (!owned) {
         res.status(404).json({ error: 'Streamer not found' });
         return;
       }
-      const success = await minerEngine.removeStreamer(cleanUsername);
+      const success = await minerEngine.removeStreamer(cleanUsername, req.user!.id);
       res.json({ success });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -509,12 +520,12 @@ async function startServer() {
   app.patch('/api/streamers/:username', requireAuth, async (req, res) => {
     try {
       const cleanUsername = extractTwitchUsername(req.params.username);
-      const owned = minerEngine.getStreamers().find(s => extractTwitchUsername(s.username) === cleanUsername && s.userId === req.user!.id);
+      const owned = minerEngine.getStreamers(req.user!.id).find(s => extractTwitchUsername(s.username) === cleanUsername && s.userId === req.user!.id);
       if (!owned) {
         res.status(404).json({ error: 'Streamer not found' });
         return;
       }
-      const updated = await minerEngine.updateStreamer(cleanUsername, req.body);
+      const updated = await minerEngine.updateStreamer(cleanUsername, req.body, req.user!.id);
       if (!updated) {
         res.status(404).json({ error: 'Streamer not found' });
         return;
@@ -529,7 +540,7 @@ async function startServer() {
   app.get('/api/streamers/:username/live-stats', async (req, res) => {
     try {
       const cleanUsername = extractTwitchUsername(req.params.username);
-      const stats = await minerEngine.getLiveStats(cleanUsername);
+      const stats = await minerEngine.getLiveStats(cleanUsername, req.user!.id);
       if (!stats) {
         res.status(404).json({ error: 'Streamer not found' });
         return;
@@ -545,7 +556,7 @@ async function startServer() {
     try {
       const cleanUsername = extractTwitchUsername(req.params.username);
       const { forceLive } = req.body || {};
-      const updated = await minerEngine.toggleStreamerLive(cleanUsername, forceLive);
+      const updated = await minerEngine.toggleStreamerLive(cleanUsername, forceLive, req.user!.id);
       if (!updated) {
         res.status(404).json({ error: 'Streamer not found' });
         return;
@@ -560,7 +571,7 @@ async function startServer() {
   app.get('/api/streamers/:username/chat', (req, res) => {
     try {
       const cleanUsername = extractTwitchUsername(req.params.username);
-      const messages = minerEngine.getStreamerChat(cleanUsername);
+      const messages = minerEngine.getStreamerChat(cleanUsername, req.user!.id);
       res.json(messages);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -576,7 +587,7 @@ async function startServer() {
         res.status(400).json({ error: 'Message is required' });
         return;
       }
-      const sent = minerEngine.handleUserChatMessage(cleanUsername, message, senderName || 'You');
+      const sent = minerEngine.handleUserChatMessage(cleanUsername, message, senderName || 'You', req.user!.id);
       res.json(sent);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -586,7 +597,7 @@ async function startServer() {
   // Refresh all streamers from live Twitch telemetry
   app.post('/api/streamers/refresh-live', async (req, res) => {
     try {
-      const streamers = await minerEngine.refreshAllLiveStats();
+      const streamers = await minerEngine.refreshAllLiveStats(req.user!.id);
       res.json({ success: true, count: streamers.length, streamers });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -595,12 +606,12 @@ async function startServer() {
 
   // Miner Settings (Stored in SQLite via Prisma)
   app.get('/api/settings', (req, res) => {
-    res.json(minerEngine.getSettings());
+    res.json(minerEngine.getSettings(req.user!.id));
   });
 
   app.post('/api/settings', async (req, res) => {
     try {
-      const updated = await minerEngine.updateSettings(req.body);
+      const updated = await minerEngine.updateSettings(req.body, req.user!.id);
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -612,18 +623,18 @@ async function startServer() {
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
     const level = req.query.level as string | undefined;
     const search = req.query.search as string | undefined;
-    res.json(minerEngine.getLogs(limit, level, search));
+    res.json(minerEngine.getLogs(limit, level, search, req.user!.id));
   });
 
   app.post('/api/logs/clear', async (req, res) => {
-    await minerEngine.clearLogs();
+    await minerEngine.clearLogs(req.user!.id);
     res.json({ success: true });
   });
 
   // Statistical Records (Stored in SQLite via Prisma ORM)
   app.get('/api/statistics', async (req, res) => {
     try {
-      const records = await minerEngine.getStatisticalRecords();
+      const records = await minerEngine.getStatisticalRecords(req.user!.id);
       res.json(records);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -632,7 +643,7 @@ async function startServer() {
 
   app.post('/api/statistics', async (req, res) => {
     try {
-      await minerEngine.recordStatisticalData(req.body);
+      await minerEngine.recordStatisticalData(req.body, req.user!.id);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -642,7 +653,7 @@ async function startServer() {
   // Analytics Aggregation (Calculated from SQLite Statistical Records)
   app.get('/api/analytics', async (req, res) => {
     try {
-      const analytics = await minerEngine.getAnalytics();
+      const analytics = await minerEngine.getAnalytics(req.user!.id);
       res.json(analytics);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -687,6 +698,8 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  await minerEngine.spawnWorkersFromDb();
 
   function listenWithRetry(retries = 5) {
     const sockets = new Set<any>();
