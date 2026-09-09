@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.8.0...v1.9.0) (2026-09-09)
+
+
+### Features
+
+* per-streamer !lurk posting on live transition with dedupe guards ([945291b](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/945291b68e199068d8d810b5b9738326db1231da))
+
 # [1.8.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.7.0...v1.8.0) (2026-09-09)
 
 
