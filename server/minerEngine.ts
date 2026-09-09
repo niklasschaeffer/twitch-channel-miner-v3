@@ -1512,7 +1512,7 @@ export class MinerEngine {
           method: 'POST',
           headers: this.authenticatedGqlHeaders(),
           body: JSON.stringify({
-            query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { balance } } } follow { followedAt } self { subscriptionBenefit { tier } } } }',
+            query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { balance } } } self { follower { followedAt } subscriptionBenefit { tier } } } }',
             variables: { login: mining.username }
           }),
           signal: AbortSignal.timeout(8000)
@@ -1523,8 +1523,7 @@ export class MinerEngine {
         const data = j.data as {
           user?: {
             channel?: { self?: { communityPoints?: { balance?: unknown } | null } | null } | null;
-            follow?: unknown;
-            self?: { subscriptionBenefit?: { tier?: unknown } | null } | null;
+            self?: { follower?: { followedAt?: unknown } | null; subscriptionBenefit?: { tier?: unknown } | null } | null;
           } | null;
         };
         const balance = data.user?.channel?.self?.communityPoints?.balance;
@@ -1538,9 +1537,7 @@ export class MinerEngine {
 
         const user = data.user;
         if (!user) continue;
-        const follow = typeof user.follow === 'object' && user.follow !== null && 'followedAt' in user.follow
-          ? (user.follow as { followedAt?: unknown })
-          : null;
+        const follow = user.self?.follower ?? null;
         const tier = user.self?.subscriptionBenefit?.tier;
         const newIsFollowing = follow !== null;
         const newTier = typeof tier === 'string' ? tier : null;
@@ -1887,10 +1884,10 @@ export class MinerEngine {
                     }
                   }
                 }
-                follow {
-                  followedAt
-                }
                 self {
+                  follower {
+                    followedAt
+                  }
                   subscriptionBenefit {
                     tier
                   }
@@ -1925,14 +1922,14 @@ export class MinerEngine {
           const points = rawChannel && typeof rawChannel === 'object' && 'self' in rawChannel && rawChannel.self && typeof rawChannel.self === 'object'
             ? (rawChannel.self as { communityPoints?: { balance?: unknown } }).communityPoints?.balance
             : undefined;
-          const rawFollow = user.follow;
-          const follow = rawFollow && typeof rawFollow === 'object' && 'followedAt' in rawFollow
-            ? rawFollow as { followedAt?: unknown }
-            : null;
+
           const rawSelf = user.self;
           const tier = rawSelf && typeof rawSelf === 'object' && 'subscriptionBenefit' in rawSelf && rawSelf.subscriptionBenefit && typeof rawSelf.subscriptionBenefit === 'object'
             ? (rawSelf.subscriptionBenefit as { tier?: unknown }).tier
             : undefined;
+          const follow = rawSelf && typeof rawSelf === 'object' && 'follower' in rawSelf && rawSelf.follower && typeof rawSelf.follower === 'object'
+            ? rawSelf.follower
+            : null;
           const rawDisplayName = user.displayName;
           const rawAvatar = user.profileImageURL;
           return {
