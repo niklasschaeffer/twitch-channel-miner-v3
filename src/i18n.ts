@@ -80,7 +80,10 @@ export const resources = {
         active: 'Active',
         disabled: 'Disabled',
         live: 'Live',
-        offline: 'Offline'
+        offline: 'Offline',
+        badgeFollow: 'Following',
+        badgeSub: 'Sub',
+        badgeSubTier: 'Sub {{tier}}'
       },
       analytics: {
         title: 'Prisma Statistical Records & Analytics',
@@ -329,7 +332,10 @@ export const resources = {
         active: 'Aktiv',
         disabled: 'Deaktiviert',
         live: 'Live',
-        offline: 'Offline'
+        offline: 'Offline',
+        badgeFollow: 'Folgt',
+        badgeSub: 'Abo',
+        badgeSubTier: 'Abo {{tier}}'
       },
       analytics: {
         title: 'Prisma Statistische Datensätze & Analysen',

@@ -17,6 +17,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { Streamer, PriorityMode } from '../types';
+import { formatSubTier } from '../lib/badges';
 
 interface StreamerListProps {
   streamers: Streamer[];
@@ -211,6 +212,22 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                         <span className="text-[10px] text-zinc-400 dark:text-[#71717A] font-mono truncate hidden sm:inline">
                           @{streamer.username}
                         </span>
+                        {streamer.isFollowing && (
+                          <span
+                            title={t('streamersList.badgeFollow')}
+                            className="text-[9px] leading-none px-1 py-0.5 bg-[#9146FF]/15 text-[#9146FF] dark:text-[#c299ff] font-bold shrink-0"
+                          >
+                            {t('streamersList.badgeFollow')}
+                          </span>
+                        )}
+                        {typeof streamer.subscriptionTier === 'string' && streamer.subscriptionTier.length > 0 && (
+                          <span
+                            title={t('streamersList.badgeSubTier', { tier: formatSubTier(streamer.subscriptionTier) })}
+                            className="text-[9px] leading-none px-1 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold shrink-0"
+                          >
+                            {t('streamersList.badgeSubTier', { tier: formatSubTier(streamer.subscriptionTier) })}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-zinc-500 dark:text-[#ADADB8] truncate">
                         {streamer.game || 'Variety'}

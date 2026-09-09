@@ -17,6 +17,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { Streamer, ChatMessage } from '../types';
+import { formatSubTier } from '../lib/badges';
 
 interface SlotIrcChatProps {
   streamer: Streamer | null;
@@ -201,6 +202,22 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                 }`}
               />
               <span>{s.displayName}</span>
+              {s.isFollowing && (
+                <span
+                  title={t('streamersList.badgeFollow')}
+                  className="text-[9px] leading-none px-1 bg-[#9146FF]/15 text-[#9146FF] dark:text-[#c299ff] font-bold shrink-0"
+                >
+                  {t('streamersList.badgeFollow')}
+                </span>
+              )}
+              {typeof s.subscriptionTier === 'string' && s.subscriptionTier.length > 0 && (
+                <span
+                  title={t('streamersList.badgeSubTier', { tier: formatSubTier(s.subscriptionTier) })}
+                  className="text-[9px] leading-none px-1 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold shrink-0"
+                >
+                  {t('streamersList.badgeSubTier', { tier: formatSubTier(s.subscriptionTier) })}
+                </span>
+              )}
               {s.isMining && (
                 <span className="text-[9px] px-1 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold">
                   MINING
@@ -237,6 +254,22 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               <span className="text-sm font-bold text-zinc-900 dark:text-[#EFEFF1]">
                 #{streamer.displayName}
               </span>
+              {streamer.isFollowing && (
+                <span
+                  title={t('streamersList.badgeFollow')}
+                  className="text-[9px] leading-none px-1 py-0.5 bg-[#9146FF]/15 text-[#9146FF] dark:text-[#c299ff] font-bold shrink-0"
+                >
+                  {t('streamersList.badgeFollow')}
+                </span>
+              )}
+              {typeof streamer.subscriptionTier === 'string' && streamer.subscriptionTier.length > 0 && (
+                <span
+                  title={t('streamersList.badgeSubTier', { tier: formatSubTier(streamer.subscriptionTier) })}
+                  className="text-[9px] leading-none px-1 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold shrink-0"
+                >
+                  {t('streamersList.badgeSubTier', { tier: formatSubTier(streamer.subscriptionTier) })}
+                </span>
+              )}
 
               {/* Live / Offline status badge with 1-click toggle */}
               <button

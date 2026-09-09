@@ -35,8 +35,10 @@ model Streamer {
   watchStreak              Int       @default(0)
   isMining                 Boolean   @default(false)
   isLive                   Boolean   @default(true)
+  isFollowing              Boolean   @default(false)
   priority                 Int       @default(1)
   enabled                  Boolean   @default(true)
+  subscriptionTier         String?
   chestAvailable           Boolean   @default(false)
   nextChestEstimateSeconds Int       @default(900)
   totalPointsMined         Int       @default(0)

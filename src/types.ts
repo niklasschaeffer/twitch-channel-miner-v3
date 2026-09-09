@@ -24,6 +24,8 @@ export interface Streamer {
   totalPointsMined: number;
   lastClaimTime?: string;
   uptimeMinutes?: number;
+  isFollowing: boolean;
+  subscriptionTier?: string | null;
 }
 
 export interface MinerSettings {

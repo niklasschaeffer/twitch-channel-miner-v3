@@ -158,7 +158,9 @@ export class MinerEngine {
           nextChestEstimateSeconds: s.nextChestEstimateSeconds,
           totalPointsMined: s.totalPointsMined,
           lastClaimTime: s.lastClaimTime || undefined,
-          uptimeMinutes: s.uptimeMinutes
+          uptimeMinutes: s.uptimeMinutes,
+          isFollowing: s.isFollowing,
+          subscriptionTier: s.subscriptionTier ?? undefined
         }));
       } else if (process.env.NODE_ENV === 'development') {
         // Seed default streamers ONLY in dev
@@ -352,7 +354,8 @@ export class MinerEngine {
         nextChestEstimateSeconds: created.nextChestEstimateSeconds,
         totalPointsMined: created.totalPointsMined,
         lastClaimTime: created.lastClaimTime || undefined,
-        uptimeMinutes: created.uptimeMinutes
+        uptimeMinutes: created.uptimeMinutes,
+        isFollowing: created.isFollowing
       });
     }
 
@@ -1505,19 +1508,46 @@ export class MinerEngine {
           method: 'POST',
           headers: this.authenticatedGqlHeaders(),
           body: JSON.stringify({
-            query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { balance } } } } }',
+            query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { balance } } } follow { followedAt } self { subscriptionBenefit { tier } } } }',
             variables: { login: mining.username }
           }),
           signal: AbortSignal.timeout(8000)
         });
         const j: unknown = await res.json();
         if (typeof j !== 'object' || j === null || !('data' in j) || typeof j.data !== 'object' || j.data === null) continue;
-        const data = j.data as { user?: { channel?: { self?: { communityPoints?: { balance?: unknown } | null } | null } | null } | null };
+        const data = j.data as {
+          user?: {
+            channel?: { self?: { communityPoints?: { balance?: unknown } | null } | null } | null;
+            follow?: unknown;
+            self?: { subscriptionBenefit?: { tier?: unknown } | null } | null;
+          } | null;
+        };
         const balance = data.user?.channel?.self?.communityPoints?.balance;
         if (typeof balance === 'number') {
           this.applyRealBalance(mining.username, balance);
         } else {
           this.addLog('WARN', mining.username, 'Balance snapshot unavailable — will sync on the next points event.');
+        }
+
+        const user = data.user;
+        if (!user) continue;
+        const follow = typeof user.follow === 'object' && user.follow !== null && 'followedAt' in user.follow
+          ? (user.follow as { followedAt?: unknown })
+          : null;
+        const tier = user.self?.subscriptionBenefit?.tier;
+        const newIsFollowing = follow !== null;
+        const newTier = typeof tier === 'string' ? tier : null;
+        if (newIsFollowing !== mining.isFollowing || newTier !== (mining.subscriptionTier ?? null)) {
+          mining.isFollowing = newIsFollowing;
+          mining.subscriptionTier = newTier;
+          prisma.streamer.update({
+            where: { id: mining.id },
+            data: {
+              isFollowing: newIsFollowing,
+              subscriptionTier: newTier
+            }
+          }).catch(() => {});
+          this.broadcastSSE('streamers', this.streamers);
         }
       } catch (err) {
         this.addLog('WARN', mining.username, `Balance snapshot failed: ${err instanceof Error ? err.message : 'unknown'}`);
@@ -1798,6 +1828,8 @@ export class MinerEngine {
     viewerCount: number;
     game: string;
     points?: number;
+    isFollowing?: boolean;
+    subscriptionTier?: string | null;
   }> {
     const clean = extractTwitchUsername(username);
     if (!clean) {
@@ -1847,6 +1879,14 @@ export class MinerEngine {
                     }
                   }
                 }
+                follow {
+                  followedAt
+                }
+                self {
+                  subscriptionBenefit {
+                    tier
+                  }
+                }
               }
             }`,
             variables: { login: clean }
@@ -1857,21 +1897,45 @@ export class MinerEngine {
 
       clearTimeout(timeout);
       if (res.ok) {
-        const json: any = await res.json();
-        const user = json?.[0]?.data?.user;
+        const json: unknown = await res.json();
+        let user: Record<string, unknown> | null = null;
+        if (Array.isArray(json) && json[0] && typeof json[0] === 'object' && 'data' in json[0] && json[0].data && typeof json[0].data === 'object' && 'user' in json[0].data) {
+          const rawUser = json[0].data.user;
+          if (rawUser && typeof rawUser === 'object') {
+            user = rawUser as Record<string, unknown>;
+          }
+        }
         if (user) {
-          const stream = user.stream;
+          const rawStream = user.stream;
+          const stream = rawStream && typeof rawStream === 'object' ? rawStream as { viewersCount?: unknown; game?: { name?: unknown } | null } : null;
           const isLive = !!stream;
           const viewerCount = stream ? Number(stream.viewersCount || 0) : 0;
-          const game = stream?.game?.name || (isLive ? 'Variety Stream' : 'Offline');
-          const points = user.channel?.self?.communityPoints?.balance;
+          const game = stream?.game && typeof stream.game === 'object' && typeof stream.game.name === 'string'
+            ? stream.game.name
+            : (isLive ? 'Variety Stream' : 'Offline');
+          const rawChannel = user.channel;
+          const points = rawChannel && typeof rawChannel === 'object' && 'self' in rawChannel && rawChannel.self && typeof rawChannel.self === 'object'
+            ? (rawChannel.self as { communityPoints?: { balance?: unknown } }).communityPoints?.balance
+            : undefined;
+          const rawFollow = user.follow;
+          const follow = rawFollow && typeof rawFollow === 'object' && 'followedAt' in rawFollow
+            ? rawFollow as { followedAt?: unknown }
+            : null;
+          const rawSelf = user.self;
+          const tier = rawSelf && typeof rawSelf === 'object' && 'subscriptionBenefit' in rawSelf && rawSelf.subscriptionBenefit && typeof rawSelf.subscriptionBenefit === 'object'
+            ? (rawSelf.subscriptionBenefit as { tier?: unknown }).tier
+            : undefined;
+          const rawDisplayName = user.displayName;
+          const rawAvatar = user.profileImageURL;
           return {
-            displayName: user.displayName || clean,
-            avatar: user.profileImageURL,
+            displayName: typeof rawDisplayName === 'string' ? rawDisplayName : clean,
+            avatar: typeof rawAvatar === 'string' ? rawAvatar : undefined,
             isLive,
             viewerCount,
             game,
-            points: typeof points === 'number' ? points : undefined
+            points: typeof points === 'number' ? points : undefined,
+            isFollowing: follow !== null,
+            subscriptionTier: typeof tier === 'string' ? tier : null
           };
         }
       }
@@ -1995,11 +2059,13 @@ export class MinerEngine {
       watchStreak: 1,
       isMining: false,
       priority: this.streamers.length + 1,
-      enabled: true,
       chestAvailable: false,
       nextChestEstimateSeconds: 900,
       totalPointsMined: 0,
-      uptimeMinutes: live.isLive ? 60 : 0
+      enabled: true,
+      uptimeMinutes: live.isLive ? 60 : 0,
+      isFollowing: live.isFollowing === true,
+      subscriptionTier: typeof live.subscriptionTier === 'string' ? live.subscriptionTier : null
     };
 
     // Store in SQLite database via Prisma ORM engine
@@ -2009,8 +2075,9 @@ export class MinerEngine {
         isLive: newStreamerData.isLive,
         viewerCount: newStreamerData.viewerCount,
         game: newStreamerData.game,
-        avatar: newStreamerData.avatar,
-        displayName: newStreamerData.displayName
+        displayName: newStreamerData.displayName,
+        isFollowing: newStreamerData.isFollowing,
+        subscriptionTier: newStreamerData.subscriptionTier
       },
       create: newStreamerData
     });
@@ -2033,7 +2100,9 @@ export class MinerEngine {
       nextChestEstimateSeconds: savedInDb.nextChestEstimateSeconds,
       totalPointsMined: savedInDb.totalPointsMined,
       lastClaimTime: savedInDb.lastClaimTime || undefined,
-      uptimeMinutes: savedInDb.uptimeMinutes
+      uptimeMinutes: savedInDb.uptimeMinutes,
+      isFollowing: savedInDb.isFollowing,
+      subscriptionTier: savedInDb.subscriptionTier ?? undefined
     };
 
     this.streamers.push(streamer);
