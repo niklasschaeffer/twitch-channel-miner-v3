@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.6.0...v1.7.0) (2026-09-09)
+
+
+### Features
+
+* live watch streak tracking from accepted heartbeats ([7ed0612](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/7ed061263984cfa03add705083e88e4a77636ff1))
+
 # [1.6.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.5.0...v1.6.0) (2026-09-09)
 
 
