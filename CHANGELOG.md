@@ -1,3 +1,10 @@
+## [1.9.4](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.3...v1.9.4) (2026-09-09)
+
+
+### Bug Fixes
+
+* live translation ([9ff2738](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/9ff2738aac8db1239ab8e97251504175aa4e3397))
+
 ## [1.9.3](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.2...v1.9.3) (2026-09-09)
 
 
