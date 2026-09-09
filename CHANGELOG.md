@@ -1,3 +1,10 @@
+## [1.9.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.1...v1.9.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* attribute raid stat to the raided channel, not the first mining slot ([70c53de](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/70c53de6234e019d490a113d4ec8346b62292ce4))
+
 ## [1.9.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.0...v1.9.1) (2026-09-09)
 
 
