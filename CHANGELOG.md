@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.3.1...v1.3.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* regenerate logo with clean alpha via chroma key ([5e6b73d](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/5e6b73d73847020764809aaea98a44faa4bb6a3f))
+
 ## [1.3.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.3.0...v1.3.1) (2026-09-09)
 
 
