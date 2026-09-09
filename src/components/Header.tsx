@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Play, Pause, Gift, Settings, Database, Sun, Moon, Globe, User as UserIcon } from 'lucide-react';
 import { MinerStatus, MinerSettings, User } from '../types';
 import { getGravatarUrl } from '../lib/gravatar';
+import logoUrl from '../assets/logo.png';
 
 interface HeaderProps {
   status: MinerStatus | null;
@@ -54,11 +55,11 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16">
           {/* Brand & Identity */}
           <div className="flex items-center space-x-3 sm:space-x-4">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-[#9146FF] flex items-center justify-center text-white font-bold shadow-xs">
-              <svg className="w-5 h-5 sm:w-6 sm:h-6 fill-current" viewBox="0 0 24 24">
-                <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z" />
-              </svg>
-            </div>
+            <img
+              src={logoUrl}
+              alt="Twitch Miner"
+              className="w-9 h-9 sm:w-10 sm:h-10 object-contain shadow-xs"
+            />
             <div>
               <div className="flex items-center space-x-2">
                 <h1 className="text-sm sm:text-base font-bold text-zinc-900 dark:text-[#EFEFF1] tracking-tight">
