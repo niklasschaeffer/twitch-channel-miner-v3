@@ -607,6 +607,10 @@ export class MinerWorker {
           const u = userMap.get(clean) || userMap.get(targetLogin);
 
           if (u) {
+            if (typeof u.id === 'string' && u.id) {
+              this.channelIds.set(streamer.username, u.id);
+              this.channelIds.set(targetLogin, u.id);
+            }
             const wasLive = streamer.isLive;
             const isTwitchLive = !!u.stream;
             const realViewers = u.stream ? Number(u.stream.viewersCount || 0) : 0;
@@ -874,8 +878,7 @@ export class MinerWorker {
               this.addLog(
                 'RAID',
                 clean,
-                `Channel raid detected by ${raider} in #${targetChannel}! Raid points bonus captured (+250 pts).`,
-                250
+                `Channel raid detected by ${raider} in #${targetChannel}. Following the raid to earn the bonus…`
               );
             }
           }
@@ -1449,6 +1452,10 @@ export class MinerWorker {
             if (!raid) return;
             if (!('id' in raid) || typeof raid.id !== 'string') return;
             if (!('target_login' in raid) || typeof raid.target_login !== 'string') return;
+            if (payload.type === 'raid_go_v2' && this.settings.followRaids) {
+              this.status.totalRaids += 1;
+              this.recordStatisticalData({ raidsCount: 1, channel: this.streamers.find(s => s.isMining)?.username.toLowerCase() });
+            }
             this.joinRaid(raid.id, raid.target_login);
             return;
           }
