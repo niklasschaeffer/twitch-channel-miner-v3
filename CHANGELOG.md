@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.7.0...v1.8.0) (2026-09-09)
+
+
+### Features
+
+* track watch streaks from PubSub WATCH_STREAK awards and shared day transition ([1ccd369](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/1ccd36934f6af9d2c7de0349db6f981bed3148e1))
+
 # [1.7.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.6.0...v1.7.0) (2026-09-09)
 
 
