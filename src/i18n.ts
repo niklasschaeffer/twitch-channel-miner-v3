@@ -82,6 +82,7 @@ export const resources = {
         lurkOff: 'Lurk off',
         disabled: 'Disabled',
         offline: 'Offline',
+        live: 'Live',
         badgeFollow: 'Following',
         badgeSub: 'Sub',
         badgeSubTier: 'Sub {{tier}}'
