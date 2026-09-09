@@ -16,17 +16,19 @@ There is no test suite. Verification = `tsc --noEmit` plus live smoke tests agai
 
 - `server.ts` — Express app: auth routes (Twitch device flow, Google OAuth, local email login), streamer CRUD, SSE broadcast, session endpoints
 - `server/minerEngine.ts` — engine manager: per-user `MinerWorker` registry (`ensureWorker`/`disposeWorker`), boot spawn from stored tokens (`spawnWorkersFromDb`, which also adopts legacy NULL-`userId` rows into the oldest account), SSE fan-out scoped per user, and a userId-threaded delegation API consumed by `server.ts`
-- `server/minerWorker.ts` — one worker per user with a stored Twitch token: owns its state (tick loop, PubSub + IRC websockets, spade heartbeats, balances, chat buffers, logs/stats) and scopes every Prisma query by `userId`; `dispose()` is leak-free (guards the dispose-during-init race). Device flow persists tokens only with an owning session (`ownerUserId` captured at `/api/twitch/device/start`)
+- `server/minerWorker.ts` — one worker per user with a stored Twitch token: owns its state (tick loop, PubSub + IRC websockets, spade heartbeats, balances, chat buffers, logs/stats, watch-streak + lurk-day tracking) and scopes every Prisma query by `userId`; `dispose()` is leak-free (guards the dispose-during-init race). Device flow persists tokens only with an owning session (`ownerUserId` captured at `/api/twitch/device/start`)
 - `src/` — React 19 + Vite + Tailwind 4 frontend; `src/i18n.ts` holds all translation resources (en + de)
 - `prisma/schema.prisma` — SQLite schema; the live DB is `prisma/dev.db` (gitignored, bind-mounted to `/app/data/miner.db` in the container)
 
 ### Twitch integration ground rules
 
 - **Client-Id policy:** authenticated GQL (viewer context) uses the TV client id `ue6666qo983tsx6so1t0vnawi233wa`; anonymous GQL telemetry uses the public web id `kimne78kx3ncx6brgo4mv6wki5h1ko`. Custom client ids receive HTTP 400 from GQL — `updateSettings` probes and rejects them
-- Device-flow OAuth token is stored server-side in `MinerSettings.authToken` only; never sent to the frontend (`getSettings()` returns `hasAuthToken` instead)
+- Device-flow OAuth token is stored server-side in `MinerSettings.authToken` only; never sent to the frontend (`getSettings()` returns `hasAuthToken` instead). Scopes requested: `user_read chat:read chat:edit channel_read` — tokens paired before `chat:edit` was added must be re-paired for chat posting (lurk)
 - Watch earning = POST base64 minute-watched event to `spade.twitch.tv/track` (spade URL extracted from `assets.twitch.tv/config/settings.*.js`, not channel HTML); 204 = accepted
 - Claims/raids/drops/predictions are persisted GQL mutations mirroring upstream TwitchDropsMiner (`Twitch.py`); no Client-Integrity token needed
-- Simulation (fake points, fake events) is gated behind `isSimulationMode` — production must never fabricate earnings or connection state
+- Raids: PubSub `raid.{channelId}` topics are only subscribed for channels in the `channelIds` map (populated by `checkAllStreamersOnlineStatus`, which runs every 2 ticks) — topics built at `ws.onopen`; a status-check cycle must run before raid/prediction topics go live after boot. On `raid_go_v2` the worker joins via `JoinRaid` and records `raidsCount` attributed to the watched channel (resolved by reverse-looking up the topic id through `channelIds`; never attribute to `raid.target_login` — that is the raid destination, not the watched channel)
+- Watch streaks: Twitch GQL has NO watch-streak field (verified by error-probing `CommunityPointsProperties` and introspection — it returns empty). Streaks are tracked locally: `lastWatchDay` (UTC `YYYY-MM-DD`) on `Streamer`, advanced per accepted spade heartbeat and per PubSub `WATCH_STREAK` award (`reason_code` on `points-earned`); init resets streaks with no watch today/yesterday. Never hardcode streak values
+- Auto-lurk: per-streamer `lurkEnabled`/`lurkMessage` posts the message via IRC `PRIVMSG` when the channel transitions offline→live. Dedupe is two-layer: durable `lastLurkDay` (one post per UTC day, survives restarts) plus a self-echoed chat-buffer check (Twitch does not echo own PRIVMSG). Posting requires `chat:edit` — tokens without it (pre-scope-change) are detected via `validateStoredAuthToken().hasChatEditScope` and skip with a once-per-worker re-auth WARN; never log a lurk post as sent when the scope is missing
 
 ## Code rules (enforced)
 

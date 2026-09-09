@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --bg-main: #0E0E10;
@@ -15,14 +17,25 @@
   }
 
   html, body {
-    background-color: #0E0E10;
-    color: #EFEFF1;
+    background-color: var(--bg-main);
+    color: var(--text-primary);
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     letter-spacing: -0.01em;
   }
 
   code, kbd, samp, pre {
     font-family: 'JetBrains Mono', monospace;
+  }
+
+  html:not(.dark) {
+    --bg-main: #FFFFFF;
+    --bg-surface: #FAFAFA;
+    --bg-panel: #FFFFFF;
+    --border-subtle: #E4E4E7;
+    --border-medium: #D4D4D8;
+    --text-primary: #18181B;
+    --text-secondary: #3F3F46;
+    --text-muted: #71717A;
   }
 }
 
@@ -33,16 +46,16 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0E0E10;
+  background: var(--bg-main);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #26262C;
+  background: var(--border-subtle);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #363640;
+  background: var(--border-medium);
 }
 
 .no-scrollbar::-webkit-scrollbar {

@@ -27,7 +27,9 @@ Once your Twitch account is connected and channels are on the watchlist, **your 
 | **Watch earning** | Sends minute-watched heartbeats to Twitch's spade telemetry endpoint once per minute per mining channel — the same signal the Twitch web player sends |
 | **Bonus chests** | Subscribes to real-time PubSub `community-points-user-v1` events; when a chest becomes claimable it polls and executes the persisted `ClaimCommunityPoints` GQL mutation |
 | **Drops** | Polls your inventory (10-min cadence, toggleable) and claims every drop with `is_claimable` + `dropInstanceID` via `DropsPage_ClaimDropRewards` |
-| **Raids** | Listens to PubSub `raid` topics per channel and joins raids via the persisted `JoinRaid` mutation |
+| **Raids** | Subscribes to PubSub `raid` topics per mining channel; on a raid event it joins via the persisted `JoinRaid` mutation (auto-follow configurable) and records the raid against the watched channel |
+| **Watch streaks** | Tracks consecutive UTC days with accepted heartbeats per channel (Twitch's GQL exposes no streak field); resets honestly after missed days |
+| **Auto-lurk** | Optionally posts a chat message (default `!lurk`) via IRC into a channel's chat the moment it goes live — once per day per channel, with self-echo dedupe so it never repeats |
 | **Predictions** | Listens to PubSub `predictions-channel-v1`; when an event goes ACTIVE it places a bet via `MakePrediction` (capped by your `maxBetPoints` setting) |
 | **Live balance sync** | Per-channel balances sync via PubSub events plus a 5-minute GQL snapshot fallback |
 
@@ -84,9 +86,8 @@ The app is now at `http://localhost:3000`. The SQLite database lives at `prisma/
 ## Using the app
 
 ### Dashboard
-- **Active Watch Slots** — the channels currently being mined. Buttons: `Force Claim` (attempt a chest claim now), `Test Claim`.
+- **Monitored Channels** — your watchlist with live status, viewer counts, points, and watch-streak badges. Each entry: toggle active, toggle `Lurk` (auto-post `!lurk` in that chat when the channel goes live), open chat, filter the console, remove.
 - **IRC Chat panel** — pick a channel from the `Channels:` bar (scrolls sideways; clickable) to view its live chat. Known chat bots (nightbot, streamelements, etc.) and the broadcaster are filtered out.
-- **Monitored Channels** — your watchlist with live status, viewer counts, and points. Each entry: toggle active, open chat, filter the console, remove.
 - **Live Console** — real-time event log with per-channel filters and level filters (Claims / Watch / Raids / Predictions / Drops).
 
 ### Statistical Analytics tab
@@ -107,8 +108,7 @@ The app is now at `http://localhost:3000`. The SQLite database lives at `prisma/
 ```
 spade heartbeats (1/min) ──▶ Twitch awards points on its own schedule
 PubSub balance events  ──▶ per-channel balance sync + analytics records
-claim available        ──▶ ClaimCommunityPoints mutation ──▶ balance +50...
-raid event             ──▶ JoinRaid mutation
+raid event             ──▶ JoinRaid mutation + raid recorded for watched channel
 prediction ACTIVE      ──▶ MakePrediction mutation (capped bet)
 inventory poll (10min) ──▶ DropsPage_ClaimDropRewards per claimable drop
 ```
@@ -122,8 +122,10 @@ Analytics record **only actual earned deltas** — a claim logs its earned point
 - ✅ Real chest claiming (verified: +50, 80 → 130 on a live channel)
 - ✅ Watch earning via spade heartbeats (204 accepted; points-earned events flow)
 - ✅ Per-channel live balance sync (PubSub + 5-min GQL snapshots, verified converging to Twitch's own numbers)
-- ✅ Raid following (JoinRaid, dedup per raid id)
+- ✅ Raid following (PubSub `raid` topics per mining channel, JoinRaid on raid events, attributed to the watched channel)
 - ✅ Drop claiming (Inventory poll + claim per claimable drop)
+- ✅ Watch streaks: consecutive UTC watch days per channel, from accepted heartbeats and `WATCH_STREAK` PubSub awards; stale streaks reset at boot
+- ✅ Per-streamer auto-lurk: posts `!lurk` (configurable message) via IRC when a watched channel goes live — once per day per channel, deduped
 - ✅ Prediction auto-betting (MakePrediction, max-bet cap, per-event dedup)
 - ✅ Multi-user auth: scrypt-hashed passwords, DB-backed sessions (30-day httpOnly cookie), global API gate — all `/api` routes except health/auth/twitch-device/status require a session
 - ✅ Per-user streamer ownership (`@@unique([userId, username])`, scoped CRUD + SSE)
@@ -142,6 +144,9 @@ Analytics record **only actual earned deltas** — a claim logs its earned point
 - ⚠️ Google-login users have no local password; add one via re-register or a manual hash reset if you want email login too
 
 **Recent history highlights** (full log: `git log --oneline`):
+- `a755290`/`fdfe300` — raid fix: PubSub raid topics now subscribed, JoinRaid fires, raids recorded per watched channel
+- `945291b` — per-streamer auto-lurk: `!lurk` posted via IRC on live transition, day-deduped
+- `7ed0612`/`1ccd369` — live watch-streak tracking (heartbeat days + `WATCH_STREAK` awards, honest resets)
 - `1920cfd` — per-user miner workers replace the singleton engine; auto-adopt legacy NULL-owner rows at boot
 - `d4bc078` — auth modal prop fix (fullscreen gate now opens correctly after login)
 - `35c7295` — global API gate + logout endpoint
