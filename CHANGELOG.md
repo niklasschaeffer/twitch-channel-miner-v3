@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.5.0...v1.6.0) (2026-09-09)
+
+
+### Features
+
+* auto-adopt legacy null-owner rows into oldest user at boot ([1920cfd](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/1920cfd1659a9e4ae22afa678fb4bd4cc19ef1b5))
+
 # [1.5.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.4.1...v1.5.0) (2026-09-09)
 
 
