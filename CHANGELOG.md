@@ -1,3 +1,12 @@
+## [1.4.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.4.0...v1.4.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* harden relationship fetch — TV client id on live stats, skip GQL error bodies, symmetric startup mapping ([3e1687e](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/3e1687e9c3abe10dc12e72b68d0902c1650e2002))
+* refresh follow/sub relationship for all enabled streamers, not only mining slots ([c695dfd](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/c695dfda3b0884282e47bc453e440ffb0a8e4f8e))
+* use self.follower for follow status — user.follow is always null under GQL ([44f9a91](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/44f9a91bf42359ca9a67d3345531538e392126e1))
+
 # [1.4.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.3.3...v1.4.0) (2026-09-09)
 
 
