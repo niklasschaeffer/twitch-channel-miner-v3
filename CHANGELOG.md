@@ -1,3 +1,10 @@
+## [1.3.3](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.3.2...v1.3.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* remove green chroma fringe from logo edges ([3d064e1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/3d064e1c10bcfee0d2bb6aca82ba256f61a44790))
+
 ## [1.3.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.3.1...v1.3.2) (2026-09-09)
 
 
