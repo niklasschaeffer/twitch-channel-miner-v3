@@ -50,10 +50,54 @@ export class MinerEngine {
   }
 
   async spawnWorkersFromDb(): Promise<void> {
+    await this.adoptLegacyRows();
     const rows = await prisma.minerSetting.findMany({ where: { authToken: { not: '' } } });
     for (const row of rows) {
       if (!row.userId) continue;
       this.ensureWorker(row.userId);
+    }
+  }
+
+  private async adoptLegacyRows(): Promise<void> {
+    const orphanCounts = await Promise.all([
+      prisma.minerSetting.count({ where: { userId: null } }),
+      prisma.streamer.count({ where: { userId: null } }),
+      prisma.logRecord.count({ where: { userId: null } }),
+      prisma.statisticalRecord.count({ where: { userId: null } })
+    ]);
+    if (orphanCounts.every(c => c === 0)) return;
+    const oldestUser = await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } });
+    if (!oldestUser) return;
+    const adopted: string[] = [];
+    try {
+      const ownedSettings = await prisma.minerSetting.findUnique({ where: { userId: oldestUser.id } });
+      if (!ownedSettings) {
+        await prisma.minerSetting.updateMany({ where: { userId: null }, data: { userId: oldestUser.id } });
+        if (orphanCounts[0] > 0) adopted.push('settings');
+      }
+    } catch (err) {
+      console.warn('Legacy settings adoption skipped:', err);
+    }
+    try {
+      await prisma.logRecord.updateMany({ where: { userId: null }, data: { userId: oldestUser.id } });
+      if (orphanCounts[2] > 0) adopted.push('logs');
+    } catch (err) {
+      console.warn('Legacy log adoption skipped:', err);
+    }
+    try {
+      await prisma.statisticalRecord.updateMany({ where: { userId: null }, data: { userId: oldestUser.id } });
+      if (orphanCounts[3] > 0) adopted.push('statistics');
+    } catch (err) {
+      console.warn('Legacy statistics adoption skipped:', err);
+    }
+    try {
+      await prisma.streamer.updateMany({ where: { userId: null }, data: { userId: oldestUser.id } });
+      if (orphanCounts[1] > 0) adopted.push('streamers');
+    } catch (err) {
+      console.warn('Legacy streamer adoption skipped:', err);
+    }
+    if (adopted.length > 0) {
+      console.warn(`Adopted legacy rows (${adopted.join(', ')}) without owner into ${oldestUser.email}.`);
     }
   }
 
