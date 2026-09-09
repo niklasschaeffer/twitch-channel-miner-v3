@@ -33,6 +33,7 @@ model Streamer {
   viewerCount              Int       @default(0)
   points                   Int       @default(0)
   watchStreak              Int       @default(0)
+  lastWatchDay             String?
   isMining                 Boolean   @default(false)
   isLive                   Boolean   @default(true)
   isFollowing              Boolean   @default(false)

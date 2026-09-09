@@ -138,6 +138,7 @@ export class MinerWorker {
           viewerCount: s.viewerCount,
           points: s.points,
           watchStreak: s.watchStreak,
+          lastWatchDay: s.lastWatchDay ?? undefined,
           isMining: s.isMining,
           priority: s.priority,
           enabled: s.enabled,
@@ -152,6 +153,15 @@ export class MinerWorker {
       } else if (process.env.NODE_ENV === 'development') {
         // Seed default streamers ONLY in dev
         await this.seedDefaultData();
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+      for (const s of this.streamers) {
+        if (s.watchStreak > 0 && s.lastWatchDay !== today && s.lastWatchDay !== yesterday) {
+          s.watchStreak = 0;
+          s.lastWatchDay = undefined;
+          prisma.streamer.update({ where: { id: s.id }, data: { watchStreak: 0, lastWatchDay: null } }).catch(() => {});
+        }
       }
 
       // 3. Load Logs from SQLite
@@ -454,6 +464,14 @@ export class MinerWorker {
               uptimeMinutes: s.uptimeMinutes
             }
           }).catch(() => {});
+
+          const watchDay = new Date().toISOString().slice(0, 10);
+          if (s.lastWatchDay !== watchDay) {
+            const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+            s.watchStreak = s.lastWatchDay === yesterday ? s.watchStreak + 1 : 1;
+            s.lastWatchDay = watchDay;
+            prisma.streamer.update({ where: { id: s.id }, data: { watchStreak: s.watchStreak, lastWatchDay: watchDay } }).catch(() => {});
+          }
 
           this.addLog(
             'WATCH',
@@ -1632,6 +1650,17 @@ export class MinerWorker {
       const watched = Math.min(streamer.watchedMinutesSinceChest, 15);
       streamer.nextChestEstimateSeconds = Math.max(0, (15 - watched) * 60);
       streamer.chestAvailable = watched >= 15;
+      const watchDay = new Date().toISOString().slice(0, 10);
+      if (streamer.lastWatchDay !== watchDay) {
+        const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+        streamer.watchStreak = streamer.lastWatchDay === yesterday ? streamer.watchStreak + 1 : 1;
+        streamer.lastWatchDay = watchDay;
+        prisma.streamer.update({
+          where: { id: streamer.id },
+          data: { watchStreak: streamer.watchStreak, lastWatchDay: watchDay }
+        }).catch(() => {});
+        this.addLog('WATCH', streamer.username, `Watch streak day ${streamer.watchStreak} for ${streamer.displayName}.`);
+      }
       this.hooks.broadcast('streamers', this.streamers);
     }
   }
@@ -1655,6 +1684,7 @@ export class MinerWorker {
       this.addLog('WARN', streamer.username, `Raid join to ${targetLogin} failed.`);
     });
   }
+
 
   private resetChestProgress(streamer: Streamer) {
     streamer.watchedMinutesSinceChest = 0;
@@ -2029,10 +2059,9 @@ export class MinerWorker {
       game: live.game || (live.isLive ? 'Variety Stream' : 'Offline'),
       viewerCount: live.isLive ? live.viewerCount : 0,
       points: live.points ?? 0,
-      watchStreak: 1,
       isMining: false,
       priority: this.streamers.length + 1,
-      chestAvailable: false,
+      watchStreak: 0,
       nextChestEstimateSeconds: 900,
       totalPointsMined: 0,
       enabled: true,

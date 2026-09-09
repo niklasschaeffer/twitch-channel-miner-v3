@@ -14,7 +14,8 @@ export interface Streamer {
   game: string;
   viewerCount: number;
   points: number;
-  watchStreak: number; // consecutive days
+  watchStreak: number; // consecutive UTC days with an accepted watch heartbeat
+  lastWatchDay?: string; // last UTC day (YYYY-MM-DD) a heartbeat was accepted
   isMining: boolean; // currently occupying one of the active slots (max 2)
   priority: number; // order rank
   enabled: boolean;
