@@ -650,22 +650,6 @@ async function startServer() {
     }
   });
 
-  // Toggle streamer live status manually (online/offline)
-  app.post("/api/streamers/:username/toggle-live", async (req, res) => {
-    try {
-      const cleanUsername = extractTwitchUsername(req.params.username);
-      const { forceLive } = req.body || {};
-      const updated = await minerEngine.toggleStreamerLive(cleanUsername, forceLive, req.user!.id);
-      if (!updated) {
-        res.status(404).json({ error: "Streamer not found" });
-        return;
-      }
-      res.json(updated);
-    } catch (err) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
-    }
-  });
-
   // Get streamer IRC chat history
   app.get("/api/streamers/:username/chat", (req, res) => {
     try {

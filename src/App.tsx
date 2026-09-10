@@ -8,7 +8,6 @@ import { LiveConsole } from "./components/LiveConsole";
 import { AnalyticsView } from "./components/AnalyticsView";
 import { SettingsModal } from "./components/SettingsModal";
 import { AddStreamerModal } from "./components/AddStreamerModal";
-import { TwitchConnect } from "./components/TwitchConnect";
 import { AuthModal } from "./components/AuthModal";
 import { SlotIrcChat } from "./components/SlotIrcChat";
 import pkg from "../package.json";
@@ -31,7 +30,7 @@ export default function App() {
   const [settings, setSettings] = useState<MinerSettings | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"dashboard" | "analytics" | "settings">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "analytics">("dashboard");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddStreamerOpen, setIsAddStreamerOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -95,27 +94,6 @@ export default function App() {
     const found = streamers.find((s) => s.id === id);
     if (found) {
       setSelectedConsoleChannel(found.username);
-    }
-  };
-
-  const handleToggleLive = async (username: string) => {
-    try {
-      const res = await fetch(`/api/streamers/${username.toLowerCase()}/toggle-live`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (res.ok) {
-        const updated: Streamer = await res.json();
-        setStreamers((prev) =>
-          prev.map((s) => (s.username.toLowerCase() === username.toLowerCase() ? updated : s)),
-        );
-        setToastMessage(
-          `Toggled #${updated.displayName} to ${updated.isLive ? "ONLINE" : "OFFLINE"}`,
-        );
-        setTimeout(() => setToastMessage(null), 3000);
-      }
-    } catch (e) {
-      console.error("Failed to toggle streamer live status", e);
     }
   };
 
@@ -589,9 +567,7 @@ export default function App() {
                   streamer={selectedStreamer}
                   allStreamers={streamers}
                   onSelectStreamer={handleSelectSlot}
-                  onToggleLive={handleToggleLive}
                   onClaimChest={handleClaimSpecificStreamer}
-                  onFilterConsole={handleFilterConsole}
                   incomingChatMessage={incomingChatMessage}
                   onClose={() => setSelectedSlotStreamerId("none")}
                   theme={theme}
@@ -612,8 +588,6 @@ export default function App() {
                       onDeleteStreamer={handleDeleteStreamer}
                       onMovePriority={handleMovePriority}
                       selectedStreamerId={selectedStreamer?.id || null}
-                      onSelectStreamer={handleSelectSlot}
-                      onToggleLive={handleToggleLive}
                       onFilterConsole={handleFilterConsole}
                     />
                   </div>
@@ -633,28 +607,6 @@ export default function App() {
             )}
 
             {activeTab === "analytics" && <AnalyticsView analytics={analytics} status={status} />}
-
-            {activeTab === "settings" && (
-              <div className="max-w-3xl mx-auto bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#26262C] p-6 shadow-xs space-y-4">
-                <h2 className="text-base font-semibold text-zinc-900 dark:text-[#EFEFF1]">
-                  {t("settings.title")}
-                </h2>
-                <p className="text-xs text-zinc-500 dark:text-[#ADADB8]">
-                  {t("settings.subtitle")}
-                </p>
-                <TwitchConnect />
-                {settings && (
-                  <div className="pt-2">
-                    <button
-                      onClick={() => setIsSettingsOpen(true)}
-                      className="px-4 py-2 text-xs font-semibold bg-[#9146FF] hover:bg-[#772CE8] text-white cursor-pointer transition"
-                    >
-                      {t("actions.settings")}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </main>
 
           <footer className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 text-xs text-zinc-500 dark:text-[#ADADB8] flex items-center gap-4">

@@ -61,7 +61,7 @@ Once your Twitch account is connected and channels are on the watchlist, **your 
 | **Predictions** | Listens to PubSub `predictions-channel-v1`; when an event goes ACTIVE it places a bet via `MakePrediction` (capped by your `maxBetPoints` setting) |
 | **Live balance sync** | Per-channel balances sync via PubSub events plus a 5-minute GQL snapshot fallback |
 
-The UI shows **only real Twitch data** — points, claims, chat, and connection state all come from genuine API responses. A simulation mode exists for development but is off in production and fabricates nothing.
+The dashboard shows **only real Twitch data** — points, claims, chat, and connection state all come from genuine Twitch API responses. No simulation mode exists; nothing displayed is fabricated.
 
 ## Requirements
 

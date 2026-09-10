@@ -36,4 +36,4 @@ RUN mkdir -p /app/data
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "bunx prisma db push --skip-generate && bun dist/server.cjs"]
+CMD ["sh", "-c", "bunx prisma db push --skip-generate --accept-data-loss && bun dist/server.cjs"]

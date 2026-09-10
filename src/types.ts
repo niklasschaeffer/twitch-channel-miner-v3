@@ -49,8 +49,6 @@ export interface Streamer {
 export interface MinerSettings {
   authToken: string;
   clientId: string;
-  isSimulationMode: boolean;
-  enforceRealTwitchLive?: boolean;
   maxConcurrentStreams: number; // Twitch hard limit is 2
   priorityMode: PriorityMode;
   autoClaimBonus: boolean;
@@ -78,7 +76,6 @@ export interface MinerStatus {
   netPredictionPoints: number;
   totalDropsClaimed: number;
   lastActionTimestamp: string;
-  isSimulation: boolean;
 }
 
 export interface LogEntry {

@@ -13,8 +13,8 @@ interface HeaderProps {
   onTriggerTestClaim: () => void;
   onOpenSettings: () => void;
   onOpenAuth: () => void;
-  activeTab: "dashboard" | "analytics" | "settings";
-  setActiveTab: (tab: "dashboard" | "analytics" | "settings") => void;
+  activeTab: "dashboard" | "analytics";
+  setActiveTab: (tab: "dashboard" | "analytics") => void;
   isClaiming: boolean;
   theme: "dark" | "light";
   onToggleTheme: () => void;
@@ -86,14 +86,6 @@ export const Header: React.FC<HeaderProps> = ({
                         : t("status.stopped")}
                   </span>
                 </span>
-                {settings?.isSimulationMode && (
-                  <>
-                    <span className="text-zinc-300 dark:text-[#363640] hidden sm:inline">•</span>
-                    <span className="hidden sm:inline text-[10px] font-mono text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 border border-indigo-200 dark:border-indigo-500/20">
-                      {t("status.simulationActive")}
-                    </span>
-                  </>
-                )}
               </div>
             </div>
           </div>
@@ -120,18 +112,7 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {t("nav.analytics")}
             </button>
-            <button
-              onClick={() => setActiveTab("settings")}
-              className={`px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === "settings"
-                  ? "bg-[#9146FF] text-white"
-                  : "text-zinc-600 dark:text-[#ADADB8] hover:text-zinc-900 dark:hover:text-[#EFEFF1]"
-              }`}
-            >
-              {t("actions.settings")}
-            </button>
           </nav>
-
           {/* Action Buttons & Utilities */}
           <div className="flex items-center space-x-1.5 sm:space-x-2">
             {/* Language Switcher */}
@@ -161,12 +142,11 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onTriggerTestClaim}
               disabled={isClaiming || !isRunning}
-              title="Test claim (+50 pts)"
+              title={t("actions.testClaim")}
               className="hidden sm:flex px-2.5 py-1.5 text-xs font-medium bg-zinc-100 hover:bg-zinc-200 dark:bg-[#141416] dark:hover:bg-[#1F1F23] text-zinc-800 dark:text-[#EFEFF1] border border-zinc-200 dark:border-[#26262C] transition items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               <Gift className="w-3.5 h-3.5 text-[#00a865] dark:text-[#00F593]" />
               <span className="hidden md:inline">{t("actions.testClaim")}</span>
-              <span className="md:hidden">+50</span>
             </button>
 
             {/* Play/Pause Engine */}

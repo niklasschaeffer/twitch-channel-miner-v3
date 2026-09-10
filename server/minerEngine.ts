@@ -149,7 +149,6 @@ export class MinerEngine {
   }
 
   getStatus(userId?: string): MinerStatus {
-    const isDev = process.env.NODE_ENV === "development";
     const zeroed: MinerStatus = {
       state: "running",
       uptimeSeconds: 0,
@@ -165,7 +164,6 @@ export class MinerEngine {
       netPredictionPoints: 0,
       totalDropsClaimed: 0,
       lastActionTimestamp: new Date().toISOString(),
-      isSimulation: isDev,
     };
     if (!userId) return zeroed;
     const worker = this.workers.get(userId);
@@ -176,11 +174,9 @@ export class MinerEngine {
   getSettings(userId: string): MinerSettings & { hasAuthToken: boolean } {
     const worker = this.workers.get(userId);
     if (!worker) {
-      const isDev = process.env.NODE_ENV === "development";
       return {
         authToken: "",
         clientId: "kimne78kx3ncx6brgo4mv6wki5h1ko",
-        isSimulationMode: isDev,
         maxConcurrentStreams: 2,
         priorityMode: "points_asc",
         autoClaimBonus: true,
@@ -263,14 +259,6 @@ export class MinerEngine {
 
   async getYourChannels(userId: string): Promise<YourChannelSuggestion[]> {
     return this.ensureWorker(userId).getYourChannels();
-  }
-
-  async toggleStreamerLive(
-    username: string,
-    forceLive: boolean | undefined,
-    userId: string,
-  ): Promise<Streamer | null> {
-    return this.ensureWorker(userId).toggleStreamerLive(username, forceLive);
   }
 
   getStreamerChat(username: string, userId: string): ChatMessage[] {

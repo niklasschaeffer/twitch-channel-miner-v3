@@ -33,7 +33,6 @@ interface StreamerListProps {
   onMovePriority: (username: string, direction: "up" | "down") => void;
   selectedStreamerId?: string | null;
   onSelectStreamer?: (streamerId: string) => void;
-  onToggleLive?: (username: string) => void;
   onFilterConsole?: (channel: string) => void;
 }
 
@@ -50,7 +49,6 @@ export const StreamerList: React.FC<StreamerListProps> = ({
   onMovePriority,
   selectedStreamerId,
   onSelectStreamer,
-  onToggleLive,
   onFilterConsole,
 }) => {
   const { t } = useTranslation();
@@ -234,7 +232,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                   >
                     <button
                       onClick={() => onSelectStreamer?.(streamer.id)}
-                      title={t("ircChat.openChat", "Open IRC Chat")}
+                      title={t("chat.openChat", "Open IRC Chat")}
                       className={`p-1.5 border transition cursor-pointer flex items-center ${
                         isSelected
                           ? "bg-[#9146FF] text-white border-[#9146FF]"
@@ -247,7 +245,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                     {onFilterConsole && (
                       <button
                         onClick={() => onFilterConsole(streamer.username)}
-                        title={t("ircChat.filterConsole", "Filter console")}
+                        title={t("chat.filterConsole", "Filter console")}
                         className="p-1.5 text-zinc-500 hover:text-[#9146FF] border border-zinc-200 dark:border-[#26262C] bg-white dark:bg-[#18181B] hover:border-[#9146FF] transition cursor-pointer"
                       >
                         <Terminal className="w-3.5 h-3.5" />
@@ -309,23 +307,15 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                     #{index + 1}
                   </span>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleLive?.(streamer.username);
-                    }}
-                    title={t("ircChat.toggleLive", "Click to toggle online/offline")}
-                    className={`px-1.5 py-0.5 border transition cursor-pointer flex items-center gap-1 font-semibold ${
+                  <span
+                    className={`px-1.5 py-0.5 border flex items-center gap-1 font-semibold ${
                       streamer.isLive
-                        ? "bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/30 hover:bg-red-100 dark:hover:bg-red-500/25"
-                        : "bg-zinc-100 dark:bg-[#1E1E22] text-zinc-500 dark:text-[#71717A] border-zinc-300 dark:border-[#26262C] hover:bg-zinc-200"
+                        ? "bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/30"
+                        : "bg-zinc-100 dark:bg-[#1E1E22] text-zinc-500 dark:text-[#71717A] border-zinc-300 dark:border-[#26262C]"
                     }`}
                   >
-                    <Power className="w-2.5 h-2.5" />
-                    <span>
-                      {streamer.isLive ? t("streamersList.live") : t("streamersList.offline")}
-                    </span>
-                  </button>
+                    {streamer.isLive ? t("streamersList.live") : t("streamersList.offline")}
+                  </span>
 
                   {streamer.isMining ? (
                     <span className="px-1.5 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/30 dark:border-[#00F593]/40 flex items-center gap-1 font-bold">

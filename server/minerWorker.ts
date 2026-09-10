@@ -79,11 +79,9 @@ export class MinerWorker {
   constructor(userId: string, hooks: { broadcast(event: string, payload: unknown): void }) {
     this.userId = userId;
     this.hooks = hooks;
-    const isDev = process.env.NODE_ENV === "development";
     this.settings = {
       authToken: "",
       clientId: "kimne78kx3ncx6brgo4mv6wki5h1ko",
-      isSimulationMode: isDev,
       maxConcurrentStreams: 2,
       priorityMode: "points_asc",
       autoClaimBonus: true,
@@ -98,20 +96,19 @@ export class MinerWorker {
 
     this.status = {
       state: "running",
-      uptimeSeconds: isDev ? 1420 : 0,
-      totalPointsMined: isDev ? 7340 : 0,
-      pointsToday: isDev ? 2450 : 0,
-      pointsThisHour: isDev ? 320 : 0,
-      activeSlots: isDev ? ["tarik", "shroud"] : [],
+      uptimeSeconds: 0,
+      totalPointsMined: 0,
+      pointsToday: 0,
+      pointsThisHour: 0,
+      activeSlots: [],
       activeSlotsLimit: 2,
-      totalClaims: isDev ? 48 : 0,
-      totalRaids: isDev ? 3 : 0,
-      totalPredictionsPlaced: isDev ? 8 : 0,
-      totalPredictionsWon: isDev ? 6 : 0,
-      netPredictionPoints: isDev ? 850 : 0,
-      totalDropsClaimed: isDev ? 2 : 0,
+      totalClaims: 0,
+      totalRaids: 0,
+      totalPredictionsPlaced: 0,
+      totalPredictionsWon: 0,
+      netPredictionPoints: 0,
+      totalDropsClaimed: 0,
       lastActionTimestamp: new Date().toISOString(),
-      isSimulation: isDev,
     };
 
     // Load or seed from Prisma SQLite
@@ -144,7 +141,6 @@ export class MinerWorker {
         this.settings = {
           authToken: savedSettings.authToken,
           clientId: savedSettings.clientId,
-          isSimulationMode: savedSettings.isSimulationMode,
           maxConcurrentStreams: savedSettings.maxConcurrentStreams,
           priorityMode: (savedSettings.priorityMode as PriorityMode) || "points_asc",
           autoClaimBonus: savedSettings.autoClaimBonus,
@@ -510,78 +506,7 @@ export class MinerWorker {
     // Rebalance active slots based on real live status and priority
     this.rebalanceActiveSlots();
 
-    // Watch-time accrual and chest countdowns are simulated telemetry (no real
-    // Twitch claiming exists yet) — only run them in simulation mode.
-    if (this.settings.isSimulationMode) {
-      for (const s of this.streamers) {
-        if (s.isMining && s.isLive && s.enabled) {
-          // Accrue watch points (+10 pts) every 60 seconds (30 ticks)
-          if (this.tickCount % 30 === 0) {
-            const watchDelta = 10;
-            s.points += watchDelta;
-            s.totalPointsMined += watchDelta;
-            s.uptimeMinutes = (s.uptimeMinutes || 0) + 1;
-
-            this.status.totalPointsMined += watchDelta;
-            this.status.pointsToday += watchDelta;
-            this.status.pointsThisHour += watchDelta;
-
-            this.recordStatisticalData({
-              pointsMined: watchDelta,
-              watchTimePoints: watchDelta,
-            }).catch(() => {});
-
-            prisma.streamer
-              .update({
-                where: { id: s.id },
-                data: {
-                  points: s.points,
-                  totalPointsMined: s.totalPointsMined,
-                  uptimeMinutes: s.uptimeMinutes,
-                },
-              })
-              .catch(() => {});
-
-            this.noteWatchedDay(s);
-
-            this.addLog(
-              "WATCH",
-              s.username,
-              `Heartbeat: +${watchDelta} Channel Points earned watching ${s.displayName} (${s.game}).`,
-              watchDelta,
-            );
-          }
-
-          if (s.nextChestEstimateSeconds > 0) {
-            s.nextChestEstimateSeconds = Math.max(0, s.nextChestEstimateSeconds - 2);
-            if (s.nextChestEstimateSeconds === 0) {
-              s.chestAvailable = true;
-              this.addLog(
-                "INFO",
-                s.username,
-                `Bonus chest became ready (+50 pts) for ${s.displayName}.`,
-              );
-            }
-          }
-
-          if (s.chestAvailable && this.settings.autoClaimBonus) {
-            this.executeClaimBonus(s);
-          }
-        }
-      }
-    }
-
-    // Only fabricate raid/prediction/drop events in simulation mode.
-    // In production these must come from real Twitch events, not random rolls.
-    if (this.settings.isSimulationMode) {
-      this.maybeSimulateEvent();
-    }
-
-    if (
-      !this.settings.isSimulationMode &&
-      this.settings.autoClaimBonus &&
-      this.settings.authToken
-    ) {
+    if (this.settings.autoClaimBonus && this.settings.authToken) {
       if (this.tickCount % 15 === 0) {
         for (const s of this.streamers) {
           if (s.enabled && (s.isPartner || s.isAffiliate) && !this.claimsInFlight.has(s.username)) {
@@ -591,20 +516,11 @@ export class MinerWorker {
       }
     }
 
-    // Drop campaigns: claim completed drops from inventory (10-min sync cadence).
-    if (
-      !this.settings.isSimulationMode &&
-      this.settings.autoClaimDrops &&
-      this.settings.authToken
-    ) {
+    if (this.settings.autoClaimDrops && this.settings.authToken) {
       this.claimDrops().catch(() => {});
     }
 
-    // Real watch-time: one minute-watched heartbeat per minute per mining
-    // channel (upstream's send_minute_watched_events cadence). Twitch awards
-    // points on its own schedule from these events; the balance is synced via
-    // PubSub — never locally computed.
-    if (!this.settings.isSimulationMode && this.settings.authToken) {
+    if (this.settings.authToken) {
       if (this.tickCount % 30 === 0) {
         for (const s of this.streamers) {
           if (s.isMining && s.isLive && s.enabled) {
@@ -1637,205 +1553,8 @@ export class MinerWorker {
   }
 
   public async executeClaimBonus(streamer: Streamer) {
-    if (!this.settings.isSimulationMode) {
-      const result = await this.claimRealBonus(streamer);
-      this.addLog(result.success ? "CLAIM" : "WARN", streamer.username, result.message);
-      return;
-    }
-    streamer.chestAvailable = false;
-    streamer.nextChestEstimateSeconds = 900;
-    streamer.points += 50;
-    streamer.totalPointsMined += 50;
-    streamer.lastClaimTime = new Date().toISOString();
-
-    this.status.totalPointsMined += 50;
-    this.status.pointsToday += 50;
-    this.status.pointsThisHour += 50;
-    this.status.totalClaims += 1;
-
-    await this.recordStatisticalData({
-      pointsMined: 50,
-      claimsCount: 1,
-      chestsPoints: 50,
-    });
-
-    try {
-      await prisma.streamer.update({
-        where: { id: streamer.id },
-        data: {
-          points: streamer.points,
-          totalPointsMined: streamer.totalPointsMined,
-          lastClaimTime: streamer.lastClaimTime,
-          chestAvailable: false,
-          nextChestEstimateSeconds: 900,
-        },
-      });
-    } catch {
-      void 0;
-    }
-
-    this.addLog(
-      "CLAIM",
-      streamer.username,
-      `Successfully claimed Community Points Bonus (+50 pts) for ${streamer.displayName}! Total balance: ${streamer.points.toLocaleString()} pts.`,
-      50,
-    );
-
-    this.hooks.broadcast("streamers", this.streamers);
-  }
-
-  private maybeSimulateEvent() {
-    // 1. Heartbeat watch time (+10 pts)
-    if (Math.random() < 0.08) {
-      const active = this.streamers.filter((s) => s.isMining && s.isLive);
-      if (active.length > 0) {
-        const chosen = active[Math.floor(Math.random() * active.length)];
-        const pts = 10;
-        chosen.points += pts;
-        chosen.totalPointsMined += pts;
-        this.status.totalPointsMined += pts;
-        this.status.pointsToday += pts;
-        this.status.pointsThisHour += pts;
-
-        this.recordStatisticalData({
-          pointsMined: pts,
-          watchTimePoints: pts,
-        });
-
-        prisma.streamer
-          .update({
-            where: { id: chosen.id },
-            data: {
-              points: chosen.points,
-              totalPointsMined: chosen.totalPointsMined,
-            },
-          })
-          .catch(() => {});
-
-        this.addLog(
-          "WATCH",
-          chosen.username,
-          `Heartbeat watch credit (+${pts} pts) received for ${chosen.displayName}.`,
-          pts,
-        );
-      }
-    }
-
-    // 2. Raid event (+250 pts)
-    if (this.settings.followRaids && Math.random() < 0.015) {
-      const active = this.streamers.filter((s) => s.isMining && s.isLive);
-      if (active.length > 0) {
-        const chosen = active[Math.floor(Math.random() * active.length)];
-        const raidBonus = 250;
-        chosen.points += raidBonus;
-        chosen.totalPointsMined += raidBonus;
-        this.status.totalPointsMined += raidBonus;
-        this.status.pointsToday += raidBonus;
-        this.status.totalRaids += 1;
-
-        this.recordStatisticalData({
-          pointsMined: raidBonus,
-          raidsCount: 1,
-        });
-
-        prisma.streamer
-          .update({
-            where: { id: chosen.id },
-            data: {
-              points: chosen.points,
-              totalPointsMined: chosen.totalPointsMined,
-            },
-          })
-          .catch(() => {});
-
-        this.addLog(
-          "RAID",
-          chosen.username,
-          `Raid detected on ${chosen.displayName}'s channel! Joined raid and claimed +${raidBonus} points.`,
-          raidBonus,
-        );
-      }
-    }
-
-    // 3. Predictions (+net)
-    if (this.settings.autoBetPredictions && Math.random() < 0.012) {
-      const active = this.streamers.filter((s) => s.isMining && s.isLive);
-      if (active.length > 0) {
-        const chosen = active[Math.floor(Math.random() * active.length)];
-        const betAmount = Math.min(this.settings.maxBetPoints, 100);
-        const won = Math.random() > 0.35;
-        this.status.totalPredictionsPlaced += 1;
-
-        if (won) {
-          const winPoints = Math.floor(betAmount * 1.8);
-          const net = winPoints - betAmount;
-          chosen.points += net;
-          chosen.totalPointsMined += net;
-          this.status.totalPointsMined += net;
-          this.status.totalPredictionsWon += 1;
-          this.status.netPredictionPoints += net;
-
-          this.recordStatisticalData({
-            pointsMined: net,
-            predictionsWon: 1,
-            netPredictionPoints: net,
-          });
-
-          prisma.streamer
-            .update({
-              where: { id: chosen.id },
-              data: {
-                points: chosen.points,
-                totalPointsMined: chosen.totalPointsMined,
-              },
-            })
-            .catch(() => {});
-
-          this.addLog(
-            "PREDICTION",
-            chosen.username,
-            `Prediction resolved WON on ${chosen.displayName}! Strategy [${this.settings.predictionStrategy}] returned +${winPoints} pts (+${net} net profit).`,
-            net,
-          );
-        } else {
-          chosen.points = Math.max(0, chosen.points - betAmount);
-          this.status.netPredictionPoints -= betAmount;
-
-          this.recordStatisticalData({
-            predictionsLost: 1,
-            netPredictionPoints: -betAmount,
-          });
-
-          this.addLog(
-            "PREDICTION",
-            chosen.username,
-            `Prediction resolved lost on ${chosen.displayName}. Lost ${betAmount} pts. Strategy risk within limits.`,
-            -betAmount,
-          );
-        }
-      }
-    }
-
-    // 4. Drops Claimed
-    if (this.settings.autoClaimDrops && Math.random() < 0.008) {
-      const active = this.streamers.filter((s) => s.isMining && s.isLive);
-      if (active.length > 0) {
-        const chosen = active[Math.floor(Math.random() * active.length)];
-        this.status.totalDropsClaimed += 1;
-
-        this.recordStatisticalData({
-          dropsCount: 1,
-        });
-
-        this.addLog(
-          "DROP",
-          chosen.username,
-          `Twitch Drop Campaign reward reached 100% for ${chosen.game}! Auto-claimed to Twitch Inventory.`,
-        );
-      }
-    }
-
-    this.hooks.broadcast("streamers", this.streamers);
+    const result = await this.claimRealBonus(streamer);
+    this.addLog(result.success ? "CLAIM" : "WARN", streamer.username, result.message);
   }
 
   public async recordStatisticalData(data: unknown) {
@@ -2624,7 +2343,6 @@ export class MinerWorker {
         update: {
           authToken: this.settings.authToken,
           clientId: this.settings.clientId,
-          isSimulationMode: this.settings.isSimulationMode,
           maxConcurrentStreams: this.settings.maxConcurrentStreams,
           priorityMode: this.settings.priorityMode,
           autoClaimBonus: this.settings.autoClaimBonus,
@@ -2640,7 +2358,6 @@ export class MinerWorker {
           userId: this.userId,
           authToken: this.settings.authToken,
           clientId: this.settings.clientId,
-          isSimulationMode: this.settings.isSimulationMode,
           maxConcurrentStreams: this.settings.maxConcurrentStreams,
           priorityMode: this.settings.priorityMode,
           autoClaimBonus: this.settings.autoClaimBonus,
@@ -3107,56 +2824,6 @@ export class MinerWorker {
     return s;
   }
 
-  public async toggleStreamerLive(username: string, forceLive?: boolean): Promise<Streamer | null> {
-    const clean = extractTwitchUsername(username);
-    const streamer = this.streamers.find((s) => extractTwitchUsername(s.username) === clean);
-    if (!streamer) return null;
-
-    const newLive = forceLive !== undefined ? forceLive : !streamer.isLive;
-    streamer.isLive = newLive;
-
-    if (newLive) {
-      // Query Twitch to get real live status & real viewer count
-      const live = await this.fetchTwitchLiveStats(clean);
-      if (live && live.isLive) {
-        streamer.viewerCount = live.viewerCount;
-        streamer.game = live.game;
-        if (live.avatar) streamer.avatar = live.avatar;
-        if (live.displayName) streamer.displayName = live.displayName;
-      } else {
-        streamer.viewerCount = 0;
-      }
-    } else {
-      streamer.viewerCount = 0;
-      streamer.isMining = false;
-    }
-
-    try {
-      await prisma.streamer.update({
-        where: { id: streamer.id },
-        data: {
-          isLive: streamer.isLive,
-          viewerCount: streamer.viewerCount,
-          game: streamer.game,
-          isMining: streamer.isMining,
-        },
-      });
-    } catch {}
-
-    this.addLog(
-      newLive ? "INFO" : "WARN",
-      clean,
-      newLive
-        ? `🟢 Channel ${streamer.displayName} status set to ONLINE (${streamer.game}, ${streamer.viewerCount.toLocaleString()} viewers).`
-        : `🔴 Channel ${streamer.displayName} status set to OFFLINE. Released from active watch slot.`,
-    );
-
-    this.rebalanceActiveSlots();
-    this.hooks.broadcast("streamers", this.streamers);
-    this.hooks.broadcast("status", this.getStatus());
-    return streamer;
-  }
-
   public getStreamerChat(username: string): ChatMessage[] {
     const clean = username.trim().toLowerCase();
     this.ensureChatConnection(clean);
@@ -3313,10 +2980,6 @@ export class MinerWorker {
     }
     if (!target) {
       return { success: false, message: "No available channel to claim" };
-    }
-    if (this.settings.isSimulationMode) {
-      await this.executeClaimBonus(target);
-      return { success: true, channel: target.displayName, points: 50 };
     }
     return await this.claimRealBonus(target);
   }

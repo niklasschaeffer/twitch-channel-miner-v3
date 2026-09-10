@@ -82,7 +82,6 @@ model MinerSetting {
   userId               String?   @unique
   authToken            String    @default("")
   clientId             String    @default("kimne78kx3ncx6brgo4mv6wki5h1ko")
-  isSimulationMode     Boolean   @default(true)
   maxConcurrentStreams Int       @default(2)
   priorityMode         String    @default("points_asc")
   autoClaimBonus       Boolean   @default(true)

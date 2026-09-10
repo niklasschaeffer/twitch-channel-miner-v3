@@ -188,7 +188,6 @@ async function main() {
       userId: user.id,
       authToken: "",
       clientId: "kimne78kx3ncx6brgo4mv6wki5h1ko",
-      isSimulationMode: true,
       maxConcurrentStreams: 2,
       priorityMode: "points_asc",
       autoClaimBonus: true,
@@ -203,40 +202,6 @@ async function main() {
   });
   console.log("Seeded miner configuration in SQLite.");
 
-  // 4. Seed Statistical Data (Past hourly points)
-  const existingStats = await prisma.statisticalRecord.count();
-  if (existingStats === 0) {
-    const now = new Date();
-    for (let i = 8; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 3600000);
-      const hourStr = d.getHours().toString().padStart(2, "0") + ":00";
-      const basePoints = Math.floor(180 + Math.random() * 220);
-      const claims = Math.floor(basePoints / 50);
-      const raids = i === 2 ? 1 : 0;
-      const predictions = i === 1 ? 1 : 0;
-      const drops = i === 4 ? 1 : 0;
-
-      await prisma.statisticalRecord.create({
-        data: {
-          userId: user.id,
-          hourKey: hourStr,
-          pointsMined: basePoints,
-          claimsCount: claims,
-          raidsCount: raids,
-          predictionsWon: predictions,
-          predictionsLost: 0,
-          netPredictionPoints: predictions * 180,
-          dropsCount: drops,
-          chestsPoints: claims * 50,
-          watchTimePoints: basePoints - claims * 50,
-          recordedAt: d,
-        },
-      });
-    }
-    console.log("Seeded 9 hourly statistical records in SQLite.");
-  }
-
-  // 5. Seed initial log records
   const existingLogs = await prisma.logRecord.count();
   if (existingLogs === 0) {
     const defaultLogs = [
@@ -250,44 +215,13 @@ async function main() {
         channel: undefined,
         message: "Connected to local SQLite database file:./dev.db via Prisma.",
       },
-      {
-        level: "WATCH",
-        channel: "tarik",
-        message: "Assigned watch slot #1 to tarik (VALORANT, 28,410 viewers).",
-      },
-      {
-        level: "WATCH",
-        channel: "shroud",
-        message: "Assigned watch slot #2 to shroud (Counter-Strike 2).",
-      },
-      {
-        level: "CLAIM",
-        channel: "shroud",
-        message: "Claimed Community Points Bonus (+50 pts) via GraphQL claim mutation.",
-        pointsDelta: 50,
-      },
-      {
-        level: "RAID",
-        channel: "tarik",
-        message: "Streamer raided Kyedae (+250 points caught via RaidCommunityPoints)!",
-        pointsDelta: 250,
-      },
-      {
-        level: "PREDICTION",
-        channel: "tarik",
-        message:
-          'Prediction matched "Will Tarik drop 30k?": Bet 100 points, Won 280 points (+180 net).',
-        pointsDelta: 180,
-      },
     ];
-
     for (const log of defaultLogs) {
       await prisma.logRecord.create({
         data: {
           level: log.level,
           channel: log.channel,
           message: log.message,
-          pointsDelta: log.pointsDelta,
           userId: user.id,
         },
       });

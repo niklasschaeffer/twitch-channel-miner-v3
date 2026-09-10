@@ -11,7 +11,6 @@ import {
   Shield,
   Sparkles,
   X,
-  Power,
   Flame,
 } from "lucide-react";
 import { Streamer, ChatMessage } from "../types";
@@ -21,7 +20,6 @@ interface SlotIrcChatProps {
   streamer: Streamer | null;
   allStreamers: Streamer[];
   onSelectStreamer: (streamerId: string) => void;
-  onToggleLive?: (username: string) => void;
   onClaimChest?: (streamer: Streamer) => void;
   onFilterConsole?: (channel: string) => void;
   incomingChatMessage?: ChatMessage | null;
@@ -57,7 +55,6 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   streamer,
   allStreamers,
   onSelectStreamer,
-  onToggleLive,
   onClaimChest,
   onFilterConsole,
   incomingChatMessage,
@@ -191,11 +188,11 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
       <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#26262C] p-6 text-center shadow-xs">
         <MessageSquare className="w-8 h-8 text-[#9146FF] mx-auto mb-2 opacity-60" />
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-[#EFEFF1]">
-          {t("ircChat.noChannelSelected", "No Channel Selected")}
+          {t("chat.noChannelSelected", "No Channel Selected")}
         </h3>
         <p className="text-xs text-zinc-500 dark:text-[#ADADB8] mt-1 max-w-md mx-auto">
           {t(
-            "ircChat.selectChannelNotice",
+            "chat.selectChannelNotice",
             "Select any streamer from monitored channels below to inspect real-time IRC chat and test bot commands.",
           )}
         </p>
@@ -221,7 +218,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
       <div className="flex items-center gap-1 px-3 py-2 bg-zinc-100/70 dark:bg-[#121214] border-b border-zinc-200 dark:border-[#26262C] overflow-x-auto min-w-0">
         <span className="text-[11px] font-mono text-zinc-400 dark:text-[#71717A] shrink-0 mr-2 flex items-center gap-1">
           <MessageSquare className="w-3.5 h-3.5 text-[#9146FF]" />
-          <span>{t("ircChat.channelSelector", "Channels")}:</span>
+          <span>{t("chat.channelSelector", "Channels")}:</span>
         </span>
         {allStreamers.map((s) => {
           const isSelected = s.id === streamer.id;
@@ -322,19 +319,15 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                 )}
 
               {/* Live / Offline status badge with 1-click toggle */}
-              <button
-                type="button"
-                onClick={() => onToggleLive?.(streamer.username)}
-                title={t("ircChat.toggleLive", "Click to toggle online/offline")}
-                className={`px-2 py-0.5 text-[10px] font-mono font-semibold transition cursor-pointer border flex items-center gap-1 ${
+              <span
+                className={`px-2 py-0.5 text-[10px] font-mono font-semibold border flex items-center gap-1 ${
                   streamer.isLive
-                    ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/20"
-                    : "bg-zinc-200 dark:bg-[#26262C] text-zinc-600 dark:text-[#ADADB8] border-zinc-300 dark:border-[#363640] hover:bg-zinc-300"
+                    ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30"
+                    : "bg-zinc-200 dark:bg-[#26262C] text-zinc-600 dark:text-[#ADADB8] border-zinc-300 dark:border-[#363640]"
                 }`}
               >
-                <Power className="w-2.5 h-2.5" />
-                <span>{streamer.isLive ? t("status.live") : t("status.offline")}</span>
-              </button>
+                {streamer.isLive ? t("status.live") : t("status.offline")}
+              </span>
 
               {/* Active Watch Slot status */}
               {streamer.isMining ? (
@@ -404,7 +397,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
           {onFilterConsole && (
             <button
               onClick={() => onFilterConsole(streamer.username)}
-              title={t("ircChat.filterConsole", "Filter Console to this channel")}
+              title={t("chat.filterConsole", "Filter Console to this channel")}
               className="px-2.5 py-1 text-xs font-medium border border-zinc-200 dark:border-[#26262C] hover:border-[#9146FF] text-zinc-700 dark:text-[#ADADB8] hover:text-[#9146FF] transition flex items-center gap-1.5 cursor-pointer"
             >
               <Terminal className="w-3 h-3" />
