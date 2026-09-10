@@ -1,3 +1,10 @@
+## [1.16.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.16.0...v1.16.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* updates to cron and wiki ([2cc355b](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/2cc355b227aa1b49dae901e4568594097fbf3b62))
+
 # [1.16.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.15.4...v1.16.0) (2026-09-10)
 
 
