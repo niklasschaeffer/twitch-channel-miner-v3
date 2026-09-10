@@ -1,3 +1,11 @@
+## [1.19.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.19.0...v1.19.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* accept Twitch badge CDN octet-stream content type ([10ae70f](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/10ae70fbbbb293559b77351ff5c584c00234bbc7))
+* disconnect actually clears the stored Twitch token ([588c0f7](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/588c0f72bd2a3eed4d6f8730a77a2a5a97600ca0))
+
 # [1.19.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.18.1...v1.19.0) (2026-09-10)
 
 
