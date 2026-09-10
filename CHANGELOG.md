@@ -1,3 +1,10 @@
+## [1.15.3](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.15.2...v1.15.3) (2026-09-10)
+
+
+### Bug Fixes
+
+* **lint:** exclude semantic-release CHANGELOG.md from oxfmt reformatting ([3532c7d](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/3532c7d678e99cf2f3a54c1e04ec952f7a56d39c))
+
 ## [1.15.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.15.1...v1.15.2) (2026-09-10)
 
 
