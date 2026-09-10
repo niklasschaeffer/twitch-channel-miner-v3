@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "memory_server": {
+    "wiki-agent-mcp": {
       "command": "bunx",
       "args": ["-y", "@chronova/wiki-agent", "--mcp", "stdio"]
     }
