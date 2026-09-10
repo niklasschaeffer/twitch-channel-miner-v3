@@ -1,1 +1,1 @@
-bunx oxlint && bunx oxfmt && npm run lint
+bunx oxlint --import-plugin --vitest-plugin --react-plugin && bunx oxfmt && npm run lint
