@@ -2606,7 +2606,10 @@ export class MinerWorker {
       }
     }
     if (newSettings.authToken === "") {
-      delete newSettings.authToken;
+      this.authLoginName = null;
+      this.hasChatEditScope = false;
+      this.pubsubUserId = null;
+      this.disconnectPubsub();
     }
     this.settings = { ...this.settings, ...newSettings };
     if (newSettings.priorityMode) {
