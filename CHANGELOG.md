@@ -1,3 +1,10 @@
+## [1.15.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.15.1...v1.15.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **lint:** eliminate all oxlint warnings — type anys, drop unused bindings, wire missing onDeleteStreamer ([8dcb16b](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/8dcb16bd35b6075657d228b014a5c5568255b6ab))
+
 ## [1.15.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.15.0...v1.15.1) (2026-09-10)
 
 
