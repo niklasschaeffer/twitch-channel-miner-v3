@@ -1,3 +1,10 @@
+# [1.13.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.12.0...v1.13.0) (2026-09-10)
+
+
+### Features
+
+* oxfmt format ([adef747](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/adef747b13151da35085363792a3baf168198124))
+
 # [1.12.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.11.0...v1.12.0) (2026-09-10)
 
 ### Bug Fixes
