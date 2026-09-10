@@ -1,3 +1,10 @@
+## [1.9.6](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.5...v1.9.6) (2026-09-10)
+
+
+### Bug Fixes
+
+* **chest:** repair dead auto-claim poll and gate claims by partner/affiliate eligibility ([0e9bad7](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/0e9bad7798b2f17c3e8e5196b5b7fd5347d6cd10))
+
 ## [1.9.5](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.4...v1.9.5) (2026-09-09)
 
 
