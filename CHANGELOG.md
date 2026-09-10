@@ -1,3 +1,10 @@
+# [1.16.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.15.4...v1.16.0) (2026-09-10)
+
+
+### Features
+
+* **docker:** add node:25-alpine image for CPUs without AVX2 (Unraid Turion) ([027a52d](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/027a52d88b1c8d1453d47e1d3300991d7be9f05e))
+
 ## [1.15.4](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.15.3...v1.15.4) (2026-09-10)
 
 
