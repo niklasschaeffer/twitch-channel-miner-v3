@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   lint:
-    name: Lint & Typecheck
+    name: Lint & Typecheck & Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -29,6 +29,9 @@ jobs:
 
       - name: Run TypeScript typecheck
         run: bun run lint
+
+      - name: Run tests
+        run: bun run test
 
   release:
     name: Semantic Release

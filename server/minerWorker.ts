@@ -11,6 +11,7 @@ import {
 } from "../src/types.js";
 import { prisma } from "./db.js";
 import { extractTwitchUsername } from "./minerEngine.js";
+import { computeChestProgress } from "./chest.js";
 
 export interface ActiveSlotConnection {
   username: string;
@@ -2141,9 +2142,11 @@ export class MinerWorker {
     if (spadeRes.status === 204) {
       streamer.uptimeMinutes = (streamer.uptimeMinutes || 0) + 1;
       streamer.watchedMinutesSinceChest = (streamer.watchedMinutesSinceChest || 0) + 1;
-      const watched = Math.min(streamer.watchedMinutesSinceChest, 15);
-      streamer.nextChestEstimateSeconds = Math.max(0, (15 - watched) * 60);
-      streamer.chestAvailable = watched >= 15;
+      const { nextChestEstimateSeconds, chestAvailable } = computeChestProgress(
+        streamer.watchedMinutesSinceChest,
+      );
+      streamer.nextChestEstimateSeconds = nextChestEstimateSeconds;
+      streamer.chestAvailable = chestAvailable;
       this.noteWatchedDay(streamer);
       this.hooks.broadcast("streamers", this.streamers);
     }
