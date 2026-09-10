@@ -63,6 +63,7 @@ export class MinerWorker {
   private balanceBaselines = new Map<string, number>();
   private pubsubUserId: string | null = null;
   private channelIds = new Map<string, string>();
+  private betPredictionEventIds = new Set<string>();
   private authLoginName: string | null = null;
   private hasChatEditScope = false;
   private warnedMissingChatEdit = false;
@@ -1763,6 +1764,8 @@ export class MinerWorker {
             );
             if (!streamer || !streamer.isMining) return;
 
+            if (this.betPredictionEventIds.has(event.id)) return;
+            this.betPredictionEventIds.add(event.id);
             const strategy = this.settings.predictionStrategy;
             const maxBet = this.settings.maxBetPoints;
             const balance = streamer.points;
