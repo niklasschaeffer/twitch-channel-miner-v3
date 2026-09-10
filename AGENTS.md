@@ -5,7 +5,7 @@ Twitch channel-points miner webapp: a self-hosted Bun/Node + Express + Vite/Reac
 ## Commands
 
 - `npm run dev` — run the server in dev mode (`tsx server.ts`); Vite dev assets are separate
-- `npm run lint` — **`tsc --noEmit`**; this is the only automated check and MUST pass before any commit/merge
+- `npm run lint` — **`tsc --noEmit`**; MUST pass before any commit/merge (also enforced by the husky pre-commit hook together with oxlint)
 - `npm run build` — Vite frontend build + esbuild bundle of `server.ts` to `dist/server.cjs`
 - `npm run db:push` — apply `prisma/schema.prisma` to the SQLite DB (no migration files; schema-first workflow)
 - `docker compose build && docker compose up -d` — production deploy (add `--force-recreate` after compose/env/volume changes)
@@ -18,7 +18,7 @@ There is no test suite. Verification = `tsc --noEmit` plus live smoke tests agai
 - `server/minerEngine.ts` — engine manager: per-user `MinerWorker` registry (`ensureWorker`/`disposeWorker`), boot spawn from stored tokens (`spawnWorkersFromDb`, which also adopts legacy NULL-`userId` rows into the oldest account), SSE fan-out scoped per user, and a userId-threaded delegation API consumed by `server.ts`
 - `server/minerWorker.ts` — one worker per user with a stored Twitch token: owns its state (tick loop, PubSub + IRC websockets, spade heartbeats, balances, chat buffers, logs/stats, watch-streak + lurk-day tracking) and scopes every Prisma query by `userId`; `dispose()` is leak-free (guards the dispose-during-init race). Device flow persists tokens only with an owning session (`ownerUserId` captured at `/api/twitch/device/start`)
 - `src/` — React 19 + Vite + Tailwind 4 frontend; `src/i18n.ts` holds all translation resources (en + de)
-- `prisma/schema.prisma` — SQLite schema; the live DB is `prisma/dev.db` (gitignored, bind-mounted to `/app/data/miner.db` in the container)
+- `prisma/schema.prisma` — SQLite schema; the live DB is `prisma/dev.db` (gitignored, bind-mounted to `/app/data/miner.db` in the container). **Single-file bind-mount WAL hazard:** the `-wal`/`-shm` sidecars live inside the container, so host-side reads/copies of `dev.db` see stale data and a host-side `prisma db push` while the container runs corrupts the DB (`invalid rootpage`). Stop the container (or read/checkpoint from inside it) before any host-side DB operation
 
 ### Twitch integration ground rules
 
@@ -44,7 +44,7 @@ There is no test suite. Verification = `tsc --noEmit` plus live smoke tests agai
 - Local accounts: register hashes passwords with scrypt (`hashPassword` in `server.ts`, format salt-hex(32) + key-hex(128)); login verifies with `verifyPassword`. No auto-provisioning — registration is the only way to create a local account; Google OAuth creates accounts with `provider: 'google'` and no password
 - `.env` is required by `docker-compose.yaml` (`env_file`): `TWITCH_CLIENT_ID`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `APP_URL` (must be a real origin, e.g. `http://localhost:3000` — OAuth redirects break otherwise)
 - `prisma/dev.db` (plus `-journal`/`-wal`/`-shm`) and `backups/` are gitignored — never commit the live DB
-- Dockerfile pins `node:25-alpine` — Node ≥ 21 is required (global WebSocket)
+- Dockerfile uses `oven/bun:1` for both stages (native WebSocket, `bun install --frozen-lockfile`, `bun dist/server.cjs` runtime); the `"prepare": "husky || true"` script keeps production installs green without devDeps
 
 ## Conventions
 
