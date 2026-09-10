@@ -11,6 +11,7 @@ import {
   Area,
   CartesianGrid,
 } from "recharts";
+import type { TooltipValueType } from "recharts";
 import { TrendingUp, PieChart, Award, Zap, Trophy, Flame } from "lucide-react";
 import { AnalyticsData, MinerStatus } from "../types";
 
@@ -127,7 +128,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
                 }}
                 labelStyle={{ color: isDarkMode ? "#EFEFF1" : "#18181B", fontWeight: 600 }}
                 itemStyle={{ color: "#9146FF" }}
-                formatter={(value: any) => [`${value} pts`, "Points"]}
+                formatter={(value: TooltipValueType) => [`${value} pts`, "Points"]}
               />
               <Area
                 type="monotone"
@@ -213,7 +214,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
                     borderRadius: "0.25rem",
                     fontSize: "12px",
                   }}
-                  formatter={(value: any) => [`${value} pts`, "Balance"]}
+                  formatter={(value: TooltipValueType) => [`${value} pts`, "Balance"]}
                 />
                 <Bar dataKey="points" fill="#9146FF" />
               </BarChart>

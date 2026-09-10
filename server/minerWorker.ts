@@ -5,6 +5,7 @@ import {
   LogEntry,
   AnalyticsData,
   PriorityMode,
+  PredictionStrategy,
   LogLevel,
   StatisticalRecord,
   ChatMessage,
@@ -140,8 +141,8 @@ export class MinerWorker {
           claimDelaySeconds: savedSettings.claimDelaySeconds,
           followRaids: savedSettings.followRaids,
           autoClaimDrops: savedSettings.autoClaimDrops,
+          predictionStrategy: savedSettings.predictionStrategy as PredictionStrategy,
           autoBetPredictions: savedSettings.autoBetPredictions,
-          predictionStrategy: savedSettings.predictionStrategy as any,
           maxBetPoints: savedSettings.maxBetPoints,
           checkIntervalSeconds: savedSettings.checkIntervalSeconds,
         };
@@ -447,7 +448,7 @@ export class MinerWorker {
           pointsDelta: pointsDelta ?? null,
         },
       });
-    } catch (e) {
+    } catch {
       // Ignored non-fatal
     }
   }
@@ -956,7 +957,7 @@ export class MinerWorker {
               ws.send(`NICK ${anonNick}\r\n`);
             }
             ws.send(`JOIN #${targetChannel}\r\n`);
-          } catch (e) {}
+          } catch {}
 
           this.addLog(
             "SUCCESS",
@@ -976,7 +977,7 @@ export class MinerWorker {
             if (raw.startsWith("PING")) {
               try {
                 ws.send("PONG :tmi.twitch.tv\r\n");
-              } catch (e) {}
+              } catch {}
               connection.lastPing = new Date().toISOString();
               continue;
             }
@@ -1075,7 +1076,7 @@ export class MinerWorker {
         if (conn.ws && (conn.ws.readyState === 1 || conn.ws.readyState === 0)) {
           conn.ws.close();
         }
-      } catch (e) {}
+      } catch {}
       this.activeConnections.delete(clean);
       const streamer = this.streamers.find((s) => s.username === clean);
       this.addLog(
@@ -1364,7 +1365,7 @@ export class MinerWorker {
           nextChestEstimateSeconds: 900,
         },
       });
-    } catch (e) {
+    } catch {
       void 0;
     }
 
@@ -2502,7 +2503,7 @@ export class MinerWorker {
           };
         }
       }
-    } catch (err) {
+    } catch {
       // Network fallback
     } finally {
       clearTimeout(timeout);
@@ -2551,7 +2552,7 @@ export class MinerWorker {
           })
           .catch(() => {});
       }
-    } catch (e) {
+    } catch {
       // Return cached
     }
 
@@ -2786,7 +2787,7 @@ export class MinerWorker {
               : undefined,
         },
       });
-    } catch (e) {
+    } catch {
       // Ignored
     }
 
@@ -2830,7 +2831,7 @@ export class MinerWorker {
           isMining: streamer.isMining,
         },
       });
-    } catch (e) {}
+    } catch {}
 
     this.addLog(
       newLive ? "INFO" : "WARN",
@@ -2899,7 +2900,7 @@ export class MinerWorker {
       try {
         const targetChannel = clean === "xqcow" ? "xqc" : clean;
         conn.ws.send(`PRIVMSG #${targetChannel} :${text}\r\n`);
-      } catch (e) {}
+      } catch {}
     }
 
     const trimmed = text.trim();
@@ -3029,7 +3030,7 @@ export class MinerWorker {
     this.logs = [];
     try {
       await prisma.logRecord.deleteMany({ where: { userId: this.userId } });
-    } catch (e) {
+    } catch {
       void 0;
     }
     this.addLog("INFO", undefined, "Log history cleared by user.");

@@ -18,7 +18,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   currentUser,
   onLoginSuccess,
-  onLogout,
+  _onLogout,
 }) => {
   const { t } = useTranslation();
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -62,8 +62,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onLoginSuccess(user);
         onClose();
       }
-    } catch (err: any) {
-      setError(err.message || "Authentication failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {
       setLoading(false);
     }

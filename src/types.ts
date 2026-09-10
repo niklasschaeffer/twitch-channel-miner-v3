@@ -1,4 +1,5 @@
 export type PriorityMode = "points_asc" | "points_desc" | "streak" | "manual";
+export type PredictionStrategy = "lowest_odds" | "highest_odds" | "smart_ratio" | "conservative";
 
 export type MinerState = "running" | "paused" | "stopped";
 
@@ -57,7 +58,7 @@ export interface MinerSettings {
   followRaids: boolean;
   autoClaimDrops: boolean;
   autoBetPredictions: boolean;
-  predictionStrategy: "lowest_odds" | "highest_odds" | "smart_ratio" | "conservative";
+  predictionStrategy: PredictionStrategy;
   maxBetPoints: number;
   checkIntervalSeconds: number;
 }

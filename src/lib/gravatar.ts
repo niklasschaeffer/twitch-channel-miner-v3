@@ -214,9 +214,7 @@ export function getGravatarUrl(email: string, size = 100): string {
     if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.setItem(`gravatar_${cleanEmail}`, url);
     }
-  } catch (e) {
-    // Ignore storage issues
-  }
+  } catch {}
 
   return url;
 }

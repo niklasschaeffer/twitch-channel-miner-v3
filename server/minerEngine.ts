@@ -315,7 +315,7 @@ export class MinerEngine {
   }
 
   destroy(): void {
-    for (const userId of [...this.workers.keys()]) {
+    for (const userId of this.workers.keys()) {
       this.disposeWorker(userId);
     }
   }

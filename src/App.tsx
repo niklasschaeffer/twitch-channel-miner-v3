@@ -141,7 +141,7 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem("twitch_miner_theme", theme);
-    } catch (e) {
+    } catch {
       // Ignored
     }
     if (theme === "dark") {
@@ -279,7 +279,7 @@ export default function App() {
       eventSource.onerror = () => {
         setIsConnected(false);
       };
-    } catch (err) {
+    } catch {
       console.warn("SSE not supported or failed, falling back to interval polling");
     }
 
@@ -490,7 +490,7 @@ export default function App() {
     setCurrentUser(user);
     try {
       localStorage.setItem("twitch_miner_user", JSON.stringify(user));
-    } catch (e) {
+    } catch {
       // Ignored
     }
     showToast(`Welcome, ${user.username}!`);
@@ -500,13 +500,13 @@ export default function App() {
   const handleUserLogout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-    } catch (e) {
+    } catch {
       // Ignored
     }
     setCurrentUser(null);
     try {
       localStorage.removeItem("twitch_miner_user");
-    } catch (e) {
+    } catch {
       // Ignored
     }
     showToast("Logged out successfully.");
@@ -609,6 +609,7 @@ export default function App() {
                       onAddStreamerClick={() => setIsAddStreamerOpen(true)}
                       onRefreshLive={handleRefreshLive}
                       isRefreshingLive={isRefreshingLive}
+                      onDeleteStreamer={handleDeleteStreamer}
                       onMovePriority={handleMovePriority}
                       selectedStreamerId={selectedStreamer?.id || null}
                       onSelectStreamer={handleSelectSlot}

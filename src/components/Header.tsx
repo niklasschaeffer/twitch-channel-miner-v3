@@ -1,16 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Play,
-  Pause,
-  Gift,
-  Settings,
-  Database,
-  Sun,
-  Moon,
-  Globe,
-  User as UserIcon,
-} from "lucide-react";
+import { Play, Pause, Gift, Settings, Sun, Moon, Globe, User as UserIcon } from "lucide-react";
 import { MinerStatus, MinerSettings, User } from "../types";
 import { getGravatarUrl } from "../lib/gravatar";
 import logoUrl from "../assets/logo.png";
@@ -52,9 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
     i18n.changeLanguage(nextLang);
     try {
       localStorage.setItem("i18nextLng", nextLang);
-    } catch (e) {
-      // Ignored
-    }
+    } catch {}
   };
 
   const avatarSrc =

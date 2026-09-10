@@ -2,6 +2,8 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
+import type { Socket } from "net";
+import type { ViteDevServer } from "vite";
 import { minerEngine, extractTwitchUsername } from "./server/minerEngine.js";
 import { prisma } from "./server/db.js";
 import { md5 } from "./src/lib/gravatar.js";
@@ -484,8 +486,8 @@ async function startServer() {
       await setSessionCookie(res, user.id);
 
       res.json(user);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -525,8 +527,8 @@ async function startServer() {
         avatarUrl: user.avatarUrl,
         provider: user.provider,
       });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -576,8 +578,8 @@ async function startServer() {
     try {
       const streamer = await minerEngine.addStreamer(cleanUsername, displayName, req.user!.id);
       res.json(streamer);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -595,8 +597,8 @@ async function startServer() {
       }
       const success = await minerEngine.removeStreamer(cleanUsername, req.user!.id);
       res.json({ success });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -618,8 +620,8 @@ async function startServer() {
         return;
       }
       res.json(updated);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -633,8 +635,8 @@ async function startServer() {
         return;
       }
       res.json(stats);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -649,8 +651,8 @@ async function startServer() {
         return;
       }
       res.json(updated);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -660,8 +662,8 @@ async function startServer() {
       const cleanUsername = extractTwitchUsername(req.params.username);
       const messages = minerEngine.getStreamerChat(cleanUsername, req.user!.id);
       res.json(messages);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -681,8 +683,8 @@ async function startServer() {
         req.user!.id,
       );
       res.json(sent);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -691,8 +693,8 @@ async function startServer() {
     try {
       const streamers = await minerEngine.refreshAllLiveStats(req.user!.id);
       res.json({ success: true, count: streamers.length, streamers });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -705,8 +707,8 @@ async function startServer() {
     try {
       const updated = await minerEngine.updateSettings(req.body, req.user!.id);
       res.json(updated);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -728,8 +730,8 @@ async function startServer() {
     try {
       const records = await minerEngine.getStatisticalRecords(req.user!.id);
       res.json(records);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -737,8 +739,8 @@ async function startServer() {
     try {
       await minerEngine.recordStatisticalData(req.body, req.user!.id);
       res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -747,8 +749,8 @@ async function startServer() {
     try {
       const analytics = await minerEngine.getAnalytics(req.user!.id);
       res.json(analytics);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -775,7 +777,7 @@ async function startServer() {
   });
 
   // Vite middleware for development or static serving for production
-  let viteServer: any = null;
+  let viteServer: ViteDevServer | null = null;
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     viteServer = await createViteServer({
@@ -794,21 +796,21 @@ async function startServer() {
   await minerEngine.spawnWorkersFromDb();
 
   function listenWithRetry(retries = 5) {
-    const sockets = new Set<any>();
+    const sockets = new Set<Socket>();
     const server = app.listen(PORT, "0.0.0.0", () => {
       console.log(
         `Twitch Channel Points Miner running on http://0.0.0.0:${PORT} (Prisma SQLite enabled)`,
       );
     });
 
-    server.on("connection", (socket: any) => {
+    server.on("connection", (socket: Socket) => {
       sockets.add(socket);
       socket.once("close", () => {
         sockets.delete(socket);
       });
     });
 
-    server.on("error", (err: any) => {
+    server.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
         if (retries > 0) {
           console.warn(

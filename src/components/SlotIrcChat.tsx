@@ -7,14 +7,12 @@ import {
   ExternalLink,
   Trash2,
   Gift,
-  Radio,
   Eye,
   Shield,
   Sparkles,
   X,
   Power,
   Flame,
-  CheckCircle2,
 } from "lucide-react";
 import { Streamer, ChatMessage } from "../types";
 import { formatSubTier } from "../lib/badges";
@@ -42,7 +40,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   onFilterConsole,
   incomingChatMessage,
   onClose,
-  theme = "dark",
+  _theme = "dark",
 }) => {
   const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);

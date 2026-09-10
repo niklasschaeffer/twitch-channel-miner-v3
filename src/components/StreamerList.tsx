@@ -26,6 +26,7 @@ interface StreamerListProps {
   onChangePriorityMode: (mode: PriorityMode) => void;
   onToggleEnabled: (username: string, enabled: boolean) => void;
   onToggleLurk: (username: string, lurkEnabled: boolean) => void;
+  onDeleteStreamer: (username: string) => void;
   onAddStreamerClick: () => void;
   onRefreshLive?: () => void;
   isRefreshingLive?: boolean;
