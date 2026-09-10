@@ -2,9 +2,9 @@
 type: reference
 title: Authentication
 description: Session model, local and Google accounts, the Twitch device flow,
-  and which API routes are public.
+  sign-out, and which API routes are public.
 tags: [auth, sessions, oauth, device-flow, security]
-last_updated: 2026-09-10T08:40:24.287Z
+last_updated: 2026-09-10T09:51:18.065Z
 updated_by: Niklas Schäffer
 ---
 
@@ -60,6 +60,12 @@ Key properties:
 - The token is stored in `MinerSettings.authToken` server-side only; the API surface exposes `hasAuthToken`, never the token
 - Tokens paired before `chat:edit` was added lack the scope; `validateStoredAuthToken()` detects this (`hasChatEditScope`) and lurk posting skips with a once-per-worker WARN instead of pretending to send
 - Stale tokens surface as a red reconnect banner in the UI; disconnecting (`authToken: ""`) disposes the worker via `MinerEngine.updateSettings`
+
+## Session lifecycle in the UI
+
+- Unauthenticated visitors get the login screen (`AuthModal`); after login the dashboard renders
+- The header user menu shows provider (local/google) and avatar; `AuthModal`'s user panel carries the **sign-out button** (`auth.logout` key, i18n en+de) wired to `onLogout` — it deletes the session server-side, clears the cookie, and returns the app to the login screen (wired in 1.15.4, `8839381`)
+- Logout is also reachable via `POST /api/auth/logout`; both paths delete the `Session` row
 
 ## Threat-model notes
 

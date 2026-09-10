@@ -1,10 +1,11 @@
 ---
 type: guide
 title: Quickstart
-description: Install, configure, and run the miner — Docker deployment,
-  first-run account + Twitch device-flow pairing, and development commands.
+description: Install, configure, and run the miner — Docker deployment with the
+  Bun or Node image, first-run account + Twitch device-flow pairing, and dev
+  commands.
 tags: [quickstart, setup, docker, dev]
-last_updated: 2026-09-10T08:39:54.263Z
+last_updated: 2026-09-10T09:51:11.996Z
 updated_by: Niklas Schäffer
 ---
 
@@ -13,7 +14,7 @@ updated_by: Niklas Schäffer
 ## Requirements
 
 - Docker + Docker Compose (recommended deployment)
-- Node ≥ 21 if running outside Docker (the container pins `oven/bun:1`)
+- Node ≥ 21 if running outside Docker; containers pin `oven/bun:1` (default) or `node:25-alpine` (`:node` image for CPUs without AVX2 — see [Deployment](./operations/deployment.md))
 - A Twitch account — the miner acts on this account's behalf
 - Optional: Google OAuth credentials for "Sign in with Google"
 
@@ -74,12 +75,11 @@ npm run dev            # tsx server.ts — Express serves the Vite dev middlewar
 
 ## Verification
 
-There is no full test suite. Verification means:
+There is no full integration/E2E suite. Verification means:
 
-- `npm run lint` (which is `tsc --noEmit`) — must pass before any commit/merge; husky runs it with oxlint as the pre-commit hook
+- `npm run test` — Vitest suite for pure helpers (en/de i18n parity, chest progress, gravatar, username extraction)
+- `npm run lint` (which is `tsc --noEmit`) — must pass before any commit/merge; husky runs oxlint (import/vitest/react plugins) and oxfmt alongside it as the pre-commit hook
 - Live smoke tests against `http://localhost:3000`, health endpoint: `GET /api/health` (returns `{ status: "ok", database: "sqlite-prisma", time: ... }`)
-
-A small Vitest suite exists for pure helpers (`tests/chest.test.ts`, `tests/gravatar.test.ts`, `tests/i18n.test.ts`, `tests/twitch.test.ts`) — run with `npm run test`.
 
 ## Troubleshooting
 

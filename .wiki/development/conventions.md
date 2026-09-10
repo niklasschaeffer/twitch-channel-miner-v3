@@ -2,9 +2,9 @@
 type: reference
 title: Conventions & Code Rules
 description: Enforced code style — no any, no comments, no tiny wrappers, i18n
-  in en+de, comment-checker hook, merge discipline.
+  in en+de, comment-checker hook, oxlint/oxfmt gates, merge discipline.
 tags: [conventions, code-style, i18n, rules]
-last_updated: 2026-09-10T08:41:17.066Z
+last_updated: 2026-09-10T09:51:05.235Z
 updated_by: Niklas Schäffer
 ---
 
@@ -12,11 +12,11 @@ updated_by: Niklas Schäffer
 
 Rules enforced in this repository (by hooks/CI, not just style preference):
 
-1. **No `any`** — use `unknown` + narrowing. (Existing `catch (err: any)` call sites predate the rule; new code narrows with `err instanceof Error` / typed error shapes.)
+1. **No `any`** — use `unknown` + narrowing (`err instanceof Error` / typed error shapes). The legacy `catch (err: any)` call sites were eliminated in 1.15.2 (`8dcb16b`); don't reintroduce them.
 2. **No comments/docstrings** — the `omp-comment-checker` hook mechanically blocks writes containing them; make code self-documenting. Existing comments are grandfathered; don't add new ones.
 3. **No tiny wrapper functions** unless they encode a durable contract (e.g. `extractTwitchUsername` exists in both `server/minerEngine.ts` and `src/lib/twitch.ts` because it is a real shared contract, not a one-liner wrapper).
 4. **i18n:** every user-facing string needs keys in **both** `en` and `de` in `src/i18n.ts`.
-5. **`tsc --noEmit` before every commit/merge** — husky pre-commit runs it with oxlint; CI re-runs it on `main`. The merged tree must typecheck before proceeding.
+5. **`tsc --noEmit` before every commit/merge** — husky pre-commit runs oxlint (with import/vitest/react plugins), oxfmt, and the typecheck; CI re-runs typecheck + Vitest on `main`. The merged tree must typecheck before proceeding.
 6. **Never commit the live DB** — `prisma/dev.db` (+ sidecars) and `backups/` are gitignored.
 
 ## Formatting and lint config

@@ -1,10 +1,10 @@
 ---
 type: reference
 title: Deployment
-description: Docker Compose setup, environment variables, container boot
-  sequence, and health checks.
+description: Docker Compose setup, the Bun and Node runtime images, environment
+  variables, container boot sequence, and health checks.
 tags: [docker, compose, env, deploy]
-last_updated: 2026-09-10T08:41:00.472Z
+last_updated: 2026-09-10T09:50:47.427Z
 updated_by: Niklas Schäffer
 ---
 
@@ -20,12 +20,32 @@ updated_by: Niklas Schäffer
 - Volume: `./prisma/dev.db:/app/data/miner.db` (single-file bind mount — see [Database](./database.md))
 - Healthcheck: `curl -f http://localhost:3000/api/health` every 30s (10s timeout, 3 retries, 20s start period)
 
-## Dockerfile
+## Dockerfiles — two runtimes per release
 
-Two `oven/bun:1` stages (native WebSocket support):
+Two images are built for every release; they run the identical application (`dist/server.cjs`, same database, same features) and differ only in the JavaScript runtime:
+
+|            | Bun image (default)                          | Node image                                                   |
+| ---------- | -------------------------------------------- | ------------------------------------------------------------ |
+| Dockerfile | `Dockerfile` (`oven/bun:1`, both stages)     | `Dockerfile.node` (`node:25-alpine`)                         |
+| GHCR tags  | `:latest`, `:1.x.x`, `:v1.x.x`, `:sha-…`     | `:latest-node`, `:1.x.x-node`, `:v1.x.x-node`, `:sha-…-node` |
+| Hardware   | Modern x86-64 with **AVX2** (Bun's baseline) | Any x86-64 and ARM — no AVX2 needed                          |
+
+**Which one?** If the CPU lacks AVX2, the Bun image dies with `Illegal instruction` on startup (typical on older AMD hardware, e.g. the Unraid Turion case) — use the Node image instead by overriding the image in `docker-compose.yaml`:
+
+```yaml
+services:
+  twitch-miner:
+    image: ghcr.io/niklasschaeffer/twitch-channel-miner-v3:latest-node
+```
+
+Check AVX2 support with `grep -q avx2 /proc/cpuinfo && echo "Bun OK" || echo "Use the :node image"`.
+
+**Bun image stages** (native WebSocket support):
 
 1. **Builder:** installs openssl, `bun install --frozen-lockfile`, `bunx prisma generate`, `bun run build` (Vite frontend build + esbuild bundle of `server.ts` → `dist/server.cjs`)
 2. **Runner:** `bun install --production`, copies Prisma client + `dist`, `EXPOSE 3000`, and boots with `bunx prisma db push --skip-generate && bun dist/server.cjs` — the schema is applied at every container start
+
+**Node image stages** (`Dockerfile.node`): same build with `npm install` / `npm run build`; the runner installs production dependencies, copies the Prisma client + `dist`, and boots with `npx prisma db push --skip-generate && node dist/server.cjs`. Node ≥ 22 ships a native `WebSocket`, so the same esbuild bundle runs unchanged.
 
 The `"prepare": "husky || true"` script keeps production installs green without devDependencies.
 

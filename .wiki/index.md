@@ -2,13 +2,13 @@
 type: Documentation Index
 title: "Wiki"
 description: "Files and subdirectories in Wiki."
-last_updated: "2026-09-10T08:41:46.460Z"
+last_updated: "2026-09-10T09:51:45.425Z"
 updated_by: "Niklas Schäffer"
 ---
 
 # Files
 
-- [Quickstart](quickstart.md) - Install, configure, and run the miner — Docker deployment, first-run account + Twitch device-flow pairing, and development commands.
+- [Quickstart](quickstart.md) - Install, configure, and run the miner — Docker deployment with the Bun or Node image, first-run account + Twitch device-flow pairing, and dev commands.
 
 # Directories
 

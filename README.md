@@ -51,15 +51,15 @@ Both images run the exact same application code (`dist/server.cjs`), database, a
 
 Once your Twitch account is connected and channels are on the watchlist, **your personal miner worker** runs a 2-second tick loop and does the following **with your real account** — every account with a stored token gets its own isolated engine (connections, timers, balances), so users never share mining state:
 
-| Feature               | Mechanism                                                                                                                                                                                         |
-| **Watch earning**     | Sends minute-watched heartbeats to Twitch's spade telemetry endpoint once per minute per mining channel — the same signal the Twitch web player sends                                             |
-| **Bonus chests**      | Subscribes to real-time PubSub `community-points-user-v1` events; when a chest becomes claimable it polls and executes the persisted `ClaimCommunityPoints` GQL mutation                          |
-| **Drops**             | Polls your inventory (10-min cadence, toggleable) and claims every drop with `is_claimable` + `dropInstanceID` via `DropsPage_ClaimDropRewards`                                                   |
-| **Raids**             | Subscribes to PubSub `raid` topics per mining channel; on a raid event it joins via the persisted `JoinRaid` mutation (auto-follow configurable) and records the raid against the watched channel |
-| **Watch streaks**     | Tracks consecutive UTC days with accepted heartbeats per channel (Twitch's GQL exposes no streak field); resets honestly after missed days                                                        |
-| **Auto-lurk**         | Optionally posts a chat message (default `!lurk`) via IRC into a channel's chat the moment it goes live — once per day per channel, with self-echo dedupe so it never repeats                     |
-| **Predictions**       | Listens to PubSub `predictions-channel-v1`; when an event goes ACTIVE it places a bet via `MakePrediction` (capped by your `maxBetPoints` setting)                                                |
-| **Live balance sync** | Per-channel balances sync via PubSub events plus a 5-minute GQL snapshot fallback                                                                                                                 |
+| Feature | Mechanism |
+| **Watch earning** | Sends minute-watched heartbeats to Twitch's spade telemetry endpoint once per minute per mining channel — the same signal the Twitch web player sends |
+| **Bonus chests** | Subscribes to real-time PubSub `community-points-user-v1` events; when a chest becomes claimable it polls and executes the persisted `ClaimCommunityPoints` GQL mutation |
+| **Drops** | Polls your inventory (10-min cadence, toggleable) and claims every drop with `is_claimable` + `dropInstanceID` via `DropsPage_ClaimDropRewards` |
+| **Raids** | Subscribes to PubSub `raid` topics per mining channel; on a raid event it joins via the persisted `JoinRaid` mutation (auto-follow configurable) and records the raid against the watched channel |
+| **Watch streaks** | Tracks consecutive UTC days with accepted heartbeats per channel (Twitch's GQL exposes no streak field); resets honestly after missed days |
+| **Auto-lurk** | Optionally posts a chat message (default `!lurk`) via IRC into a channel's chat the moment it goes live — once per day per channel, with self-echo dedupe so it never repeats |
+| **Predictions** | Listens to PubSub `predictions-channel-v1`; when an event goes ACTIVE it places a bet via `MakePrediction` (capped by your `maxBetPoints` setting) |
+| **Live balance sync** | Per-channel balances sync via PubSub events plus a 5-minute GQL snapshot fallback |
 
 The UI shows **only real Twitch data** — points, claims, chat, and connection state all come from genuine API responses. A simulation mode exists for development but is off in production and fabricates nothing.
 

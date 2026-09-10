@@ -4,7 +4,7 @@ title: Frontend
 description: React 19 + Vite + Tailwind 4 app — component map, data flow over
   SSE and REST, theming, and i18n (en/de).
 tags: [frontend, react, vite, tailwind, i18n]
-last_updated: 2026-09-10T08:41:22.934Z
+last_updated: 2026-09-10T09:51:22.761Z
 updated_by: Niklas Schäffer
 ---
 
@@ -36,7 +36,7 @@ updated_by: Niklas Schäffer
 | `AnalyticsView`    | Charts (recharts): hourly history, channel distribution, category breakdown                                                                                                     |
 | `SettingsModal`    | Engine controls, concurrency, toggles, prediction strategy + max bet, client-id field, Twitch connect/disconnect                                                                |
 | `TwitchConnect`    | Device-flow widget: code + `twitch.tv/activate` link, polls `/api/twitch/device/poll` up to a minute, shows Connected with login name, stale-token banner                       |
-| `AuthModal`        | Login/register (and Google button when configured)                                                                                                                              |
+| `AuthModal`        | Login/register (and Google button when configured); its user panel also carries the provider badge and the sign-out button (`onLogout`)                                         |
 
 Helpers in `src/lib/`: `badges.ts` (`formatSubTier` maps `1000/2000/3000/prime`), `gravatar.ts` (md5 for identicons, shared with the server), `twitch.ts` (username extraction), `prismaClient.ts`.
 
