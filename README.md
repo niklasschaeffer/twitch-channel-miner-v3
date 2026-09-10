@@ -6,21 +6,29 @@
 
 A self-hosted web dashboard that **autonomously earns Twitch Channel Points** on your account: it watches channels, claims bonus chests, claims drops, follows raids, and places prediction bets — all through real Twitch APIs, never simulated. You get a live IRC chat view, per-channel point tracking, and honest analytics backed by a SQLite database you can inspect directly.
 
+## Table of Contents
+
 - [What it does](#what-it-does)
 - [Requirements](#requirements)
 - [Two runtimes: Bun and Node](#two-runtimes-bun-and-node)
 - [Installation](#installation)
+- [First-run setup](#first-run-setup)
+- [Using the app](#using-the-app)
+- [How earning works](#how-earning-works)
+- [Development status](#development-status)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
 
 ## Two runtimes: Bun and Node
 
 The project ships **two Docker images** for every release, so it runs on both modern and older hardware:
 
-| | Bun image | Node image |
-|---|---|---|
-| **Dockerfile** | `Dockerfile` (`oven/bun:1`) | `Dockerfile.node` (`node:25-alpine`) |
-| **GHCR tags** | `:latest`, `:1.x.x`, `:v1.x.x`, `:sha` | `:latest-node`, `:1.x.x-node`, `:v1.x.x-node`, `:sha-node` |
-| **Hardware** | Modern x86-64 with **AVX2** (Bun's baseline requirement) | Any x86-64 (and ARM) — no AVX2 needed |
-| **Why** | Bun starts faster and bundles the WebSocket client natively | Node ≥ 22 also has native `WebSocket`, so the same esbuild bundle runs unchanged |
+|                | Bun image                                                   | Node image                                                                       |
+| -------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Dockerfile** | `Dockerfile` (`oven/bun:1`)                                 | `Dockerfile.node` (`node:25-alpine`)                                             |
+| **GHCR tags**  | `:latest`, `:1.x.x`, `:v1.x.x`, `:sha`                      | `:latest-node`, `:1.x.x-node`, `:v1.x.x-node`, `:sha-node`                       |
+| **Hardware**   | Modern x86-64 with **AVX2** (Bun's baseline requirement)    | Any x86-64 (and ARM) — no AVX2 needed                                            |
+| **Why**        | Bun starts faster and bundles the WebSocket client natively | Node ≥ 22 also has native `WebSocket`, so the same esbuild bundle runs unchanged |
 
 **Which one do I need?** If your CPU supports AVX2 (2013+ Intel Haswell, AMD Excavator+, basically anything modern), use the default Bun image (`:latest`). If your server crashes with `Illegal instruction` on startup — typical for older AMD hardware like the Turion II Neo in older Unraid boxes, which lacks AVX2 entirely — use the Node image (`:node`). Check with:
 
@@ -44,7 +52,7 @@ Both images run the exact same application code (`dist/server.cjs`), database, a
 Once your Twitch account is connected and channels are on the watchlist, **your personal miner worker** runs a 2-second tick loop and does the following **with your real account** — every account with a stored token gets its own isolated engine (connections, timers, balances), so users never share mining state:
 
 | Feature               | Mechanism                                                                                                                                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Watch earning**     | Sends minute-watched heartbeats to Twitch's spade telemetry endpoint once per minute per mining channel — the same signal the Twitch web player sends                                             |
 | **Bonus chests**      | Subscribes to real-time PubSub `community-points-user-v1` events; when a chest becomes claimable it polls and executes the persisted `ClaimCommunityPoints` GQL mutation                          |
 | **Drops**             | Polls your inventory (10-min cadence, toggleable) and claims every drop with `is_claimable` + `dropInstanceID` via `DropsPage_ClaimDropRewards`                                                   |
 | **Raids**             | Subscribes to PubSub `raid` topics per mining channel; on a raid event it joins via the persisted `JoinRaid` mutation (auto-follow configurable) and records the raid against the watched channel |
