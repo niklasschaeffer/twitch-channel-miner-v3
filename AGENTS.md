@@ -4,13 +4,15 @@ Twitch channel-points miner webapp: a self-hosted Bun/Node + Express + Vite/Reac
 
 ## Commands
 
-- `npm run dev` — run the server in dev mode (`tsx server.ts`); Vite dev assets are separate
-- `npm run lint` — **`tsc --noEmit`**; MUST pass before any commit/merge (also enforced by the husky pre-commit hook together with oxlint)
-- `npm run build` — Vite frontend build + esbuild bundle of `server.ts` to `dist/server.cjs`
-- `npm run db:push` — apply `prisma/schema.prisma` to the SQLite DB (no migration files; schema-first workflow)
-- `docker compose build && docker compose up -d` — production deploy (add `--force-recreate` after compose/env/volume changes)
+Run the app via Docker only — `docker compose build && docker compose up -d`; do NOT run the server directly on the host with `npm run dev`/`bun`/`node`: a second engine opening the bind-mounted `prisma/dev.db` next to the container's corrupts it (see the WAL hazard under Architecture)
 
-There is no test suite. Verification = `tsc --noEmit` plus live smoke tests against `http://localhost:3000` (health endpoint: `GET /api/health`).
+- `docker compose build && docker compose up -d` — run/deploy the app (add `--force-recreate` after compose/env/volume changes); smoke-test against `http://localhost:3000` (health endpoint: `GET /api/health`)
+- `npm run lint` — **`tsc --noEmit`**; MUST pass before any commit/merge
+- Pre-commit (husky): `bunx oxlint --import-plugin --vitest-plugin --react-plugin && bunx oxfmt && npm run lint` — oxlint runs with the import/vitest/react plugins, then the oxfmt formatter; `.oxfmtrc.json` ignores `CHANGELOG.md`, `.oxlintrc.json` keeps `no-unused-vars` and `typescript/no-explicit-any` as warnings
+- `npm run test` — vitest suite in `tests/`; MUST pass before any commit/merge (CI runs `bun run test`)
+- `npm run build` — Vite frontend build + esbuild bundle of `server.ts` to `dist/server.cjs`
+- `npm run db:push` — apply `prisma/schema.prisma` to the SQLite DB (no migration files; schema-first workflow; stop the container first)
+- `npm run dev` (`tsx server.ts`) exists for rare host-side development only and is not the supported way to run the app
 
 ## Architecture
 
