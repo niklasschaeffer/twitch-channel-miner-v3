@@ -1,3 +1,10 @@
+## [1.15.4](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.15.3...v1.15.4) (2026-09-10)
+
+
+### Bug Fixes
+
+* **auth:** wire dead onLogout prop into AuthModal user panel as sign-out button ([8839381](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/8839381d5ba4df6892117237cbf6e0f50606b3a6))
+
 ## [1.15.3](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.15.2...v1.15.3) (2026-09-10)
 
 
