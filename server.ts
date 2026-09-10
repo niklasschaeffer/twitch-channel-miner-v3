@@ -353,6 +353,15 @@ async function startServer() {
     res.json({ connected: false });
   });
 
+  app.get("/api/twitch/your-channels", async (req, res) => {
+    try {
+      const suggestions = await minerEngine.getYourChannels(req.user!.id);
+      res.json(suggestions);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // Auth endpoints (Multiuser support)
 
   // --- Real Google OAuth (authorization code flow) ---

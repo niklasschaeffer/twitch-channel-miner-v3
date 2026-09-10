@@ -8,12 +8,14 @@ import {
   PredictionStrategy,
   LogLevel,
   StatisticalRecord,
+  YourChannelSuggestion,
   ChatMessage,
 } from "../src/types.js";
 import { prisma } from "./db.js";
 import { extractTwitchUsername } from "./minerEngine.js";
 import { computeChestProgress } from "./chest.js";
 import { selectPredictionOutcome } from "./prediction.js";
+import { composeYourChannels, type ComposeYourChannelsInput } from "./yourChannels.js";
 
 export interface ActiveSlotConnection {
   username: string;
@@ -66,6 +68,12 @@ export class MinerWorker {
   private betPredictionEventIds = new Set<string>();
   private authLoginName: string | null = null;
   private hasChatEditScope = false;
+  private yourChannelsCache: {
+    at: number;
+    subs: YourChannelSuggestion[];
+    follows: YourChannelSuggestion[];
+    gameStreams: YourChannelSuggestion[];
+  } | null = null;
   private warnedMissingChatEdit = false;
 
   constructor(userId: string, hooks: { broadcast(event: string, payload: unknown): void }) {
@@ -1332,6 +1340,235 @@ export class MinerWorker {
     } finally {
       this.claimsInFlight.delete(streamer.username);
     }
+  }
+
+  public async getYourChannels(): Promise<YourChannelSuggestion[]> {
+    if (!this.pubsubUserId) return [];
+
+    const existing = this.streamers.map((s) => s.username);
+    const empty: ComposeYourChannelsInput = { existing, subs: [], follows: [], gameStreams: [] };
+
+    const cache = this.yourChannelsCache;
+    if (cache && Date.now() - cache.at < 5 * 60 * 1000) {
+      return composeYourChannels({
+        existing,
+        subs: cache.subs,
+        follows: cache.follows,
+        gameStreams: cache.gameStreams,
+      });
+    }
+
+    const ops: { query: string; variables: Record<string, string> }[] = [
+      {
+        query:
+          "query($id: ID!) { user(id: $id) { follows(first: 100) { edges { node { login displayName stream { viewersCount game { name } } self { subscriptionBenefit { tier } } } } } } }",
+        variables: { id: this.pubsubUserId },
+      },
+    ];
+    const watchedGames: string[] = [];
+    for (const s of this.streamers) {
+      if (!s.game || s.game === "Offline" || watchedGames.includes(s.game)) continue;
+      watchedGames.push(s.game);
+      if (watchedGames.length >= 3) break;
+    }
+    for (const game of watchedGames) {
+      ops.push({
+        query:
+          "query($name: String) { game(name: $name) { streams(first: 8) { edges { node { broadcaster { login displayName } viewersCount } } } } }",
+        variables: { name: game },
+      });
+    }
+
+    let rawBody = "";
+    try {
+      const res = await fetch("https://gql.twitch.tv/gql", {
+        method: "POST",
+        headers: this.authenticatedGqlHeaders(),
+        body: JSON.stringify(ops),
+      });
+      rawBody = await res.text();
+      if (!res.ok) {
+        this.addLog(
+          "WARN",
+          undefined,
+          `Your channels fetch failed: GQL HTTP ${res.status} — ${rawBody.slice(0, 400)}`,
+        );
+        return composeYourChannels(empty);
+      }
+    } catch (err) {
+      this.addLog(
+        "WARN",
+        undefined,
+        `Your channels fetch failed: ${err instanceof Error ? err.message : "unknown error"}`,
+      );
+      return composeYourChannels(empty);
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawBody);
+    } catch {
+      this.addLog(
+        "WARN",
+        undefined,
+        `Your channels fetch returned non-JSON body: ${rawBody.slice(0, 400)}`,
+      );
+      return composeYourChannels(empty);
+    }
+    if (!Array.isArray(parsed)) {
+      this.addLog(
+        "WARN",
+        undefined,
+        `Your channels fetch returned non-array body: ${rawBody.slice(0, 400)}`,
+      );
+      return composeYourChannels(empty);
+    }
+
+    const subs: YourChannelSuggestion[] = [];
+    const follows: YourChannelSuggestion[] = [];
+    const gameStreams: YourChannelSuggestion[] = [];
+    const followedLogins = new Set<string>();
+
+    const followsOp: unknown = parsed[0];
+    if (
+      typeof followsOp === "object" &&
+      followsOp !== null &&
+      "data" in followsOp &&
+      typeof followsOp.data === "object" &&
+      followsOp.data !== null &&
+      !("errors" in followsOp)
+    ) {
+      const data = followsOp.data as { user?: unknown };
+      const user: unknown = data.user;
+      if (
+        typeof user === "object" &&
+        user !== null &&
+        "follows" in user &&
+        typeof user.follows === "object" &&
+        user.follows !== null &&
+        "edges" in user.follows &&
+        Array.isArray(user.follows.edges)
+      ) {
+        for (const edge of user.follows.edges) {
+          const node =
+            typeof edge === "object" &&
+            edge !== null &&
+            "node" in edge &&
+            typeof edge.node === "object"
+              ? edge.node
+              : null;
+          if (node === null) continue;
+          const login: unknown = "login" in node ? node.login : undefined;
+          const displayName: unknown = "displayName" in node ? node.displayName : undefined;
+          if (typeof login !== "string" || login.length === 0) continue;
+          const stream: object | null =
+            "stream" in node && typeof node.stream === "object" ? node.stream : null;
+          const game: object | null =
+            stream !== null &&
+            "game" in stream &&
+            typeof stream.game === "object" &&
+            stream.game !== null
+              ? stream.game
+              : null;
+          const gameName: string | undefined =
+            game !== null && "name" in game && typeof game.name === "string"
+              ? game.name
+              : undefined;
+          const self: object | null =
+            "self" in node && typeof node.self === "object" ? node.self : null;
+          const benefit: object | null =
+            self !== null &&
+            "subscriptionBenefit" in self &&
+            typeof self.subscriptionBenefit === "object"
+              ? self.subscriptionBenefit
+              : null;
+          const tier: string | undefined =
+            benefit !== null && "tier" in benefit && typeof benefit.tier === "string"
+              ? benefit.tier
+              : undefined;
+          const suggestion: YourChannelSuggestion = {
+            username: login,
+            displayName: typeof displayName === "string" ? displayName : login,
+            reason: tier === undefined ? "follow" : "sub",
+            ...(tier === undefined ? {} : { tier }),
+            ...(gameName === undefined ? {} : { game: gameName }),
+            ...(stream === null ||
+            !("viewersCount" in stream) ||
+            typeof stream.viewersCount !== "number"
+              ? {}
+              : { viewersCount: stream.viewersCount }),
+          };
+          if (suggestion.reason === "sub") subs.push(suggestion);
+          else follows.push(suggestion);
+          followedLogins.add(login.toLowerCase());
+        }
+      } else {
+        this.addLog("WARN", undefined, `Your channels follows op failed: ${rawBody.slice(0, 400)}`);
+      }
+    } else {
+      this.addLog("WARN", undefined, `Your channels follows op failed: ${rawBody.slice(0, 400)}`);
+    }
+
+    for (let i = 1; i < parsed.length; i += 1) {
+      const op: unknown = parsed[i];
+      const game: string | undefined = watchedGames[i - 1];
+      const label = `Your channels directory op ${i - 1} (${game ?? "unknown game"}) failed`;
+      if (
+        typeof op !== "object" ||
+        op === null ||
+        !("data" in op) ||
+        typeof op.data !== "object" ||
+        op.data === null ||
+        "errors" in op
+      ) {
+        this.addLog("WARN", undefined, `${label}: ${rawBody.slice(0, 400)}`);
+        continue;
+      }
+      const gameNode: unknown = "game" in op.data ? op.data.game : undefined;
+      if (
+        typeof gameNode !== "object" ||
+        gameNode === null ||
+        !("streams" in gameNode) ||
+        typeof gameNode.streams !== "object" ||
+        gameNode.streams === null ||
+        !("edges" in gameNode.streams) ||
+        !Array.isArray(gameNode.streams.edges)
+      )
+        continue;
+      for (const edge of gameNode.streams.edges) {
+        const node =
+          typeof edge === "object" &&
+          edge !== null &&
+          "node" in edge &&
+          typeof edge.node === "object"
+            ? edge.node
+            : null;
+        if (node === null) continue;
+        if (
+          !("broadcaster" in node) ||
+          typeof node.broadcaster !== "object" ||
+          node.broadcaster === null
+        )
+          continue;
+        const broadcaster = node.broadcaster;
+        const login: unknown = "login" in broadcaster ? broadcaster.login : undefined;
+        const displayName: unknown =
+          "displayName" in broadcaster ? broadcaster.displayName : undefined;
+        if (typeof login !== "string" || login.length === 0) continue;
+        if (followedLogins.has(login.toLowerCase())) continue;
+        gameStreams.push({
+          username: login,
+          displayName: typeof displayName === "string" ? displayName : login,
+          reason: "game",
+          game,
+          ...(typeof node.viewersCount === "number" ? { viewersCount: node.viewersCount } : {}),
+        });
+      }
+    }
+
+    this.yourChannelsCache = { at: Date.now(), subs, follows, gameStreams };
+
+    return composeYourChannels({ existing, subs, follows, gameStreams });
   }
 
   public async executeClaimBonus(streamer: Streamer) {

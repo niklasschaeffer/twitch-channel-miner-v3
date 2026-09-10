@@ -7,6 +7,7 @@ import {
   StatisticalRecord,
   AnalyticsData,
   ChatMessage,
+  YourChannelSuggestion,
 } from "../src/types.js";
 import { prisma } from "./db.js";
 import { MinerWorker } from "./minerWorker.js";
@@ -258,6 +259,10 @@ export class MinerEngine {
 
   async getLiveStats(username: string, userId: string): Promise<unknown> {
     return this.ensureWorker(userId).getLiveStats(username);
+  }
+
+  async getYourChannels(userId: string): Promise<YourChannelSuggestion[]> {
+    return this.ensureWorker(userId).getYourChannels();
   }
 
   async toggleStreamerLive(

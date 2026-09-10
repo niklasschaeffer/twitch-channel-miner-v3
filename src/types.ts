@@ -160,3 +160,14 @@ export interface ChatMessage {
   isSystem?: boolean;
   isHighlighted?: boolean;
 }
+
+export type YourChannelReason = "sub" | "follow" | "game";
+
+export interface YourChannelSuggestion {
+  username: string;
+  displayName: string;
+  reason: YourChannelReason;
+  tier?: string;
+  game?: string;
+  viewersCount?: number;
+}
