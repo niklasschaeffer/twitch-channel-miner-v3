@@ -1,3 +1,10 @@
+# [1.20.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.19.2...v1.20.0) (2026-09-10)
+
+
+### Features
+
+* unified settings layer with Twitch account section; remove simulation mode entirely ([1062cb6](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/1062cb61137dbc686dd95b0c9044e1cfaf3bea90))
+
 ## [1.19.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.19.1...v1.19.2) (2026-09-10)
 
 
