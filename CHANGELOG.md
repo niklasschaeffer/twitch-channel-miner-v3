@@ -1,3 +1,10 @@
+## [1.17.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.17.1...v1.17.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **miner:** clear worker bet-dedupe and balance state on dispose ([76b443a](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/76b443a1742d22c8501187b822d2816f12bca65a))
+
 ## [1.17.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.17.0...v1.17.1) (2026-09-10)
 
 
