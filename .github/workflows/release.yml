@@ -180,3 +180,27 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Extract Node Docker metadata
+        id: meta-node
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: |
+            suffix=-node
+          tags: |
+            type=raw,value=latest,enable=${{ needs.release.outputs.new_release_published == 'true' || github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ needs.release.outputs.release_version }},enable=${{ needs.release.outputs.new_release_published == 'true' }}
+            type=raw,value=${{ needs.release.outputs.release_tag }},enable=${{ needs.release.outputs.new_release_published == 'true' }}
+            type=sha,format=short
+
+      - name: Build and push Node Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.node
+          push: true
+          tags: ${{ steps.meta-node.outputs.tags }}
+          labels: ${{ steps.meta-node.outputs.labels }}
+          cache-from: type=gha,scope=node
+          cache-to: type=gha,scope=node,mode=max
