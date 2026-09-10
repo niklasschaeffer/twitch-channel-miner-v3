@@ -361,12 +361,10 @@ async function startServer() {
 
   app.get("/api/auth/google/start", (req, res) => {
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-      res
-        .status(500)
-        .json({
-          error:
-            "Google OAuth not configured (missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in .env)",
-        });
+      res.status(500).json({
+        error:
+          "Google OAuth not configured (missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in .env)",
+      });
       return;
     }
     const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
