@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.6...v1.10.0) (2026-09-10)
+
+
+### Features
+
+* **dashboard:** split raid stats into dedicated overview card ([87d84ed](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/87d84ed694d22ec0683776e585cd7a98c7c87831))
+
 ## [1.9.6](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.5...v1.9.6) (2026-09-10)
 
 
