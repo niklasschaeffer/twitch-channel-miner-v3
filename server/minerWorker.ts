@@ -204,10 +204,10 @@ export class MinerWorker {
       if (statRecords.length > 0) {
         const totalMined = statRecords.reduce((sum, r) => sum + r.pointsMined, 0);
         const totalClaims = statRecords.reduce((sum, r) => sum + r.claimsCount, 0);
-        const totalRaids = statRecords.reduce((sum, r) => sum + r.raidsCount * 250, 0);
+        const totalRaids = statRecords.reduce((sum, r) => sum + r.raidsCount, 0);
         const totalPreds = statRecords.reduce((sum, r) => sum + r.netPredictionPoints, 0);
         const netPreds = totalPreds;
-        const drops = statRecords.reduce((sum, r) => sum + r.dropsCount * 100, 0);
+        const drops = statRecords.reduce((sum, r) => sum + r.dropsCount, 0);
         const todayKey = new Date().getHours().toString().padStart(2, '0');
         const today = new Date().toISOString().slice(0, 10);
         const todayMined = statRecords
