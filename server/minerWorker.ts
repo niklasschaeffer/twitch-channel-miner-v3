@@ -13,6 +13,7 @@ import {
 import { prisma } from "./db.js";
 import { extractTwitchUsername } from "./minerEngine.js";
 import { computeChestProgress } from "./chest.js";
+import { selectPredictionOutcome } from "./prediction.js";
 
 export interface ActiveSlotConnection {
   username: string;
@@ -1748,6 +1749,8 @@ export class MinerWorker {
               id?: unknown;
               title?: unknown;
               color?: unknown;
+              total_users?: unknown;
+              total_points?: unknown;
             }>;
             const outcomesTyped = outcomes.filter(
               (o) => typeof o === "object" && o !== null && "id" in o && typeof o.id === "string",
@@ -1764,15 +1767,13 @@ export class MinerWorker {
             const maxBet = this.settings.maxBetPoints;
             const balance = streamer.points;
             if (balance < 10) return;
-
-            let outcomeIndex: number;
-            if (strategy === "highest_odds") {
-              outcomeIndex = 1;
-            } else if (strategy === "conservative") {
-              outcomeIndex = 0;
-            } else {
-              outcomeIndex = 0;
-            }
+            const outcomeStats = outcomesTyped.map((o) => ({
+              totalUsers:
+                typeof o.total_users === "number" && o.total_users > 0 ? o.total_users : null,
+              totalPoints:
+                typeof o.total_points === "number" && o.total_points > 0 ? o.total_points : null,
+            }));
+            const outcomeIndex = selectPredictionOutcome(outcomeStats, strategy);
             const outcome = outcomesTyped[outcomeIndex];
             if (!outcome || typeof outcome.id !== "string") return;
 
