@@ -197,7 +197,7 @@ async function fetchAndCache(res: Response, asset: AssetKind, filePath: string):
       );
     } else {
       const contentType = upstream.headers.get("content-type") ?? "";
-      if (!contentType.startsWith("image/")) {
+      if (!contentType.startsWith("image/") && !contentType.startsWith("binary/octet-stream")) {
         console.warn(
           `Emote asset fetch for ${url} returned non-image content-type "${contentType}"`,
         );
@@ -206,7 +206,7 @@ async function fetchAndCache(res: Response, asset: AssetKind, filePath: string):
         ensureCacheDir();
         await writeFile(filePath, buffer);
         res.setHeader("Cache-Control", `public, max-age=${CACHE_TTL_SECONDS}`);
-        res.type(contentType);
+        res.type(filePath.endsWith(".png") ? "image/png" : contentType);
         res.send(buffer);
         return;
       }
