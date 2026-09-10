@@ -6,17 +6,38 @@
 
 A self-hosted web dashboard that **autonomously earns Twitch Channel Points** on your account: it watches channels, claims bonus chests, claims drops, follows raids, and places prediction bets — all through real Twitch APIs, never simulated. You get a live IRC chat view, per-channel point tracking, and honest analytics backed by a SQLite database you can inspect directly.
 
-## Table of Contents
-
 - [What it does](#what-it-does)
 - [Requirements](#requirements)
+- [Two runtimes: Bun and Node](#two-runtimes-bun-and-node)
 - [Installation](#installation)
-- [First-run setup](#first-run-setup)
-- [Using the app](#using-the-app)
-- [How earning works](#how-earning-works)
-- [Development status](#development-status)
-- [Development](#development)
-- [Troubleshooting](#troubleshooting)
+
+## Two runtimes: Bun and Node
+
+The project ships **two Docker images** for every release, so it runs on both modern and older hardware:
+
+| | Bun image | Node image |
+|---|---|---|
+| **Dockerfile** | `Dockerfile` (`oven/bun:1`) | `Dockerfile.node` (`node:25-alpine`) |
+| **GHCR tags** | `:latest`, `:1.x.x`, `:v1.x.x`, `:sha` | `:latest-node`, `:1.x.x-node`, `:v1.x.x-node`, `:sha-node` |
+| **Hardware** | Modern x86-64 with **AVX2** (Bun's baseline requirement) | Any x86-64 (and ARM) — no AVX2 needed |
+| **Why** | Bun starts faster and bundles the WebSocket client natively | Node ≥ 22 also has native `WebSocket`, so the same esbuild bundle runs unchanged |
+
+**Which one do I need?** If your CPU supports AVX2 (2013+ Intel Haswell, AMD Excavator+, basically anything modern), use the default Bun image (`:latest`). If your server crashes with `Illegal instruction` on startup — typical for older AMD hardware like the Turion II Neo in older Unraid boxes, which lacks AVX2 entirely — use the Node image (`:node`). Check with:
+
+```bash
+grep -q avx2 /proc/cpuinfo && echo "Bun image OK" || echo "Use the :node image"
+```
+
+To run the Node image, override the image in your `docker-compose.yaml`:
+
+```yaml
+services:
+  twitch-miner:
+    image: ghcr.io/niklasschaeffer/twitch-channel-miner-v3:latest-node
+    # ... rest identical
+```
+
+Both images run the exact same application code (`dist/server.cjs`), database, and features — only the JavaScript runtime differs.
 
 ## What it does
 
@@ -24,7 +45,6 @@ Once your Twitch account is connected and channels are on the watchlist, **your 
 
 | Feature               | Mechanism                                                                                                                                                                                         |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Watch earning**     | Sends minute-watched heartbeats to Twitch's spade telemetry endpoint once per minute per mining channel — the same signal the Twitch web player sends                                             |
 | **Bonus chests**      | Subscribes to real-time PubSub `community-points-user-v1` events; when a chest becomes claimable it polls and executes the persisted `ClaimCommunityPoints` GQL mutation                          |
 | **Drops**             | Polls your inventory (10-min cadence, toggleable) and claims every drop with `is_claimable` + `dropInstanceID` via `DropsPage_ClaimDropRewards`                                                   |
 | **Raids**             | Subscribes to PubSub `raid` topics per mining channel; on a raid event it joins via the persisted `JoinRaid` mutation (auto-follow configurable) and records the raid against the watched channel |
@@ -38,7 +58,8 @@ The UI shows **only real Twitch data** — points, claims, chat, and connection 
 ## Requirements
 
 - Docker + Docker Compose (recommended deployment)
-- Node ≥ 21 (only if running outside Docker; the container pins `node:25-alpine`)
+- Modern x86-64 CPU with AVX2 for the default Bun image — or any CPU with the Node image (`:node`); see [Two runtimes](#two-runtimes-bun-and-node)
+- Node ≥ 21 (only if running outside Docker; containers pin `oven/bun:1` / `node:25-alpine`)
 - A Twitch account (the miner acts on this account's behalf)
 - Optional: Google OAuth credentials for "Sign in with Google"
 
@@ -143,7 +164,7 @@ Analytics record **only actual earned deltas** — a claim logs its earned point
 - ⚠️ Prediction strategy is outcome-index-based; porting upstream's odds-ratio expected-value calculation (`Bet.calculate()`) would improve bet quality
 - ⚠️ Drop claiming checks `is_claimable` only; upstream also gates on `has_preconditions_met` and watched-minutes thresholds
 - ⚠️ Per-user mining workers (`server/minerWorker.ts`) each run their own Twitch connections; two users mining the same channel open duplicate IRC/PubSub sockets by design (no shared connection pool)
-- ⚠️ No test suite; verification is `tsc --noEmit` + live smoke tests against the running container
+- ⚠️ Verification beyond the Vitest suite (`npm test`: helpers, i18n parity, chest progress) is `tsc --noEmit` + live smoke tests against the running container
 - ⚠️ Google-login users have no local password; add one via re-register or a manual hash reset if you want email login too
 
 **Recent history highlights** (full log: `git log --oneline`):
