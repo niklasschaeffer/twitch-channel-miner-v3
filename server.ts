@@ -7,6 +7,7 @@ import type { ViteDevServer } from "vite";
 import { minerEngine, extractTwitchUsername } from "./server/minerEngine.js";
 import { prisma } from "./server/db.js";
 import { md5 } from "./src/lib/gravatar.js";
+import { resolveEmoteAsset, badgeMapHandler } from "./server/emoteCache.js";
 
 // Safe path resolution for both ESM (tsx dev) and CJS (dist/server.cjs bundle)
 const getDirname = () => {
@@ -784,6 +785,11 @@ async function startServer() {
       sseResponses.delete(res);
     });
   });
+
+  app.get("/api/emotes/emote/:id", resolveEmoteAsset);
+  app.get("/api/emotes/badge/:key", resolveEmoteAsset);
+  app.get("/api/emotes/avatar/:login", resolveEmoteAsset);
+  app.get("/api/emotes/badge-map", badgeMapHandler);
 
   // Vite middleware for development or static serving for production
   let viteServer: ViteDevServer | null = null;

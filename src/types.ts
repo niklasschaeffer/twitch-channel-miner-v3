@@ -159,6 +159,7 @@ export interface ChatMessage {
   isBot?: boolean;
   isSystem?: boolean;
   isHighlighted?: boolean;
+  emotes?: { id: string; start: number; end: number }[];
 }
 
 export type YourChannelReason = "sub" | "follow" | "game";

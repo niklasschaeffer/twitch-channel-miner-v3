@@ -1003,11 +1003,34 @@ export class MinerWorker {
                 let displayName = fallbackNick;
                 let color = "#9146FF";
                 const badges: string[] = [];
+                const emoteRefs: { id: string; start: number; end: number }[] = [];
 
                 if (tagString) {
                   const tags = tagString.split(";");
                   for (const tag of tags) {
-                    const [k, v] = tag.split("=");
+                    const parts = tag.split("=");
+                    const k = parts[0];
+                    const v = parts.slice(1).join("=");
+                    if (k === "emotes" && v) {
+                      const cpAt: number[] = [0];
+                      for (let ci = 0; ci < text.length;) {
+                        cpAt.push(cpAt[cpAt.length - 1] + 1);
+                        ci += text.codePointAt(ci)! > 0xffff ? 2 : 1;
+                      }
+                      for (const emoteDef of v.split("/")) {
+                        const [emoteId, rangesStr] = emoteDef.split(":");
+                        if (!emoteId || !rangesStr) continue;
+                        for (const rangeStr of rangesStr.split(",")) {
+                          const [s, e] = rangeStr.split("-");
+                          const start = Number(s);
+                          const end = Number(e);
+                          if (Number.isNaN(start) || Number.isNaN(end)) continue;
+                          const cpStart = cpAt[start] ?? start;
+                          const cpEnd = cpAt[end + 1] ?? end + 1;
+                          emoteRefs.push({ id: emoteId, start: cpStart, end: cpEnd });
+                        }
+                      }
+                    }
                     if (k === "display-name" && v) displayName = v;
                     if (k === "color" && v) color = v;
                     if (k === "badges" && v) {
@@ -1019,6 +1042,7 @@ export class MinerWorker {
                     }
                   }
                 }
+                emoteRefs.sort((a, b) => a.start - b.start);
                 const isKnownBot = KNOWN_CHAT_BOTS.has(fallbackNick.toLowerCase());
                 if (isKnownBot) {
                   this.addStreamerChatMessage(clean, {
@@ -1037,6 +1061,7 @@ export class MinerWorker {
                     isHighlighted: false,
                     isBot: true,
                     isSystem: false,
+                    emotes: emoteRefs.length > 0 ? emoteRefs : undefined,
                   });
                   continue;
                 }
@@ -1057,6 +1082,7 @@ export class MinerWorker {
                     isHighlighted: false,
                     isBot: true,
                     isSystem: false,
+                    emotes: emoteRefs.length > 0 ? emoteRefs : undefined,
                   });
                   continue;
                 }
@@ -1077,6 +1103,7 @@ export class MinerWorker {
                   isHighlighted: badges.includes("moderator") || badges.includes("vip"),
                   isBot: false,
                   isSystem: false,
+                  emotes: emoteRefs.length > 0 ? emoteRefs : undefined,
                 };
 
                 this.addStreamerChatMessage(clean, chatMsg);

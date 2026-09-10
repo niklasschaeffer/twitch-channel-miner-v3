@@ -31,6 +31,28 @@ interface SlotIrcChatProps {
 
 const PRESET_EMOTES = ["PogChamp", "KEKW", "LUL", "GG", "monkaS", "EZ"];
 
+const renderMessageWithEmotes = (msg: ChatMessage): React.ReactNode[] => {
+  if (!msg.emotes || msg.emotes.length === 0) return [msg.message];
+  const codePoints = Array.from(msg.message);
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const emote of msg.emotes) {
+    if (emote.start < cursor) continue;
+    if (emote.start > cursor) nodes.push(codePoints.slice(cursor, emote.start).join(""));
+    nodes.push(
+      <img
+        key={`${emote.id}-${emote.start}`}
+        src={`/api/emotes/emote/${emote.id}`}
+        alt={codePoints.slice(emote.start, emote.end + 1).join("")}
+        className="inline-block h-5 align-text-bottom mx-0.5"
+      />,
+    );
+    cursor = emote.end + 1;
+  }
+  if (cursor < codePoints.length) nodes.push(codePoints.slice(cursor).join(""));
+  return nodes;
+};
+
 export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   streamer,
   allStreamers,
@@ -49,6 +71,8 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   const [viewMode, setViewMode] = useState<"irc" | "embed">("irc");
   const [autoScroll, setAutoScroll] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [badgeMap, setBadgeMap] = useState<Record<string, string>>({});
+  const [failedBadges, setFailedBadges] = useState<Record<string, true>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -91,6 +115,24 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages, autoScroll]);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/emotes/badge-map")
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("badge-map unavailable"))))
+      .then((data: { sets: Record<string, string[]> }) => {
+        if (!isMounted || !data || typeof data.sets !== "object") return;
+        const map: Record<string, string> = {};
+        for (const name of Object.keys(data.sets)) {
+          map[name] = `/api/emotes/badge/${encodeURIComponent(`${name}/1`)}`;
+        }
+        setBadgeMap(map);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleScroll = () => {
     if (!chatContainerRef.current) return;
@@ -517,6 +559,18 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                     {msg.badges.length > 0 && (
                       <div className="flex items-center gap-1 shrink-0 pt-0.5">
                         {msg.badges.map((b) => {
+                          const icon = badgeMap[b];
+                          if (icon && !failedBadges[b]) {
+                            return (
+                              <img
+                                key={b}
+                                src={icon}
+                                title={b}
+                                className="w-4 h-4"
+                                onError={() => setFailedBadges((prev) => ({ ...prev, [b]: true }))}
+                              />
+                            );
+                          }
                           if (b === "moderator" || b === "mod") {
                             return (
                               <span
@@ -578,7 +632,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                     </span>
 
                     <span className="text-zinc-800 dark:text-[#EFEFF1] break-words flex-1">
-                      {msg.message}
+                      {renderMessageWithEmotes(msg)}
                     </span>
                   </div>
                 );
