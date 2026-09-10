@@ -4,7 +4,7 @@ title: Drops & Predictions
 description: Drop inventory polling and claim gating, plus prediction
   auto-betting strategy and caps.
 tags: [twitch, drops, predictions, betting]
-last_updated: 2026-09-10T08:40:53.272Z
+last_updated: 2026-09-10T10:11:21.253Z
 updated_by: Niklas Schäffer
 ---
 
@@ -24,11 +24,16 @@ updated_by: Niklas Schäffer
 ## Predictions
 
 - Toggle: `autoBetPredictions`; strategy: `predictionStrategy` — `lowest_odds` / `highest_odds` / `smart_ratio` (default) / `conservative`
+- Outcome selection (`selectPredictionOutcome` in `server/prediction.ts`) ports upstream's odds-ratio expected-value heuristic (`Bet.calculate()` from Tkd-Alex/Twitch-Channel-Points-Miner-v2): odds are computed as total pool / side pool per outcome, so betting the `highest_odds` side maximizes payout while `lowest_odds` follows the favorite
+- Strategy semantics (odds ties break toward the lowest index):
+  - `highest_odds` — max-payout side (highest odds = smallest side pool)
+  - `lowest_odds` — favorite (max side pool)
+  - `smart_ratio` — contrarian when the crowd is split within 20 percentage points (gap between most/least bettors below `SMART_RATIO_PERCENTAGE_GAP` of total users); otherwise follows the majority
+  - `conservative` — always follows the majority
+- Fallbacks: outcomes missing positive points/users fall back to majority-by-users, then index 0; empty outcome lists return index 0
 - PubSub `predictions-channel-v1.{channelId}` events are handled only for channels in the `channelIds` map (so a status-check cycle must run after boot before prediction topics are subscribed — see [PubSub & IRC](./pubsub-irc.md))
 - When an event goes ACTIVE, the worker places a `MakePrediction` bet capped by `maxBetPoints` (default 100); per-event dedupe prevents double betting on the same prediction
 - Outcomes feed `predictionsWon` / `predictionsLost` / `netPredictionPoints` stat records; the dashboard shows a dedicated raids/predictions overview card
-
-**Known gap:** the strategy is outcome-index-based. Porting upstream's odds-ratio expected-value calculation (`Bet.calculate()`) would improve bet quality.
 
 ## Where counters land
 

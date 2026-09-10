@@ -5,7 +5,7 @@ description: Install, configure, and run the miner — Docker deployment with th
   Bun or Node image, first-run account + Twitch device-flow pairing, and dev
   commands.
 tags: [quickstart, setup, docker, dev]
-last_updated: 2026-09-10T09:51:11.996Z
+last_updated: 2026-09-10T10:11:14.999Z
 updated_by: Niklas Schäffer
 ---
 
@@ -77,7 +77,7 @@ npm run dev            # tsx server.ts — Express serves the Vite dev middlewar
 
 There is no full integration/E2E suite. Verification means:
 
-- `npm run test` — Vitest suite for pure helpers (en/de i18n parity, chest progress, gravatar, username extraction)
+- `npm run test` — Vitest suite for pure helpers (en/de i18n parity, chest progress, gravatar, username extraction, prediction outcome selection)
 - `npm run lint` (which is `tsc --noEmit`) — must pass before any commit/merge; husky runs oxlint (import/vitest/react plugins) and oxfmt alongside it as the pre-commit hook
 - Live smoke tests against `http://localhost:3000`, health endpoint: `GET /api/health` (returns `{ status: "ok", database: "sqlite-prisma", time: ... }`)
 

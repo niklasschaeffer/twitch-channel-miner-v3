@@ -3,7 +3,7 @@ type: reference
 title: CI & Release
 description: Lint/typecheck/test gates, husky hooks, semantic-release pipeline
   with dual Bun/Node images, and the wiki update workflow (push + nightly).
-tags: [ ci, release, semantic-release, husky, github-actions ]
+tags: [ci, release, semantic-release, husky, github-actions]
 last_updated: 2026-09-10T09:57:06.000Z
 updated_by: Niklas Schäffer
 ---
