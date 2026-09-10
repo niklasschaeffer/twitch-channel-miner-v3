@@ -1,3 +1,10 @@
+# [1.18.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.17.2...v1.18.0) (2026-09-10)
+
+
+### Features
+
+* personalized Your Channels suggestions in add-streamer modal ([b244552](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/b244552044157665442feffbc1f57a9c5a7f461b))
+
 ## [1.17.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.17.1...v1.17.2) (2026-09-10)
 
 
