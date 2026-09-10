@@ -1,3 +1,10 @@
+## [1.15.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.15.0...v1.15.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* update mcp configs ([dd017cd](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/dd017cd1bb646a517d7c9491f92243ac522db24d))
+
 # [1.15.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.14.0...v1.15.0) (2026-09-10)
 
 
