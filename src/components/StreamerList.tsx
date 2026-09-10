@@ -14,7 +14,8 @@ import {
   Power,
   ExternalLink,
   Gift,
-  RefreshCw
+  RefreshCw,
+  Eye
 } from 'lucide-react';
 import { Streamer, PriorityMode } from '../types';
 import { formatSubTier } from '../lib/badges';
@@ -206,29 +207,13 @@ export const StreamerList: React.FC<StreamerListProps> = ({
 
                     {/* Name & Handle */}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-zinc-900 dark:text-[#EFEFF1] truncate">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-sm font-bold text-zinc-900 dark:text-[#EFEFF1] truncate">
                           {streamer.displayName}
                         </span>
                         <span className="text-[10px] text-zinc-400 dark:text-[#71717A] font-mono truncate hidden sm:inline">
                           @{streamer.username}
                         </span>
-                        {streamer.isFollowing && (
-                          <span
-                            title={t('streamersList.badgeFollow')}
-                            className="text-[9px] leading-none px-1 py-0.5 bg-[#9146FF]/15 text-[#9146FF] dark:text-[#c299ff] font-bold shrink-0"
-                          >
-                            {t('streamersList.badgeFollow')}
-                          </span>
-                        )}
-                        {typeof streamer.subscriptionTier === 'string' && streamer.subscriptionTier.length > 0 && (
-                          <span
-                            title={t('streamersList.badgeSubTier', { tier: formatSubTier(streamer.subscriptionTier) })}
-                            className="text-[9px] leading-none px-1 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold shrink-0"
-                          >
-                            {t('streamersList.badgeSubTier', { tier: formatSubTier(streamer.subscriptionTier) })}
-                          </span>
-                        )}
                       </div>
                       <div className="text-[11px] text-zinc-500 dark:text-[#ADADB8] truncate">
                         {streamer.game || 'Variety'}
@@ -239,59 +224,54 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                   {/* Actions Toolbar */}
                   <div
                     onClick={e => e.stopPropagation()}
-                    className="flex items-center space-x-1 shrink-0"
+                    className="flex items-center gap-1 shrink-0"
                   >
-                    {/* Chat button */}
                     <button
                       onClick={() => onSelectStreamer?.(streamer.id)}
                       title={t('ircChat.openChat', 'Open IRC Chat')}
-                      className={`px-2 py-1 text-[11px] font-mono border transition cursor-pointer flex items-center gap-1 ${
+                      className={`p-1.5 border transition cursor-pointer flex items-center ${
                         isSelected
                           ? 'bg-[#9146FF] text-white border-[#9146FF]'
                           : 'bg-white dark:bg-[#18181B] text-zinc-700 dark:text-[#ADADB8] border-zinc-200 dark:border-[#26262C] hover:border-[#9146FF] hover:text-[#9146FF]'
                       }`}
                     >
-                      <MessageSquare className="w-3 h-3" />
-                      <span>Chat</span>
+                      <MessageSquare className="w-3.5 h-3.5" />
                     </button>
 
-                    {/* Filter Console */}
                     {onFilterConsole && (
                       <button
                         onClick={() => onFilterConsole(streamer.username)}
                         title={t('ircChat.filterConsole', 'Filter console')}
                         className="p-1.5 text-zinc-500 hover:text-[#9146FF] border border-zinc-200 dark:border-[#26262C] bg-white dark:bg-[#18181B] hover:border-[#9146FF] transition cursor-pointer"
                       >
-                        <Terminal className="w-3 h-3" />
+                        <Terminal className="w-3.5 h-3.5" />
                       </button>
                     )}
 
-                    {/* Enable/Disable Toggle */}
                     <button
                       onClick={() => onToggleEnabled(streamer.username, !streamer.enabled)}
-                      className={`text-[10px] px-2 py-1 border transition cursor-pointer font-medium ${
+                      className={`p-1.5 border transition cursor-pointer ${
                         streamer.enabled
-                          ? 'bg-white dark:bg-[#18181B] text-zinc-800 dark:text-[#EFEFF1] border-zinc-300 dark:border-[#26262C] hover:bg-zinc-50 dark:hover:bg-[#1F1F23]'
+                          ? 'bg-white dark:bg-[#18181B] text-[#00a865] dark:text-[#00F593] border-zinc-300 dark:border-[#26262C] hover:bg-zinc-50 dark:hover:bg-[#1F1F23]'
                           : 'bg-zinc-100 dark:bg-[#0E0E10] text-zinc-400 dark:text-[#71717A] border-zinc-200 dark:border-[#26262C] hover:text-zinc-600'
                       }`}
                       title={streamer.enabled ? t('streamersList.active') : t('streamersList.disabled')}
                     >
-                      {streamer.enabled ? t('streamersList.active') : t('streamersList.disabled')}
+                      <Power className="w-3.5 h-3.5" />
                     </button>
-                    {/* Lurk Toggle */}
+
                     <button
                       onClick={() => onToggleLurk(streamer.username, !streamer.lurkEnabled)}
-                      className={`text-[10px] px-2 py-1 border transition cursor-pointer font-medium ${
+                      className={`p-1.5 border transition cursor-pointer ${
                         streamer.lurkEnabled
                           ? 'bg-[#9146FF]/10 dark:bg-[#9146FF]/20 text-[#9146FF] border-[#9146FF]/40 hover:border-[#9146FF]/70'
                           : 'bg-zinc-100 dark:bg-[#0E0E10] text-zinc-400 dark:text-[#71717A] border-zinc-200 dark:border-[#26262C] hover:text-zinc-600'
                       }`}
                       title={streamer.lurkEnabled ? t('streamersList.lurkOn') : t('streamersList.lurkOff')}
                     >
-                      {streamer.lurkEnabled ? t('streamersList.lurkOn') : t('streamersList.lurkOff')}
+                      <Eye className="w-3.5 h-3.5" />
                     </button>
 
-                    {/* External Twitch link */}
                     <a
                       href={`https://twitch.tv/${streamer.username}`}
                       target="_blank"
@@ -299,30 +279,25 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                       title={t('streamersList.openTwitch')}
                       className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:text-[#71717A] dark:hover:text-[#EFEFF1] border border-zinc-200 dark:border-[#26262C] bg-white dark:bg-[#18181B] transition"
                     >
-                      <ExternalLink className="w-3 h-3" />
+                      <ExternalLink className="w-3.5 h-3.5" />
                     </a>
 
-                    {/* Delete button */}
                     <button
                       onClick={() => onDeleteStreamer(streamer.username)}
                       className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition cursor-pointer"
-                      title="Remove channel"
+                      title={t('actions.remove')}
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
 
-                {/* Row 2: Status Chips & Priority */}
                 <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-mono">
-                  {/* Priority rank */}
                   <span className="px-1.5 py-0.5 bg-zinc-100 dark:bg-[#1E1E22] text-zinc-600 dark:text-[#ADADB8] border border-zinc-200 dark:border-[#26262C] font-semibold">
                     #{index + 1}
                   </span>
 
-                  {/* Live / Offline status toggle button */}
                   <button
-                    type="button"
                     onClick={e => {
                       e.stopPropagation();
                       onToggleLive?.(streamer.username);
@@ -338,37 +313,44 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                     <span>{streamer.isLive ? t('streamersList.live') : t('streamersList.offline')}</span>
                   </button>
 
-                  {/* Mining Status */}
                   {streamer.isMining ? (
                     <span className="px-1.5 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/30 dark:border-[#00F593]/40 flex items-center gap-1 font-bold">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#00a865] dark:bg-[#00F593] animate-pulse" />
-                      MINING (SLOT ACTIVE)
+                      MINING
                     </span>
                   ) : streamer.isLive ? (
                     <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                      STANDBY QUEUE
+                      QUEUE
                     </span>
                   ) : null}
 
-                  {/* Watch Streak */}
-                  {streamer.watchStreak > 0 && (
-                    <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                      <Flame className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-                      {streamer.watchStreak}d streak
+                  {streamer.isFollowing && (
+                    <span
+                      title={t('streamersList.badgeFollow')}
+                      className="px-1 py-0.5 bg-[#9146FF]/15 text-[#9146FF] dark:text-[#c299ff] font-bold"
+                    >
+                      {t('streamersList.badgeFollow')}
                     </span>
                   )}
 
-                  {/* Selected Badge */}
-                  {isSelected && (
-                    <span className="px-1.5 py-0.5 bg-[#9146FF]/15 text-[#9146FF] dark:text-[#c299ff] border border-[#9146FF]/30 font-semibold">
-                      INSPECTOR ACTIVE
+                  {typeof streamer.subscriptionTier === 'string' && streamer.subscriptionTier.length > 0 && (
+                    <span
+                      title={t('streamersList.badgeSubTier', { tier: formatSubTier(streamer.subscriptionTier) })}
+                      className="px-1 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold"
+                    >
+                      {t('streamersList.badgeSubTier', { tier: formatSubTier(streamer.subscriptionTier) })}
+                    </span>
+                  )}
+
+                  {streamer.watchStreak > 0 && (
+                    <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                      <Flame className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+                      {streamer.watchStreak}d
                     </span>
                   )}
                 </div>
 
-                {/* Row 3: Metrics & Chest Status Bar */}
                 <div className="pt-2 border-t border-zinc-200/70 dark:border-[#26262C]/70 flex items-center justify-between text-[11px] gap-2 flex-wrap">
-                  {/* Left: Viewers if live, or Points balance */}
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[#9146FF] font-bold">
                       {streamer.points.toLocaleString()} pts

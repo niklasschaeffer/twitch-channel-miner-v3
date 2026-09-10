@@ -335,6 +335,7 @@ export const resources = {
         moveUp: 'In Priorität nach oben',
         moveDown: 'In Priorität nach unten',
         toggleMining: 'Kanal aktivieren / deaktivieren',
+        active: 'Aktiv',
         disabled: 'Deaktiviert',
         lurkOn: 'Lurk',
         lurkOff: 'Lurk aus',
