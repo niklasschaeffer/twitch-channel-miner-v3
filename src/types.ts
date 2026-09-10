@@ -29,6 +29,8 @@ export interface Streamer {
   lastClaimTime?: string;
   uptimeMinutes?: number;
   isFollowing: boolean;
+  isPartner: boolean; // chest feature requires partner or affiliate status
+  isAffiliate: boolean;
   subscriptionTier?: string | null;
 }
 

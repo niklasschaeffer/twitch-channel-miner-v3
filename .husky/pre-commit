@@ -1,0 +1,1 @@
+bunx oxlint && npm run lint

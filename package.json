@@ -12,7 +12,8 @@
     "lint": "tsc --noEmit",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -41,6 +42,8 @@
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "husky": "^9.1.7",
+    "oxlint": "^1.82.0",
     "prisma": "^6.19.3",
     "semantic-release": "^25.0.0",
     "tailwindcss": "^4.1.14",

@@ -387,6 +387,13 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                         <Gift className="w-3 h-3" />
                         Chest Ready (+50)
                       </span>
+                    ) : !(streamer.isPartner || streamer.isAffiliate) ? (
+                      <span
+                        className="px-1.5 py-0.5 text-zinc-500 dark:text-[#ADADB8] border border-zinc-300/60 dark:border-[#26262C]/60"
+                        title={t('streamersList.noChestFeatureHint')}
+                      >
+                        {t('streamersList.noChestFeature')}
+                      </span>
                     ) : (
                       <span className="text-zinc-500 dark:text-[#ADADB8]">
                         Chest: ~{streamer.nextChestEstimateSeconds}s

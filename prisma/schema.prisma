@@ -43,6 +43,8 @@ model Streamer {
   priority                 Int       @default(1)
   enabled                  Boolean   @default(true)
   subscriptionTier         String?
+  isPartner                 Boolean   @default(false)
+  isAffiliate               Boolean   @default(false)
   chestAvailable           Boolean   @default(false)
   nextChestEstimateSeconds Int       @default(900)
   totalPointsMined         Int       @default(0)

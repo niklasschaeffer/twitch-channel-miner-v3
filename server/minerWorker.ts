@@ -21,6 +21,15 @@ export interface ActiveSlotConnection {
   ws?: WebSocket;
 }
 
+interface GqlUser {
+  id: unknown;
+  login: unknown;
+  displayName: unknown;
+  profileImageURL: unknown;
+  stream: { viewersCount?: unknown; game?: { name?: unknown } | null } | null | undefined;
+  roles?: { isPartner?: unknown; isAffiliate?: unknown };
+}
+
 const KNOWN_CHAT_BOTS: ReadonlySet<string> = new Set(['streamelements', 'nightbot', 'fossabot', 'moobot', 'soundalerts', 'wizebot', 'streamlabs']);
 
 export class MinerWorker {
@@ -154,6 +163,8 @@ export class MinerWorker {
           lastClaimTime: s.lastClaimTime || undefined,
           uptimeMinutes: s.uptimeMinutes,
           isFollowing: s.isFollowing,
+          isPartner: s.isPartner,
+          isAffiliate: s.isAffiliate,
           subscriptionTier: s.subscriptionTier ?? undefined
         }));
       } else if (process.env.NODE_ENV === 'development') {
@@ -361,6 +372,8 @@ export class MinerWorker {
         lastClaimTime: created.lastClaimTime || undefined,
         uptimeMinutes: created.uptimeMinutes,
         isFollowing: created.isFollowing,
+        isPartner: created.isPartner,
+        isAffiliate: created.isAffiliate,
         subscriptionTier: created.subscriptionTier ?? undefined
       });
     }
@@ -502,15 +515,11 @@ export class MinerWorker {
       this.maybeSimulateEvent();
     }
 
-    // Real auto-claim: poll availableClaim for mining channels every ~30s.
     if (!this.settings.isSimulationMode && this.settings.autoClaimBonus && this.settings.authToken) {
       if (this.tickCount % 15 === 0) {
         for (const s of this.streamers) {
-          if (s.isMining && s.isLive && s.enabled && !this.claimsInFlight.has(s.username)) {
-            this.claimsInFlight.add(s.username);
-            this.claimRealBonus(s)
-              .catch(() => {})
-              .finally(() => this.claimsInFlight.delete(s.username));
+          if (s.enabled && (s.isPartner || s.isAffiliate) && !this.claimsInFlight.has(s.username)) {
+            this.claimRealBonus(s).catch(() => {});
           }
         }
       }
@@ -568,6 +577,10 @@ export class MinerWorker {
                 login
                 displayName
                 profileImageURL(width: 150)
+                roles {
+                  isPartner
+                  isAffiliate
+                }
                 stream {
                   id
                   viewersCount
@@ -585,19 +598,30 @@ export class MinerWorker {
         signal: AbortSignal.timeout(5000)
       });
 
-      if (res.ok) {
-        const json: any = await res.json();
-        const users: any[] = json?.[0]?.data?.users || [];
-        const userMap = new Map<string, any>();
-        for (const u of users) {
-          if (u?.login) {
-            const login = u.login.toLowerCase();
-            userMap.set(login, u);
-            if (reverseAliases[login]) {
-              userMap.set(reverseAliases[login], u);
-            }
+      if (!res.ok) {
+        this.addLog('WARN', undefined, `Streamer status check failed: GQL HTTP ${res.status} (client id ${this.settings.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko'}).`);
+        return;
+      }
+      const json: unknown = await res.json();
+      const root = Array.isArray(json) && json[0] && typeof json[0] === 'object' && 'data' in json[0] ? json[0].data : null;
+      const rawUsers = root && typeof root === 'object' && 'users' in root ? root.users : null;
+      const users: GqlUser[] = Array.isArray(rawUsers) ? rawUsers.filter(u => u !== null && typeof u === 'object') : [];
+      const userMap = new Map<string, GqlUser>();
+      for (const u of users) {
+        if (typeof u.login === 'string' && u.login) {
+          const login = u.login.toLowerCase();
+          userMap.set(login, u);
+          if (reverseAliases[login]) {
+            userMap.set(reverseAliases[login], u);
           }
         }
+      }
+      if (users.length === 0) {
+        this.addLog('WARN', undefined, `Status check parsed 0 users for ${logins.length} logins: ${JSON.stringify(json).slice(0, 200)}`);
+      }
+      if (this.tickCount % 300 === 0 && this.tickCount > 0) {
+        this.addLog('INFO', undefined, `Status cycle healthy: ${users.length} GQL users for ${this.streamers.length} streamers, map size ${userMap.size}.`);
+      }
 
         let stateChanged = false;
 
@@ -614,27 +638,33 @@ export class MinerWorker {
             const wasLive = streamer.isLive;
             const isTwitchLive = !!u.stream;
             const realViewers = u.stream ? Number(u.stream.viewersCount || 0) : 0;
-            const realGame = u.stream?.game?.name || (isTwitchLive ? streamer.game : 'Offline');
-            const avatar = u.profileImageURL || streamer.avatar;
-            const displayName = u.displayName || streamer.displayName;
+            const realGame = typeof u.stream?.game?.name === 'string' ? u.stream.game.name : (isTwitchLive ? streamer.game : 'Offline');
+            const avatar = typeof u.profileImageURL === 'string' && u.profileImageURL ? u.profileImageURL : streamer.avatar;
+            const displayName = typeof u.displayName === 'string' && u.displayName ? u.displayName : streamer.displayName;
 
             // Telemetry strictly mirrors real Twitch stream status & viewer count
             const targetLive = isTwitchLive;
             const viewers = isTwitchLive ? realViewers : 0;
             const game = isTwitchLive ? realGame : 'Offline';
 
+            const isPartner = typeof u.roles?.isPartner === 'boolean' ? u.roles.isPartner : streamer.isPartner;
+            const isAffiliate = typeof u.roles?.isAffiliate === 'boolean' ? u.roles.isAffiliate : streamer.isAffiliate;
             if (
               streamer.isLive !== targetLive ||
               streamer.viewerCount !== viewers ||
               streamer.game !== game ||
               streamer.avatar !== avatar ||
-              streamer.displayName !== displayName
+              streamer.displayName !== displayName ||
+              streamer.isPartner !== isPartner ||
+              streamer.isAffiliate !== isAffiliate
             ) {
               streamer.isLive = targetLive;
               streamer.viewerCount = viewers;
               streamer.game = game;
               streamer.avatar = avatar;
               streamer.displayName = displayName;
+              streamer.isPartner = isPartner;
+              streamer.isAffiliate = isAffiliate;
               stateChanged = true;
 
               if (!wasLive && targetLive) {
@@ -694,7 +724,6 @@ export class MinerWorker {
                   `🔴 Streamer ${streamer.displayName} has gone OFFLINE. Releasing watch slot.`
                 );
               }
-
               prisma.streamer.update({
                 where: { id: streamer.id },
                 data: {
@@ -702,9 +731,13 @@ export class MinerWorker {
                   viewerCount: viewers,
                   game,
                   avatar,
-                  displayName
+                  displayName,
+                  isPartner,
+                  isAffiliate
                 }
-              }).catch(() => {});
+              }).catch(err => {
+                this.addLog('WARN', streamer.username, `Streamer DB update failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+              });
             }
           }
         }
@@ -713,9 +746,8 @@ export class MinerWorker {
           this.rebalanceActiveSlots();
           this.hooks.broadcast('streamers', this.streamers);
         }
-      }
     } catch (err) {
-      // Network failure or timeout, fallback to cached state
+      this.addLog('WARN', undefined, `Streamer status check failed: ${err instanceof Error ? err.message : 'unknown error'}`);
     }
   }
 
@@ -1529,8 +1561,23 @@ export class MinerWorker {
           }
 
           if (data.topic.startsWith('community-points-channel-v1.')) {
-            if (typeof payload !== 'object' || payload === null || !('type' in payload)) return;
-            if (payload.type === 'claim-available') return;
+            if (!('type' in payload) || payload.type !== 'claim-available') return;
+            const claim = 'claim' in payload && typeof payload.claim === 'object' && payload.claim !== null ? payload.claim : null;
+            const claimId = claim && 'id' in claim && typeof claim.id === 'string' ? claim.id : null;
+            if (!claimId) return;
+            const topicId = data.topic.split('.')[1];
+            const watchedLogin = [...this.channelIds.entries()].find(([, id]) => id === topicId)?.[0]?.toLowerCase();
+            const streamer = watchedLogin ? this.streamers.find(s => extractTwitchUsername(s.username) === watchedLogin) : undefined;
+            if (
+              streamer &&
+              this.settings.autoClaimBonus &&
+              this.settings.authToken &&
+              streamer.enabled &&
+              (streamer.isPartner || streamer.isAffiliate) &&
+              !this.claimsInFlight.has(streamer.username)
+            ) {
+              this.claimRealBonus(streamer).catch(() => {});
+            }
           }
         } catch { void 0; }
       };
@@ -2076,6 +2123,8 @@ export class MinerWorker {
       totalPointsMined: streamer.totalPointsMined,
       lastClaimTime: streamer.lastClaimTime,
       uptimeMinutes: streamer.uptimeMinutes,
+      isPartner: streamer.isPartner,
+      isAffiliate: streamer.isAffiliate,
       fetchedAt: new Date().toISOString()
     };
   }
@@ -2134,6 +2183,8 @@ export class MinerWorker {
       enabled: true,
       uptimeMinutes: live.isLive ? 60 : 0,
       isFollowing: live.isFollowing === true,
+      isPartner: false,
+      isAffiliate: false,
       subscriptionTier: typeof live.subscriptionTier === 'string' ? live.subscriptionTier : null
     };
 
@@ -2143,7 +2194,6 @@ export class MinerWorker {
       update: {
         isLive: newStreamerData.isLive,
         viewerCount: newStreamerData.viewerCount,
-        game: newStreamerData.game,
         displayName: newStreamerData.displayName,
         isFollowing: newStreamerData.isFollowing,
         subscriptionTier: newStreamerData.subscriptionTier
@@ -2174,9 +2224,10 @@ export class MinerWorker {
       lastClaimTime: savedInDb.lastClaimTime || undefined,
       uptimeMinutes: savedInDb.uptimeMinutes,
       isFollowing: savedInDb.isFollowing,
+      isPartner: savedInDb.isPartner,
+      isAffiliate: savedInDb.isAffiliate,
       subscriptionTier: savedInDb.subscriptionTier ?? undefined
     };
-
     this.streamers.push(streamer);
     this.addLog(
       'INFO',
