@@ -1,32 +1,31 @@
-FROM node:25-alpine AS builder
+FROM oven/bun:1 AS builder
 
 WORKDIR /app
 
-RUN apk add --no-cache openssl libc6-compat
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
-COPY package*.json ./
+COPY package.json bun.lock ./
 COPY prisma ./prisma/
 
-RUN npm install
+RUN bun install --frozen-lockfile
 
 COPY . .
 
-# Generate Prisma Client and build app
-RUN npx prisma generate
-RUN npm run build
+RUN bunx prisma generate
+RUN bun run build
 
-FROM node:25-alpine AS runner
+FROM oven/bun:1 AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache openssl libc6-compat curl
+RUN apt-get update && apt-get install -y --no-install-recommends openssl curl && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATABASE_URL="file:/app/data/miner.db"
 
-COPY package*.json ./
-RUN npm install --omit=dev
+COPY --from=builder /app/package.json /app/bun.lock ./
+RUN bun install --production
 
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
@@ -37,5 +36,4 @@ RUN mkdir -p /app/data
 
 EXPOSE 3000
 
-# Push DB schema if needed on start and launch server
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/server.cjs"]
+CMD ["sh", "-c", "bunx prisma db push --skip-generate && bun dist/server.cjs"]
