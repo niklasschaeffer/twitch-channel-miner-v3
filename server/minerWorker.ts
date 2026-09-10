@@ -1019,9 +1019,47 @@ export class MinerWorker {
                     }
                   }
                 }
-
                 const isKnownBot = KNOWN_CHAT_BOTS.has(fallbackNick.toLowerCase());
-                if (badges.includes("broadcaster") || isKnownBot) continue;
+                if (isKnownBot) {
+                  this.addStreamerChatMessage(clean, {
+                    id: `irc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                    channel: clean,
+                    username: fallbackNick,
+                    displayName: displayName || fallbackNick,
+                    color: "#71717A",
+                    badges,
+                    message: text,
+                    timestamp: new Date().toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    }),
+                    isHighlighted: false,
+                    isBot: true,
+                    isSystem: false,
+                  });
+                  continue;
+                }
+                if (badges.includes("broadcaster")) {
+                  this.addStreamerChatMessage(clean, {
+                    id: `irc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                    channel: clean,
+                    username: fallbackNick,
+                    displayName: displayName || fallbackNick,
+                    color: "#9146FF",
+                    badges,
+                    message: text,
+                    timestamp: new Date().toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    }),
+                    isHighlighted: false,
+                    isBot: true,
+                    isSystem: false,
+                  });
+                  continue;
+                }
 
                 const chatMsg: ChatMessage = {
                   id: `irc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,

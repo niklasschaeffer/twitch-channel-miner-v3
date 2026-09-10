@@ -132,11 +132,11 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   const filteredMessages = messages.filter((msg) => {
     if (filter === "highlights") {
       return (
-        msg.isHighlighted ||
-        msg.badges?.includes("broadcaster") ||
-        msg.badges?.includes("moderator") ||
-        msg.badges?.includes("vip") ||
-        (streamer && msg.message.toLowerCase().includes(streamer.username.toLowerCase()))
+        !msg.isBot &&
+        (msg.isHighlighted ||
+          msg.badges?.includes("moderator") ||
+          msg.badges?.includes("vip") ||
+          (streamer && msg.message.toLowerCase().includes(streamer.username.toLowerCase())))
       );
     }
     return true;
