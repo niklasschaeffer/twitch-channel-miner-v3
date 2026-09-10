@@ -1,3 +1,10 @@
+## [1.10.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.10.0...v1.10.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **stats:** stop seeding raid and drop counters with point totals ([5bfeec5](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/5bfeec52867efe86e8f5516d8be00456733330e7))
+
 # [1.10.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.9.6...v1.10.0) (2026-09-10)
 
 
