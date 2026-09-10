@@ -1,3 +1,10 @@
+## [1.18.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.18.0...v1.18.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* unfiltered All Messages chat tab and honest Highlights label ([c1fc90a](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/c1fc90ae34a6d7a934f26966d89c546cc331e392))
+
 # [1.18.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.17.2...v1.18.0) (2026-09-10)
 
 
