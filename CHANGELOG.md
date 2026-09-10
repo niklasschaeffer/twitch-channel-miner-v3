@@ -1,3 +1,10 @@
+# [1.15.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.14.0...v1.15.0) (2026-09-10)
+
+
+### Features
+
+* wiki + .mcp_config ([a2e6838](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/a2e683880b56006d95de5d88d1dd03b84d7f92e3))
+
 # [1.14.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.13.0...v1.14.0) (2026-09-10)
 
 ### Features
