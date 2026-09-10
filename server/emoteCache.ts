@@ -8,7 +8,7 @@ const CACHE_TTL_SECONDS = 14400;
 const CACHE_TTL_MS = CACHE_TTL_SECONDS * 1000;
 const UPSTREAM_TIMEOUT_MS = 12000;
 
-const HELIX_CLIENT_ID = "ue6666qo983tsx6so1t0vnawi233wa";
+const HELIX_CLIENT_ID = process.env.TWITCH_CLIENT_ID || "ue6666qo983tsx6so1t0vnawi233wa";
 const GQL_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko";
 
 const EMOTE_URL_TEMPLATE = "https://static-cdn.jtvnw.net/emoticons/v2";
@@ -125,10 +125,7 @@ function parseBadgeSets(body: unknown): Record<string, Record<string, string>> {
 async function loadBadgeMaps(): Promise<BadgeMaps> {
   if (badgeMaps && Date.now() - badgeMaps.at < CACHE_TTL_MS) return badgeMaps;
   const token = await getHelixToken();
-  if (!token) {
-    badgeMaps = { urls: {}, at: Date.now() };
-    return badgeMaps;
-  }
+  if (!token) return { urls: {}, at: 0 };
   try {
     const res = await fetch(HELIX_BADGES_GLOBAL_URL, {
       headers: {
@@ -141,8 +138,7 @@ async function loadBadgeMaps(): Promise<BadgeMaps> {
       console.warn(
         `Helix badge map fetch failed: status ${res.status} ${(await res.text()).slice(0, 200)}`,
       );
-      badgeMaps = { urls: {}, at: Date.now() };
-      return badgeMaps;
+      return { urls: {}, at: 0 };
     }
     badgeMaps = { urls: parseBadgeSets(await res.json()), at: Date.now() };
     return badgeMaps;
@@ -150,8 +146,7 @@ async function loadBadgeMaps(): Promise<BadgeMaps> {
     console.warn(
       `Helix badge map fetch error: ${err instanceof Error ? err.message : String(err)}`,
     );
-    badgeMaps = { urls: {}, at: Date.now() };
-    return badgeMaps;
+    return { urls: {}, at: 0 };
   }
 }
 
