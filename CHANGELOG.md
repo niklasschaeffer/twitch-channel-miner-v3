@@ -1,3 +1,10 @@
+## [1.19.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.19.1...v1.19.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* pair Helix badge requests with the env client id and stop caching failures ([035701e](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/035701ecb743b7db2c7542dcfa2383ec2dc5037a))
+
 ## [1.19.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.19.0...v1.19.1) (2026-09-10)
 
 
