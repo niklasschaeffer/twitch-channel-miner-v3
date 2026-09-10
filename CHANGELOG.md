@@ -1,3 +1,15 @@
+# [1.12.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.11.0...v1.12.0) (2026-09-10)
+
+
+### Bug Fixes
+
+* **stats:** source claims card subtext from real chest points instead of 50-per-claim estimate ([d902e6d](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/d902e6d5977f8cd483d4da1d9e5bdd34620dedf6))
+
+
+### Features
+
+* renovate.json ([2b3efc6](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/2b3efc63a2eec18aa86a8a4ca29cf97a74557d71))
+
 # [1.11.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.10.1...v1.11.0) (2026-09-10)
 
 
