@@ -1,3 +1,10 @@
+## [1.17.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.17.0...v1.17.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **miner:** dedupe prediction bets per event id ([61f6719](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/61f6719b07bb2d640e06eb2322f19ddabf9e438a))
+
 # [1.17.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.16.1...v1.17.0) (2026-09-10)
 
 
