@@ -1,13 +1,13 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Coins, Trophy, ArrowUpRight, Zap, Target } from 'lucide-react';
-import { MinerStatus } from '../types';
+import { Coins, Trophy, ArrowUpRight, Zap, Target, Swords } from 'lucide-react';
+import { MinerStatus, AnalyticsData } from '../types';
 
 interface MetricsOverviewProps {
   status: MinerStatus | null;
+  analytics: AnalyticsData | null;
 }
-
-export const MetricsOverview: React.FC<MetricsOverviewProps> = ({ status }) => {
+export const MetricsOverview: React.FC<MetricsOverviewProps> = ({ status, analytics }) => {
   const { t } = useTranslation();
   if (!status) return null;
 
@@ -50,15 +50,25 @@ export const MetricsOverview: React.FC<MetricsOverviewProps> = ({ status }) => {
       label: t('stats.predictionsNet'),
       value: `${status.netPredictionPoints >= 0 ? '+' : ''}${status.netPredictionPoints.toLocaleString()}`,
       unit: 'pts',
-      subtext: `${status.totalPredictionsWon}/${status.totalPredictionsPlaced} • ${status.totalRaids} ${t('stats.raidsCount')}`,
+      subtext: `${status.totalPredictionsWon}/${status.totalPredictionsPlaced}`,
       icon: Target,
       accent: 'text-sky-600 dark:text-sky-300',
       bgAccent: 'bg-sky-500/10 border-sky-500/30'
+    },
+    {
+      id: 'metric-raids',
+      label: t('stats.raidsCount'),
+      value: (analytics?.summary?.totalRaidPoints ?? 0).toLocaleString(),
+      unit: 'pts',
+      subtext: t('analytics.raidsDesc', { count: status.totalRaids }),
+      icon: Swords,
+      accent: 'text-rose-600 dark:text-rose-300',
+      bgAccent: 'bg-rose-500/10 border-rose-500/30'
     }
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
       {cards.map(card => {
         const Icon = card.icon;
         return (
