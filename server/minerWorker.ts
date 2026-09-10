@@ -483,8 +483,9 @@ export class MinerWorker {
     }
     this.disconnectPubsub();
     this.disconnectAllStreamers();
+    this.betPredictionEventIds.clear();
+    this.balanceBaselines.clear();
   }
-
   private tick() {
     if (this.disposed) return;
     if (this.status.state !== "running") return;
