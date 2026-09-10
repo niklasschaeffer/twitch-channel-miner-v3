@@ -1,3 +1,10 @@
+# [1.19.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.18.1...v1.19.0) (2026-09-10)
+
+
+### Features
+
+* render Twitch emotes and badge icons in IRC chat from local cache ([f3af81e](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/f3af81ef38e22f35442160b8ffccad7117c3573b))
+
 ## [1.18.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.18.0...v1.18.1) (2026-09-10)
 
 
