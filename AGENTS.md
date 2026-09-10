@@ -51,3 +51,16 @@ There is no test suite. Verification = `tsc --noEmit` plus live smoke tests agai
 - Deploy cadence: every change → commit, push to `origin/main`, `docker compose build && docker compose up -d --build`
 - Merge gate: `tsc --noEmit` on the merged tree before proceeding
 - Runtime i18n audit (when checking keys): walk `resources.en.translation` via `bun -e` import of `src/i18n.ts` — regex-parsing the file produces false positives
+
+<!-- wiki-agent -->
+## Wiki Agent
+
+This repository is managed by [wiki-agent](https://github.com/nx-solutions-ug/wiki-agent).
+Documentation is generated under `.wiki/` and kept in sync via `wiki --update`.
+Do not hand-edit files under `.wiki/` — regenerate them with `wiki --update` instead.
+
+```yaml
+version: 1.20.0
+wiki-path: .wiki/
+initialized: 2026-09-10T08:41:46.457Z
+```
