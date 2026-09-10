@@ -1,3 +1,10 @@
+# [1.14.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.13.0...v1.14.0) (2026-09-10)
+
+
+### Features
+
+* **test:** add vitest suite covering helpers, i18n parity, chest progress ([bdeb669](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/bdeb669d35bcb901853558a216d1a880e3298de9))
+
 # [1.13.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.12.0...v1.13.0) (2026-09-10)
 
 
