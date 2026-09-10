@@ -34,6 +34,7 @@ export const resources = {
         raidsCount: 'Raids Caught',
         dropsCount: 'Drops Claimed',
         predictionsNet: 'Predictions Won',
+        claimsDesc: '+{{points}} pts from chests',
         estDaily: 'Est. Daily Yield'
       },
       actions: {
@@ -289,6 +290,7 @@ export const resources = {
         claimsCount: 'Truhen gesammelt',
         raidsCount: 'Raids gefolgt',
         dropsCount: 'Drops beansprucht',
+        claimsDesc: '+{{points}} Pkt. aus Truhen',
         predictionsNet: 'Vorhersagen gewonnen',
         estDaily: 'Geschätzter Tagesertrag'
       },

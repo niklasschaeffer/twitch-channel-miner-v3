@@ -40,7 +40,7 @@ export const MetricsOverview: React.FC<MetricsOverviewProps> = ({ status, analyt
       id: 'metric-claims',
       label: t('stats.claimsCount'),
       value: status.totalClaims.toString(),
-      subtext: `${status.totalClaims * 50} pts (+50)`,
+      subtext: t('stats.claimsDesc', { points: (analytics?.summary?.totalBonusChestPoints ?? 0).toLocaleString() }),
       icon: Trophy,
       accent: 'text-amber-500 dark:text-amber-300',
       bgAccent: 'bg-amber-500/10 border-amber-500/30'
