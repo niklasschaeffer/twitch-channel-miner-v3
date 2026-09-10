@@ -1,3 +1,10 @@
+# [1.17.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.16.1...v1.17.0) (2026-09-10)
+
+
+### Features
+
+* **miner:** port upstream odds-ratio EV prediction strategy ([b99add1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/b99add1f5493e2fb39d614ddb34282f9fed13b7f))
+
 ## [1.16.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.16.0...v1.16.1) (2026-09-10)
 
 
