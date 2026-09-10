@@ -6,17 +6,17 @@ import {
   LogLevel,
   StatisticalRecord,
   AnalyticsData,
-  ChatMessage
-} from '../src/types.js';
-import { prisma } from './db.js';
-import { MinerWorker } from './minerWorker.js';
+  ChatMessage,
+} from "../src/types.js";
+import { prisma } from "./db.js";
+import { MinerWorker } from "./minerWorker.js";
 
 export function extractTwitchUsername(raw: string): string {
-  if (!raw) return '';
+  if (!raw) return "";
   let cleaned = raw.trim().toLowerCase();
-  cleaned = cleaned.replace(/^(https?:\/\/)?(www\.)?(m\.)?twitch\.tv\//i, '');
-  cleaned = cleaned.replace(/^[@/]+/, '');
-  cleaned = cleaned.split('?')[0].split('#')[0].replace(/\/+$/, '');
+  cleaned = cleaned.replace(/^(https?:\/\/)?(www\.)?(m\.)?twitch\.tv\//i, "");
+  cleaned = cleaned.replace(/^[@/]+/, "");
+  cleaned = cleaned.split("?")[0].split("#")[0].replace(/\/+$/, "");
   const match = cleaned.match(/^[a-z0-9_]{1,35}/i);
   return match ? match[0].toLowerCase() : cleaned;
 }
@@ -36,7 +36,7 @@ export class MinerEngine {
     const existing = this.workers.get(userId);
     if (existing) return existing;
     const worker = new MinerWorker(userId, {
-      broadcast: (event, payload) => this.deliverSSE(userId, event, payload)
+      broadcast: (event, payload) => this.deliverSSE(userId, event, payload),
     });
     this.workers.set(userId, worker);
     return worker;
@@ -51,7 +51,7 @@ export class MinerEngine {
 
   async spawnWorkersFromDb(): Promise<void> {
     await this.adoptLegacyRows();
-    const rows = await prisma.minerSetting.findMany({ where: { authToken: { not: '' } } });
+    const rows = await prisma.minerSetting.findMany({ where: { authToken: { not: "" } } });
     for (const row of rows) {
       if (!row.userId) continue;
       this.ensureWorker(row.userId);
@@ -63,58 +63,76 @@ export class MinerEngine {
       prisma.minerSetting.count({ where: { userId: null } }),
       prisma.streamer.count({ where: { userId: null } }),
       prisma.logRecord.count({ where: { userId: null } }),
-      prisma.statisticalRecord.count({ where: { userId: null } })
+      prisma.statisticalRecord.count({ where: { userId: null } }),
     ]);
-    if (orphanCounts.every(c => c === 0)) return;
-    const oldestUser = await prisma.user.findFirst({ orderBy: { createdAt: 'asc' } });
+    if (orphanCounts.every((c) => c === 0)) return;
+    const oldestUser = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
     if (!oldestUser) return;
     const adopted: string[] = [];
     try {
-      const ownedSettings = await prisma.minerSetting.findUnique({ where: { userId: oldestUser.id } });
+      const ownedSettings = await prisma.minerSetting.findUnique({
+        where: { userId: oldestUser.id },
+      });
       if (!ownedSettings) {
-        await prisma.minerSetting.updateMany({ where: { userId: null }, data: { userId: oldestUser.id } });
-        if (orphanCounts[0] > 0) adopted.push('settings');
+        await prisma.minerSetting.updateMany({
+          where: { userId: null },
+          data: { userId: oldestUser.id },
+        });
+        if (orphanCounts[0] > 0) adopted.push("settings");
       }
     } catch (err) {
-      console.warn('Legacy settings adoption skipped:', err);
+      console.warn("Legacy settings adoption skipped:", err);
     }
     try {
-      await prisma.logRecord.updateMany({ where: { userId: null }, data: { userId: oldestUser.id } });
-      if (orphanCounts[2] > 0) adopted.push('logs');
+      await prisma.logRecord.updateMany({
+        where: { userId: null },
+        data: { userId: oldestUser.id },
+      });
+      if (orphanCounts[2] > 0) adopted.push("logs");
     } catch (err) {
-      console.warn('Legacy log adoption skipped:', err);
+      console.warn("Legacy log adoption skipped:", err);
     }
     try {
-      await prisma.statisticalRecord.updateMany({ where: { userId: null }, data: { userId: oldestUser.id } });
-      if (orphanCounts[3] > 0) adopted.push('statistics');
+      await prisma.statisticalRecord.updateMany({
+        where: { userId: null },
+        data: { userId: oldestUser.id },
+      });
+      if (orphanCounts[3] > 0) adopted.push("statistics");
     } catch (err) {
-      console.warn('Legacy statistics adoption skipped:', err);
+      console.warn("Legacy statistics adoption skipped:", err);
     }
     try {
-      await prisma.streamer.updateMany({ where: { userId: null }, data: { userId: oldestUser.id } });
-      if (orphanCounts[1] > 0) adopted.push('streamers');
+      await prisma.streamer.updateMany({
+        where: { userId: null },
+        data: { userId: oldestUser.id },
+      });
+      if (orphanCounts[1] > 0) adopted.push("streamers");
     } catch (err) {
-      console.warn('Legacy streamer adoption skipped:', err);
+      console.warn("Legacy streamer adoption skipped:", err);
     }
     if (adopted.length > 0) {
-      console.warn(`Adopted legacy rows (${adopted.join(', ')}) without owner into ${oldestUser.email}.`);
+      console.warn(
+        `Adopted legacy rows (${adopted.join(", ")}) without owner into ${oldestUser.email}.`,
+      );
     }
   }
 
   subscribeSSE(send: (data: string) => void, userId?: string): () => void {
     const client: SSEClient = { id: this.nextClientId++, userId, send };
     this.sseClients.push(client);
-    send(JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() }));
+    send(JSON.stringify({ type: "connected", timestamp: new Date().toISOString() }));
 
     return () => {
-      this.sseClients = this.sseClients.filter(c => c.id !== client.id);
+      this.sseClients = this.sseClients.filter((c) => c.id !== client.id);
     };
   }
 
   private deliverSSE(workerUserId: string, event: string, payload: unknown) {
     const forClient = (client: SSEClient): string => {
-      if (event === 'streamers' && Array.isArray(payload)) {
-        const visible = (payload as Array<{ userId?: string }>).filter(s => !client.userId || !s.userId || s.userId === client.userId);
+      if (event === "streamers" && Array.isArray(payload)) {
+        const visible = (payload as Array<{ userId?: string }>).filter(
+          (s) => !client.userId || !s.userId || s.userId === client.userId,
+        );
         return `event: ${event}\ndata: ${JSON.stringify(visible)}\n\n`;
       }
       return `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
@@ -130,9 +148,9 @@ export class MinerEngine {
   }
 
   getStatus(userId?: string): MinerStatus {
-    const isDev = process.env.NODE_ENV === 'development';
+    const isDev = process.env.NODE_ENV === "development";
     const zeroed: MinerStatus = {
-      state: 'running',
+      state: "running",
       uptimeSeconds: 0,
       totalPointsMined: 0,
       pointsToday: 0,
@@ -146,7 +164,7 @@ export class MinerEngine {
       netPredictionPoints: 0,
       totalDropsClaimed: 0,
       lastActionTimestamp: new Date().toISOString(),
-      isSimulation: isDev
+      isSimulation: isDev,
     };
     if (!userId) return zeroed;
     const worker = this.workers.get(userId);
@@ -157,31 +175,34 @@ export class MinerEngine {
   getSettings(userId: string): MinerSettings & { hasAuthToken: boolean } {
     const worker = this.workers.get(userId);
     if (!worker) {
-      const isDev = process.env.NODE_ENV === 'development';
+      const isDev = process.env.NODE_ENV === "development";
       return {
-        authToken: '',
-        clientId: 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+        authToken: "",
+        clientId: "kimne78kx3ncx6brgo4mv6wki5h1ko",
         isSimulationMode: isDev,
         maxConcurrentStreams: 2,
-        priorityMode: 'points_asc',
+        priorityMode: "points_asc",
         autoClaimBonus: true,
         claimDelaySeconds: 4,
         followRaids: true,
         autoClaimDrops: true,
         autoBetPredictions: true,
-        predictionStrategy: 'smart_ratio',
+        predictionStrategy: "smart_ratio",
         maxBetPoints: 100,
         checkIntervalSeconds: 3,
-        hasAuthToken: false
+        hasAuthToken: false,
       };
     }
     return worker.getSettings();
   }
 
-  async updateSettings(patch: Partial<MinerSettings>, userId: string): Promise<MinerSettings & { hasAuthToken: boolean }> {
+  async updateSettings(
+    patch: Partial<MinerSettings>,
+    userId: string,
+  ): Promise<MinerSettings & { hasAuthToken: boolean }> {
     const worker = this.ensureWorker(userId);
     const updated = await worker.updateSettings(patch);
-    if (patch.authToken === '') {
+    if (patch.authToken === "") {
       this.disposeWorker(userId);
     }
     return updated;
@@ -239,7 +260,11 @@ export class MinerEngine {
     return this.ensureWorker(userId).getLiveStats(username);
   }
 
-  async toggleStreamerLive(username: string, forceLive: boolean | undefined, userId: string): Promise<Streamer | null> {
+  async toggleStreamerLive(
+    username: string,
+    forceLive: boolean | undefined,
+    userId: string,
+  ): Promise<Streamer | null> {
     return this.ensureWorker(userId).toggleStreamerLive(username, forceLive);
   }
 
@@ -249,7 +274,12 @@ export class MinerEngine {
     return worker.getStreamerChat(username);
   }
 
-  handleUserChatMessage(channel: string, text: string, senderName: string, userId: string): ChatMessage {
+  handleUserChatMessage(
+    channel: string,
+    text: string,
+    senderName: string,
+    userId: string,
+  ): ChatMessage {
     return this.ensureWorker(userId).handleUserChatMessage(channel, text, senderName);
   }
 
@@ -257,7 +287,12 @@ export class MinerEngine {
     return this.ensureWorker(userId).refreshAllLiveStats();
   }
 
-  getLogs(limit: number, level: string | undefined, search: string | undefined, userId: string): LogEntry[] {
+  getLogs(
+    limit: number,
+    level: string | undefined,
+    search: string | undefined,
+    userId: string,
+  ): LogEntry[] {
     const worker = this.workers.get(userId);
     if (!worker) return [];
     return worker.getLogs(limit, level, search);

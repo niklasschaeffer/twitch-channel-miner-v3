@@ -22,16 +22,16 @@ A self-hosted web dashboard that **autonomously earns Twitch Channel Points** on
 
 Once your Twitch account is connected and channels are on the watchlist, **your personal miner worker** runs a 2-second tick loop and does the following **with your real account** — every account with a stored token gets its own isolated engine (connections, timers, balances), so users never share mining state:
 
-| Feature | Mechanism |
-|---|---|
-| **Watch earning** | Sends minute-watched heartbeats to Twitch's spade telemetry endpoint once per minute per mining channel — the same signal the Twitch web player sends |
-| **Bonus chests** | Subscribes to real-time PubSub `community-points-user-v1` events; when a chest becomes claimable it polls and executes the persisted `ClaimCommunityPoints` GQL mutation |
-| **Drops** | Polls your inventory (10-min cadence, toggleable) and claims every drop with `is_claimable` + `dropInstanceID` via `DropsPage_ClaimDropRewards` |
-| **Raids** | Subscribes to PubSub `raid` topics per mining channel; on a raid event it joins via the persisted `JoinRaid` mutation (auto-follow configurable) and records the raid against the watched channel |
-| **Watch streaks** | Tracks consecutive UTC days with accepted heartbeats per channel (Twitch's GQL exposes no streak field); resets honestly after missed days |
-| **Auto-lurk** | Optionally posts a chat message (default `!lurk`) via IRC into a channel's chat the moment it goes live — once per day per channel, with self-echo dedupe so it never repeats |
-| **Predictions** | Listens to PubSub `predictions-channel-v1`; when an event goes ACTIVE it places a bet via `MakePrediction` (capped by your `maxBetPoints` setting) |
-| **Live balance sync** | Per-channel balances sync via PubSub events plus a 5-minute GQL snapshot fallback |
+| Feature               | Mechanism                                                                                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Watch earning**     | Sends minute-watched heartbeats to Twitch's spade telemetry endpoint once per minute per mining channel — the same signal the Twitch web player sends                                             |
+| **Bonus chests**      | Subscribes to real-time PubSub `community-points-user-v1` events; when a chest becomes claimable it polls and executes the persisted `ClaimCommunityPoints` GQL mutation                          |
+| **Drops**             | Polls your inventory (10-min cadence, toggleable) and claims every drop with `is_claimable` + `dropInstanceID` via `DropsPage_ClaimDropRewards`                                                   |
+| **Raids**             | Subscribes to PubSub `raid` topics per mining channel; on a raid event it joins via the persisted `JoinRaid` mutation (auto-follow configurable) and records the raid against the watched channel |
+| **Watch streaks**     | Tracks consecutive UTC days with accepted heartbeats per channel (Twitch's GQL exposes no streak field); resets honestly after missed days                                                        |
+| **Auto-lurk**         | Optionally posts a chat message (default `!lurk`) via IRC into a channel's chat the moment it goes live — once per day per channel, with self-echo dedupe so it never repeats                     |
+| **Predictions**       | Listens to PubSub `predictions-channel-v1`; when an event goes ACTIVE it places a bet via `MakePrediction` (capped by your `maxBetPoints` setting)                                                |
+| **Live balance sync** | Per-channel balances sync via PubSub events plus a 5-minute GQL snapshot fallback                                                                                                                 |
 
 The UI shows **only real Twitch data** — points, claims, chat, and connection state all come from genuine API responses. A simulation mode exists for development but is off in production and fabricates nothing.
 
@@ -80,22 +80,25 @@ The app is now at `http://localhost:3000`. The SQLite database lives at `prisma/
    - Open the link, enter the code, approve on Twitch
    - The widget polls for up to a minute and shows **Connected** with your login name
 3. The OAuth token is stored **server-side only** — it never reaches the browser. The UI learns only your login name and connection state. If the token goes stale, a red banner appears with a reconnect button.
-4. **Add channels.** In *Monitored Channels*, click **Add Channel** and enter a Twitch username or channel URL (e.g. `twitch.tv/somechannel`).
+4. **Add channels.** In _Monitored Channels_, click **Add Channel** and enter a Twitch username or channel URL (e.g. `twitch.tv/somechannel`).
 5. **Watch it mine.** Channels that are live get assigned to the active watch slots (2 by default). You'll see balances sync within moments.
 
 ## Using the app
 
 ### Dashboard
+
 - **Monitored Channels** — your watchlist with live status, viewer counts, points, and watch-streak badges. Each entry: toggle active, toggle `Lurk` (auto-post `!lurk` in that chat when the channel goes live), open chat, filter the console, remove.
 - **IRC Chat panel** — pick a channel from the `Channels:` bar (scrolls sideways; clickable) to view its live chat. Known chat bots (nightbot, streamelements, etc.) and the broadcaster are filtered out.
 - **Live Console** — real-time event log with per-channel filters and level filters (Claims / Watch / Raids / Predictions / Drops).
 
 ### Statistical Analytics tab
+
 - **Hourly history** — points mined and claims per hour, from recorded stats
 - **Channel distribution** — earned points per channel (from actual earnings records, not balance snapshots)
 - **Category breakdown** — chests vs. watch time vs. raid bonuses vs. predictions vs. drops
 
 ### Settings
+
 - Start / Pause / Stop the engine
 - Concurrency (max simultaneous watch slots)
 - Auto-claim bonus, auto-claim drops, follow raids toggles
@@ -144,6 +147,7 @@ Analytics record **only actual earned deltas** — a claim logs its earned point
 - ⚠️ Google-login users have no local password; add one via re-register or a manual hash reset if you want email login too
 
 **Recent history highlights** (full log: `git log --oneline`):
+
 - `a755290`/`fdfe300` — raid fix: PubSub raid topics now subscribed, JoinRaid fires, raids recorded per watched channel
 - `945291b` — per-streamer auto-lurk: `!lurk` posted via IRC on live transition, day-deduped
 - `7ed0612`/`1ccd369` — live watch-streak tracking (heartbeat days + `WATCH_STREAK` awards, honest resets)

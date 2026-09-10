@@ -1,8 +1,19 @@
-export type PriorityMode = 'points_asc' | 'points_desc' | 'streak' | 'manual';
+export type PriorityMode = "points_asc" | "points_desc" | "streak" | "manual";
 
-export type MinerState = 'running' | 'paused' | 'stopped';
+export type MinerState = "running" | "paused" | "stopped";
 
-export type LogLevel = 'INFO' | 'SUCCESS' | 'CLAIM' | 'WATCH' | 'RAID' | 'PREDICTION' | 'DROP' | 'WARN' | 'ERROR' | 'CHAT' | 'CMD';
+export type LogLevel =
+  | "INFO"
+  | "SUCCESS"
+  | "CLAIM"
+  | "WATCH"
+  | "RAID"
+  | "PREDICTION"
+  | "DROP"
+  | "WARN"
+  | "ERROR"
+  | "CHAT"
+  | "CMD";
 
 export interface Streamer {
   id: string;
@@ -46,7 +57,7 @@ export interface MinerSettings {
   followRaids: boolean;
   autoClaimDrops: boolean;
   autoBetPredictions: boolean;
-  predictionStrategy: 'lowest_odds' | 'highest_odds' | 'smart_ratio' | 'conservative';
+  predictionStrategy: "lowest_odds" | "highest_odds" | "smart_ratio" | "conservative";
   maxBetPoints: number;
   checkIntervalSeconds: number;
 }
@@ -148,4 +159,3 @@ export interface ChatMessage {
   isSystem?: boolean;
   isHighlighted?: boolean;
 }
-

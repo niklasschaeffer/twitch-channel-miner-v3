@@ -4,38 +4,48 @@
 
 @layer base {
   :root {
-    --bg-main: #0E0E10;
-    --bg-surface: #18181B;
+    --bg-main: #0e0e10;
+    --bg-surface: #18181b;
     --bg-panel: #141416;
-    --border-subtle: #26262C;
+    --border-subtle: #26262c;
     --border-medium: #363640;
-    --twitch-purple: #9146FF;
-    --twitch-mint: #00F593;
-    --text-primary: #EFEFF1;
-    --text-secondary: #ADADB8;
-    --text-muted: #71717A;
+    --twitch-purple: #9146ff;
+    --twitch-mint: #00f593;
+    --text-primary: #efeff1;
+    --text-secondary: #adadb8;
+    --text-muted: #71717a;
   }
 
-  html, body {
+  html,
+  body {
     background-color: var(--bg-main);
     color: var(--text-primary);
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family:
+      "Plus Jakarta Sans",
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
     letter-spacing: -0.01em;
   }
 
-  code, kbd, samp, pre {
-    font-family: 'JetBrains Mono', monospace;
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: "JetBrains Mono", monospace;
   }
 
   html:not(.dark) {
-    --bg-main: #FFFFFF;
-    --bg-surface: #FAFAFA;
-    --bg-panel: #FFFFFF;
-    --border-subtle: #E4E4E7;
-    --border-medium: #D4D4D8;
-    --text-primary: #18181B;
-    --text-secondary: #3F3F46;
-    --text-muted: #71717A;
+    --bg-main: #ffffff;
+    --bg-surface: #fafafa;
+    --bg-panel: #ffffff;
+    --border-subtle: #e4e4e7;
+    --border-medium: #d4d4d8;
+    --text-primary: #18181b;
+    --text-secondary: #3f3f46;
+    --text-muted: #71717a;
   }
 }
 

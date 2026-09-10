@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
+import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   MessageSquare,
   Send,
@@ -14,10 +14,10 @@ import {
   X,
   Power,
   Flame,
-  CheckCircle2
-} from 'lucide-react';
-import { Streamer, ChatMessage } from '../types';
-import { formatSubTier } from '../lib/badges';
+  CheckCircle2,
+} from "lucide-react";
+import { Streamer, ChatMessage } from "../types";
+import { formatSubTier } from "../lib/badges";
 
 interface SlotIrcChatProps {
   streamer: Streamer | null;
@@ -28,10 +28,10 @@ interface SlotIrcChatProps {
   onFilterConsole?: (channel: string) => void;
   incomingChatMessage?: ChatMessage | null;
   onClose?: () => void;
-  theme?: 'light' | 'dark';
+  theme?: "light" | "dark";
 }
 
-const PRESET_EMOTES = ['PogChamp', 'KEKW', 'LUL', 'GG', 'monkaS', 'EZ'];
+const PRESET_EMOTES = ["PogChamp", "KEKW", "LUL", "GG", "monkaS", "EZ"];
 
 export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   streamer,
@@ -42,13 +42,13 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   onFilterConsole,
   incomingChatMessage,
   onClose,
-  theme = 'dark'
+  theme = "dark",
 }) => {
   const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputText, setInputText] = useState('');
-  const [filter, setFilter] = useState<'all' | 'highlights'>('all');
-  const [viewMode, setViewMode] = useState<'irc' | 'embed'>('irc');
+  const [inputText, setInputText] = useState("");
+  const [filter, setFilter] = useState<"all" | "highlights">("all");
+  const [viewMode, setViewMode] = useState<"irc" | "embed">("irc");
   const [autoScroll, setAutoScroll] = useState(true);
   const [isSending, setIsSending] = useState(false);
 
@@ -61,7 +61,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
 
     let isMounted = true;
     fetch(`/api/streamers/${streamer.username.toLowerCase()}/chat`)
-      .then(res => res.json())
+      .then((res) => res.json())
       .then((data: ChatMessage[]) => {
         if (isMounted && Array.isArray(data)) {
           setMessages(data);
@@ -78,8 +78,8 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   useEffect(() => {
     if (!incomingChatMessage || !streamer?.username) return;
     if (incomingChatMessage.channel.toLowerCase() === streamer.username.toLowerCase()) {
-      setMessages(prev => {
-        if (prev.some(m => m.id === incomingChatMessage.id)) return prev;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === incomingChatMessage.id)) return prev;
         const next = [...prev, incomingChatMessage];
         if (next.length > 250) next.shift();
         return next;
@@ -106,64 +106,67 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
     if (!text || !streamer?.username || isSending) return;
 
     setIsSending(true);
-    setInputText('');
+    setInputText("");
 
     try {
       const res = await fetch(`/api/streamers/${streamer.username.toLowerCase()}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          senderName: 'You'
-        })
+          senderName: "You",
+        }),
       });
       if (res.ok) {
         const sent: ChatMessage = await res.json();
-        setMessages(prev => {
-          if (prev.some(m => m.id === sent.id)) return prev;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === sent.id)) return prev;
           return [...prev, sent];
         });
       }
     } catch (err) {
-      console.error('Failed to send chat message:', err);
+      console.error("Failed to send chat message:", err);
     } finally {
       setIsSending(false);
     }
   };
 
-  const filteredMessages = messages.filter(msg => {
-    if (filter === 'highlights') {
+  const filteredMessages = messages.filter((msg) => {
+    if (filter === "highlights") {
       return (
         msg.isHighlighted ||
-        msg.badges?.includes('broadcaster') ||
-        msg.badges?.includes('moderator') ||
-        msg.badges?.includes('vip') ||
+        msg.badges?.includes("broadcaster") ||
+        msg.badges?.includes("moderator") ||
+        msg.badges?.includes("vip") ||
         (streamer && msg.message.toLowerCase().includes(streamer.username.toLowerCase()))
       );
     }
     return true;
   });
 
-  const parentDomain = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+  const parentDomain = typeof window !== "undefined" ? window.location.hostname : "localhost";
 
   if (!streamer) {
     return (
       <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#26262C] p-6 text-center shadow-xs">
         <MessageSquare className="w-8 h-8 text-[#9146FF] mx-auto mb-2 opacity-60" />
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-[#EFEFF1]">
-          {t('ircChat.noChannelSelected', 'No Channel Selected')}
+          {t("ircChat.noChannelSelected", "No Channel Selected")}
         </h3>
         <p className="text-xs text-zinc-500 dark:text-[#ADADB8] mt-1 max-w-md mx-auto">
-          {t('ircChat.selectChannelNotice', 'Select any streamer from monitored channels below to inspect real-time IRC chat and test bot commands.')}
+          {t(
+            "ircChat.selectChannelNotice",
+            "Select any streamer from monitored channels below to inspect real-time IRC chat and test bot commands.",
+          )}
         </p>
         <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
-          {allStreamers.map(s => (
+          {allStreamers.map((s) => (
             <button
               key={s.id}
               onClick={() => onSelectStreamer(s.id)}
               className="px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-[#26262C] hover:border-[#9146FF] bg-zinc-50 dark:bg-[#0E0E10] text-zinc-800 dark:text-[#EFEFF1] transition flex items-center gap-1.5 cursor-pointer"
             >
-              <span className={`w-2 h-2 rounded-full ${s.isLive ? 'bg-red-500' : 'bg-zinc-400'}`} />
+              <span className={`w-2 h-2 rounded-full ${s.isLive ? "bg-red-500" : "bg-zinc-400"}`} />
               <span>{s.displayName}</span>
             </button>
           ))}
@@ -178,9 +181,9 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
       <div className="flex items-center gap-1 px-3 py-2 bg-zinc-100/70 dark:bg-[#121214] border-b border-zinc-200 dark:border-[#26262C] overflow-x-auto min-w-0">
         <span className="text-[11px] font-mono text-zinc-400 dark:text-[#71717A] shrink-0 mr-2 flex items-center gap-1">
           <MessageSquare className="w-3.5 h-3.5 text-[#9146FF]" />
-          <span>{t('ircChat.channelSelector', 'Channels')}:</span>
+          <span>{t("ircChat.channelSelector", "Channels")}:</span>
         </span>
-        {allStreamers.map(s => {
+        {allStreamers.map((s) => {
           const isSelected = s.id === streamer.id;
           return (
             <button
@@ -188,34 +191,36 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               onClick={() => onSelectStreamer(s.id)}
               className={`px-2.5 py-1 text-xs font-mono shrink-0 transition flex items-center gap-1.5 cursor-pointer border ${
                 isSelected
-                  ? 'bg-white dark:bg-[#1E1E22] text-[#9146FF] border-[#9146FF] font-semibold shadow-xs'
-                  : 'bg-transparent text-zinc-600 dark:text-[#ADADB8] border-transparent hover:border-zinc-300 dark:hover:border-[#26262C] hover:bg-zinc-200/50 dark:hover:bg-[#18181B]'
+                  ? "bg-white dark:bg-[#1E1E22] text-[#9146FF] border-[#9146FF] font-semibold shadow-xs"
+                  : "bg-transparent text-zinc-600 dark:text-[#ADADB8] border-transparent hover:border-zinc-300 dark:hover:border-[#26262C] hover:bg-zinc-200/50 dark:hover:bg-[#18181B]"
               }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
                   s.isMining
-                    ? 'bg-[#00a865] dark:bg-[#00F593] animate-pulse'
+                    ? "bg-[#00a865] dark:bg-[#00F593] animate-pulse"
                     : s.isLive
-                    ? 'bg-red-500'
-                    : 'bg-zinc-400'
+                      ? "bg-red-500"
+                      : "bg-zinc-400"
                 }`}
               />
               <span>{s.displayName}</span>
               {s.isFollowing && (
                 <span
-                  title={t('streamersList.badgeFollow')}
+                  title={t("streamersList.badgeFollow")}
                   className="text-[9px] leading-none px-1 bg-[#9146FF]/15 text-[#9146FF] dark:text-[#c299ff] font-bold shrink-0"
                 >
-                  {t('streamersList.badgeFollow')}
+                  {t("streamersList.badgeFollow")}
                 </span>
               )}
-              {typeof s.subscriptionTier === 'string' && s.subscriptionTier.length > 0 && (
+              {typeof s.subscriptionTier === "string" && s.subscriptionTier.length > 0 && (
                 <span
-                  title={t('streamersList.badgeSubTier', { tier: formatSubTier(s.subscriptionTier) })}
+                  title={t("streamersList.badgeSubTier", {
+                    tier: formatSubTier(s.subscriptionTier),
+                  })}
                   className="text-[9px] leading-none px-1 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold shrink-0"
                 >
-                  {t('streamersList.badgeSubTier', { tier: formatSubTier(s.subscriptionTier) })}
+                  {t("streamersList.badgeSubTier", { tier: formatSubTier(s.subscriptionTier) })}
                 </span>
               )}
               {s.isMining && (
@@ -256,45 +261,50 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               </span>
               {streamer.isFollowing && (
                 <span
-                  title={t('streamersList.badgeFollow')}
+                  title={t("streamersList.badgeFollow")}
                   className="text-[9px] leading-none px-1 py-0.5 bg-[#9146FF]/15 text-[#9146FF] dark:text-[#c299ff] font-bold shrink-0"
                 >
-                  {t('streamersList.badgeFollow')}
+                  {t("streamersList.badgeFollow")}
                 </span>
               )}
-              {typeof streamer.subscriptionTier === 'string' && streamer.subscriptionTier.length > 0 && (
-                <span
-                  title={t('streamersList.badgeSubTier', { tier: formatSubTier(streamer.subscriptionTier) })}
-                  className="text-[9px] leading-none px-1 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold shrink-0"
-                >
-                  {t('streamersList.badgeSubTier', { tier: formatSubTier(streamer.subscriptionTier) })}
-                </span>
-              )}
+              {typeof streamer.subscriptionTier === "string" &&
+                streamer.subscriptionTier.length > 0 && (
+                  <span
+                    title={t("streamersList.badgeSubTier", {
+                      tier: formatSubTier(streamer.subscriptionTier),
+                    })}
+                    className="text-[9px] leading-none px-1 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold shrink-0"
+                  >
+                    {t("streamersList.badgeSubTier", {
+                      tier: formatSubTier(streamer.subscriptionTier),
+                    })}
+                  </span>
+                )}
 
               {/* Live / Offline status badge with 1-click toggle */}
               <button
                 type="button"
                 onClick={() => onToggleLive?.(streamer.username)}
-                title={t('ircChat.toggleLive', 'Click to toggle online/offline')}
+                title={t("ircChat.toggleLive", "Click to toggle online/offline")}
                 className={`px-2 py-0.5 text-[10px] font-mono font-semibold transition cursor-pointer border flex items-center gap-1 ${
                   streamer.isLive
-                    ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/20'
-                    : 'bg-zinc-200 dark:bg-[#26262C] text-zinc-600 dark:text-[#ADADB8] border-zinc-300 dark:border-[#363640] hover:bg-zinc-300'
+                    ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/20"
+                    : "bg-zinc-200 dark:bg-[#26262C] text-zinc-600 dark:text-[#ADADB8] border-zinc-300 dark:border-[#363640] hover:bg-zinc-300"
                 }`}
               >
                 <Power className="w-2.5 h-2.5" />
-                <span>{streamer.isLive ? t('status.live') : t('status.offline')}</span>
+                <span>{streamer.isLive ? t("status.live") : t("status.offline")}</span>
               </button>
 
               {/* Active Watch Slot status */}
               {streamer.isMining ? (
                 <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/30 dark:border-[#00F593]/40 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#00a865] dark:bg-[#00F593] animate-pulse" />
-                  {t('status.activeMining')}
+                  {t("status.activeMining")}
                 </span>
               ) : (
                 <span className="px-2 py-0.5 text-[10px] font-mono text-zinc-500 dark:text-[#71717A] border border-zinc-200 dark:border-[#26262C]">
-                  {t('status.standby')}
+                  {t("status.standby")}
                 </span>
               )}
 
@@ -317,7 +327,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                   <span className="text-zinc-300 dark:text-[#363640]">•</span>
                   <span className="font-mono flex items-center gap-1">
                     <Eye className="w-3 h-3" />
-                    {streamer.viewerCount.toLocaleString()} {t('streamersList.viewers')}
+                    {streamer.viewerCount.toLocaleString()} {t("streamersList.viewers")}
                   </span>
                 </>
               )}
@@ -354,7 +364,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
           {onFilterConsole && (
             <button
               onClick={() => onFilterConsole(streamer.username)}
-              title={t('ircChat.filterConsole', 'Filter Console to this channel')}
+              title={t("ircChat.filterConsole", "Filter Console to this channel")}
               className="px-2.5 py-1 text-xs font-medium border border-zinc-200 dark:border-[#26262C] hover:border-[#9146FF] text-zinc-700 dark:text-[#ADADB8] hover:text-[#9146FF] transition flex items-center gap-1.5 cursor-pointer"
             >
               <Terminal className="w-3 h-3" />
@@ -365,21 +375,21 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
           {/* View mode toggle (IRC Terminal vs Official Twitch Embed) */}
           <div className="flex border border-zinc-200 dark:border-[#26262C] p-0.5 bg-zinc-100 dark:bg-[#0E0E10]">
             <button
-              onClick={() => setViewMode('irc')}
+              onClick={() => setViewMode("irc")}
               className={`px-2 py-0.5 text-xs font-mono transition cursor-pointer ${
-                viewMode === 'irc'
-                  ? 'bg-white dark:bg-[#18181B] text-[#9146FF] font-semibold'
-                  : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-[#EFEFF1]'
+                viewMode === "irc"
+                  ? "bg-white dark:bg-[#18181B] text-[#9146FF] font-semibold"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-[#EFEFF1]"
               }`}
             >
               IRC Feed
             </button>
             <button
-              onClick={() => setViewMode('embed')}
+              onClick={() => setViewMode("embed")}
               className={`px-2 py-0.5 text-xs font-mono transition cursor-pointer ${
-                viewMode === 'embed'
-                  ? 'bg-white dark:bg-[#18181B] text-[#9146FF] font-semibold'
-                  : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-[#EFEFF1]'
+                viewMode === "embed"
+                  ? "bg-white dark:bg-[#18181B] text-[#9146FF] font-semibold"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-[#EFEFF1]"
               }`}
             >
               Twitch Embed
@@ -390,7 +400,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
             href={`https://twitch.tv/${streamer.username}`}
             target="_blank"
             rel="noopener noreferrer"
-            title={t('streamersList.openTwitch')}
+            title={t("streamersList.openTwitch")}
             className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:text-[#71717A] dark:hover:text-[#EFEFF1] border border-zinc-200 dark:border-[#26262C] bg-white dark:bg-[#0E0E10] transition"
           >
             <ExternalLink className="w-3.5 h-3.5" />
@@ -399,7 +409,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
           {onClose && (
             <button
               onClick={onClose}
-              title={t('chat.closeChat')}
+              title={t("chat.closeChat")}
               className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:text-[#71717A] dark:hover:text-[#EFEFF1] border border-zinc-200 dark:border-[#26262C] bg-white dark:bg-[#0E0E10] transition cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
@@ -409,50 +419,50 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
       </div>
 
       {/* 3. Main Chat Viewport */}
-      {viewMode === 'irc' ? (
+      {viewMode === "irc" ? (
         <div className="flex flex-col">
           {/* Sub-toolbar: Filter tabs + Auto-scroll status */}
           <div className="flex items-center justify-between px-4 py-1.5 border-b border-zinc-200 dark:border-[#26262C] bg-zinc-100/40 dark:bg-[#101012] text-xs">
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setFilter('all')}
+                onClick={() => setFilter("all")}
                 className={`px-2.5 py-0.5 text-[11px] font-medium transition cursor-pointer ${
-                  filter === 'all'
-                    ? 'bg-[#9146FF] text-white'
-                    : 'text-zinc-600 dark:text-[#ADADB8] hover:bg-zinc-200 dark:hover:bg-[#1E1E22]'
+                  filter === "all"
+                    ? "bg-[#9146FF] text-white"
+                    : "text-zinc-600 dark:text-[#ADADB8] hover:bg-zinc-200 dark:hover:bg-[#1E1E22]"
                 }`}
               >
-                {t('chat.filterAll')} ({messages.length})
+                {t("chat.filterAll")} ({messages.length})
               </button>
               <button
-                onClick={() => setFilter('highlights')}
+                onClick={() => setFilter("highlights")}
                 className={`px-2.5 py-0.5 text-[11px] font-medium transition cursor-pointer ${
-                  filter === 'highlights'
-                    ? 'bg-[#9146FF] text-white'
-                    : 'text-zinc-600 dark:text-[#ADADB8] hover:bg-zinc-200 dark:hover:bg-[#1E1E22]'
+                  filter === "highlights"
+                    ? "bg-[#9146FF] text-white"
+                    : "text-zinc-600 dark:text-[#ADADB8] hover:bg-zinc-200 dark:hover:bg-[#1E1E22]"
                 }`}
               >
-                {t('chat.filterHighlights')}
+                {t("chat.filterHighlights")}
               </button>
             </div>
 
             <div className="flex items-center gap-2 text-[11px]">
               <button
                 onClick={() => setMessages([])}
-                title={t('chat.clearChat')}
+                title={t("chat.clearChat")}
                 className="p-1 text-zinc-400 hover:text-zinc-700 dark:text-[#71717A] dark:hover:text-[#EFEFF1] transition cursor-pointer"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
               <button
-                onClick={() => setAutoScroll(prev => !prev)}
+                onClick={() => setAutoScroll((prev) => !prev)}
                 className={`px-2 py-0.5 border text-[10px] font-mono cursor-pointer transition ${
                   autoScroll
-                    ? 'border-[#00a865]/40 text-[#00a865] dark:text-[#00F593] bg-[#00a865]/10'
-                    : 'border-zinc-300 dark:border-[#26262C] text-zinc-400'
+                    ? "border-[#00a865]/40 text-[#00a865] dark:text-[#00F593] bg-[#00a865]/10"
+                    : "border-zinc-300 dark:border-[#26262C] text-zinc-400"
                 }`}
               >
-                {autoScroll ? t('chat.autoScroll') : t('chat.pauseScroll')}
+                {autoScroll ? t("chat.autoScroll") : t("chat.pauseScroll")}
               </button>
             </div>
           </div>
@@ -465,10 +475,10 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
           >
             {filteredMessages.length === 0 ? (
               <div className="h-full flex items-center justify-center text-zinc-400 dark:text-[#71717A] text-xs font-sans">
-                {t('logs.empty')}
+                {t("logs.empty")}
               </div>
             ) : (
-              filteredMessages.map(msg => {
+              filteredMessages.map((msg) => {
                 if (msg.isSystem) {
                   return (
                     <div
@@ -481,23 +491,24 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                   );
                 }
 
-                const isClaim = msg.message.includes('[BONUS CLAIMED]');
-                const isWatch = msg.message.includes('[WATCH CREDIT]');
-                const isRaid = msg.message.includes('[RAID CAUGHT]') || msg.message.includes('Twitch Raid');
+                const isClaim = msg.message.includes("[BONUS CLAIMED]");
+                const isWatch = msg.message.includes("[WATCH CREDIT]");
+                const isRaid =
+                  msg.message.includes("[RAID CAUGHT]") || msg.message.includes("Twitch Raid");
 
                 return (
                   <div
                     key={msg.id}
                     className={`flex items-start gap-2 py-1 px-2 leading-relaxed transition ${
                       isClaim
-                        ? 'bg-[#00a865]/10 dark:bg-[#00F593]/10 border-l-2 border-[#00a865] dark:border-[#00F593]'
+                        ? "bg-[#00a865]/10 dark:bg-[#00F593]/10 border-l-2 border-[#00a865] dark:border-[#00F593]"
                         : isWatch
-                        ? 'bg-[#9146FF]/10 dark:bg-[#9146FF]/15 border-l-2 border-[#9146FF]'
-                        : isRaid
-                        ? 'bg-amber-500/10 border-l-2 border-amber-500'
-                        : msg.isHighlighted
-                        ? 'bg-[#9146FF]/5 border-l-2 border-[#9146FF]/60'
-                        : 'hover:bg-zinc-50 dark:hover:bg-[#141416]'
+                          ? "bg-[#9146FF]/10 dark:bg-[#9146FF]/15 border-l-2 border-[#9146FF]"
+                          : isRaid
+                            ? "bg-amber-500/10 border-l-2 border-amber-500"
+                            : msg.isHighlighted
+                              ? "bg-[#9146FF]/5 border-l-2 border-[#9146FF]/60"
+                              : "hover:bg-zinc-50 dark:hover:bg-[#141416]"
                     }`}
                   >
                     <span className="text-[10px] text-zinc-400 dark:text-[#52525B] shrink-0 select-none pt-0.5">
@@ -507,8 +518,8 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                     {/* Badges */}
                     {msg.badges.length > 0 && (
                       <div className="flex items-center gap-1 shrink-0 pt-0.5">
-                        {msg.badges.map(b => {
-                          if (b === 'moderator' || b === 'mod') {
+                        {msg.badges.map((b) => {
+                          if (b === "moderator" || b === "mod") {
                             return (
                               <span
                                 key={b}
@@ -519,7 +530,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                               </span>
                             );
                           }
-                          if (b === 'bot') {
+                          if (b === "bot") {
                             return (
                               <span
                                 key={b}
@@ -529,7 +540,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                               </span>
                             );
                           }
-                          if (b === 'vip') {
+                          if (b === "vip") {
                             return (
                               <span
                                 key={b}
@@ -539,7 +550,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                               </span>
                             );
                           }
-                          if (b === 'subscriber' || b === 'sub') {
+                          if (b === "subscriber" || b === "sub") {
                             return (
                               <span
                                 key={b}
@@ -562,7 +573,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                     )}
 
                     <span
-                      style={{ color: msg.color || '#9146FF' }}
+                      style={{ color: msg.color || "#9146FF" }}
                       className="font-semibold shrink-0 cursor-pointer hover:underline"
                     >
                       {msg.displayName}:
@@ -583,7 +594,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
             <span className="text-[10px] font-mono text-zinc-400 dark:text-[#71717A] uppercase mr-1">
               Emotes:
             </span>
-            {PRESET_EMOTES.map(emote => (
+            {PRESET_EMOTES.map((emote) => (
               <button
                 key={emote}
                 type="button"
@@ -597,7 +608,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
 
           {/* Interactive Chat Input */}
           <form
-            onSubmit={e => {
+            onSubmit={(e) => {
               e.preventDefault();
               handleSendMessage();
             }}
@@ -606,7 +617,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
             <input
               type="text"
               value={inputText}
-              onChange={e => setInputText(e.target.value)}
+              onChange={(e) => setInputText(e.target.value)}
               placeholder={`Send message to #${streamer.displayName}...`}
               className="flex-1 bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] px-3 py-1.5 text-xs text-zinc-900 dark:text-[#EFEFF1] font-mono focus:outline-hidden focus:border-[#9146FF]"
             />
@@ -616,7 +627,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               className="px-4 py-1.5 text-xs font-semibold bg-[#9146FF] hover:bg-[#772CE8] disabled:opacity-40 disabled:cursor-not-allowed text-white transition flex items-center gap-1.5 cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>{t('chat.sendBtn')}</span>
+              <span>{t("chat.sendBtn")}</span>
             </button>
           </form>
         </div>
@@ -632,13 +643,15 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
           />
           <div className="px-4 py-2 bg-zinc-900 border-t border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between">
             <span>
-              Official Twitch Web Embed ({parentDomain}). If blocked by browser sandbox cookies, switch to{' '}
+              Official Twitch Web Embed ({parentDomain}). If blocked by browser sandbox cookies,
+              switch to{" "}
               <button
-                onClick={() => setViewMode('irc')}
+                onClick={() => setViewMode("irc")}
                 className="text-[#9146FF] underline cursor-pointer"
               >
                 IRC Feed
-              </button>.
+              </button>
+              .
             </span>
           </div>
         </div>

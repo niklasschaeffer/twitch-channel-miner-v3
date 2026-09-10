@@ -1,7 +1,7 @@
-import React from 'react';
-import { useTranslation } from 'react-i18next';
-import { Coins, Trophy, ArrowUpRight, Zap, Target, Swords } from 'lucide-react';
-import { MinerStatus, AnalyticsData } from '../types';
+import React from "react";
+import { useTranslation } from "react-i18next";
+import { Coins, Trophy, ArrowUpRight, Zap, Target, Swords } from "lucide-react";
+import { MinerStatus, AnalyticsData } from "../types";
 
 interface MetricsOverviewProps {
   status: MinerStatus | null;
@@ -12,64 +12,67 @@ export const MetricsOverview: React.FC<MetricsOverviewProps> = ({ status, analyt
   if (!status) return null;
 
   const uptimeHours = (status.uptimeSeconds / 3600).toFixed(1);
-  const estimatedPerHour = status.uptimeSeconds > 60
-    ? Math.round((status.totalPointsMined / status.uptimeSeconds) * 3600)
-    : 450;
+  const estimatedPerHour =
+    status.uptimeSeconds > 60
+      ? Math.round((status.totalPointsMined / status.uptimeSeconds) * 3600)
+      : 450;
 
   const cards = [
     {
-      id: 'metric-total-mined',
-      label: t('stats.totalMined'),
+      id: "metric-total-mined",
+      label: t("stats.totalMined"),
       value: status.totalPointsMined.toLocaleString(),
-      subtext: `+${status.pointsToday.toLocaleString()} ${t('stats.today').toLowerCase()}`,
+      subtext: `+${status.pointsToday.toLocaleString()} ${t("stats.today").toLowerCase()}`,
       icon: Coins,
-      accent: 'text-[#9146FF]',
-      bgAccent: 'bg-[#9146FF]/10 border-[#9146FF]/30'
+      accent: "text-[#9146FF]",
+      bgAccent: "bg-[#9146FF]/10 border-[#9146FF]/30",
     },
     {
-      id: 'metric-rate',
-      label: t('stats.hourlyRate'),
+      id: "metric-rate",
+      label: t("stats.hourlyRate"),
       value: `~${estimatedPerHour.toLocaleString()}`,
-      unit: 'pts / hr',
+      unit: "pts / hr",
       subtext: `Uptime: ${uptimeHours}h`,
       icon: Zap,
-      accent: 'text-[#00a865] dark:text-[#00F593]',
-      bgAccent: 'bg-[#00a865]/10 dark:bg-[#00F593]/15 border-[#00a865]/20 dark:border-[#00F593]/30'
+      accent: "text-[#00a865] dark:text-[#00F593]",
+      bgAccent: "bg-[#00a865]/10 dark:bg-[#00F593]/15 border-[#00a865]/20 dark:border-[#00F593]/30",
     },
     {
-      id: 'metric-claims',
-      label: t('stats.claimsCount'),
+      id: "metric-claims",
+      label: t("stats.claimsCount"),
       value: status.totalClaims.toString(),
-      subtext: t('stats.claimsDesc', { points: (analytics?.summary?.totalBonusChestPoints ?? 0).toLocaleString() }),
+      subtext: t("stats.claimsDesc", {
+        points: (analytics?.summary?.totalBonusChestPoints ?? 0).toLocaleString(),
+      }),
       icon: Trophy,
-      accent: 'text-amber-500 dark:text-amber-300',
-      bgAccent: 'bg-amber-500/10 border-amber-500/30'
+      accent: "text-amber-500 dark:text-amber-300",
+      bgAccent: "bg-amber-500/10 border-amber-500/30",
     },
     {
-      id: 'metric-predictions',
-      label: t('stats.predictionsNet'),
-      value: `${status.netPredictionPoints >= 0 ? '+' : ''}${status.netPredictionPoints.toLocaleString()}`,
-      unit: 'pts',
+      id: "metric-predictions",
+      label: t("stats.predictionsNet"),
+      value: `${status.netPredictionPoints >= 0 ? "+" : ""}${status.netPredictionPoints.toLocaleString()}`,
+      unit: "pts",
       subtext: `${status.totalPredictionsWon}/${status.totalPredictionsPlaced}`,
       icon: Target,
-      accent: 'text-sky-600 dark:text-sky-300',
-      bgAccent: 'bg-sky-500/10 border-sky-500/30'
+      accent: "text-sky-600 dark:text-sky-300",
+      bgAccent: "bg-sky-500/10 border-sky-500/30",
     },
     {
-      id: 'metric-raids',
-      label: t('stats.raidsCount'),
+      id: "metric-raids",
+      label: t("stats.raidsCount"),
       value: (analytics?.summary?.totalRaidPoints ?? 0).toLocaleString(),
-      unit: 'pts',
-      subtext: t('analytics.raidsDesc', { count: status.totalRaids }),
+      unit: "pts",
+      subtext: t("analytics.raidsDesc", { count: status.totalRaids }),
       icon: Swords,
-      accent: 'text-rose-600 dark:text-rose-300',
-      bgAccent: 'bg-rose-500/10 border-rose-500/30'
-    }
+      accent: "text-rose-600 dark:text-rose-300",
+      bgAccent: "bg-rose-500/10 border-rose-500/30",
+    },
   ];
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-      {cards.map(card => {
+      {cards.map((card) => {
         const Icon = card.icon;
         return (
           <div

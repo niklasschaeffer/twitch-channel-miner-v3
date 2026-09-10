@@ -7,15 +7,15 @@ import {
   PriorityMode,
   LogLevel,
   StatisticalRecord,
-  ChatMessage
-} from '../src/types.js';
-import { prisma } from './db.js';
-import { extractTwitchUsername } from './minerEngine.js';
+  ChatMessage,
+} from "../src/types.js";
+import { prisma } from "./db.js";
+import { extractTwitchUsername } from "./minerEngine.js";
 
 export interface ActiveSlotConnection {
   username: string;
   connectedAt: string;
-  connectionState: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+  connectionState: "connecting" | "connected" | "reconnecting" | "disconnected";
   lastPing: string;
   reconnectAttempts: number;
   ws?: WebSocket;
@@ -30,7 +30,15 @@ interface GqlUser {
   roles?: { isPartner?: unknown; isAffiliate?: unknown };
 }
 
-const KNOWN_CHAT_BOTS: ReadonlySet<string> = new Set(['streamelements', 'nightbot', 'fossabot', 'moobot', 'soundalerts', 'wizebot', 'streamlabs']);
+const KNOWN_CHAT_BOTS: ReadonlySet<string> = new Set([
+  "streamelements",
+  "nightbot",
+  "fossabot",
+  "moobot",
+  "soundalerts",
+  "wizebot",
+  "streamlabs",
+]);
 
 export class MinerWorker {
   private userId: string;
@@ -59,30 +67,30 @@ export class MinerWorker {
   constructor(userId: string, hooks: { broadcast(event: string, payload: unknown): void }) {
     this.userId = userId;
     this.hooks = hooks;
-    const isDev = process.env.NODE_ENV === 'development';
+    const isDev = process.env.NODE_ENV === "development";
     this.settings = {
-      authToken: '',
-      clientId: 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+      authToken: "",
+      clientId: "kimne78kx3ncx6brgo4mv6wki5h1ko",
       isSimulationMode: isDev,
       maxConcurrentStreams: 2,
-      priorityMode: 'points_asc',
+      priorityMode: "points_asc",
       autoClaimBonus: true,
       claimDelaySeconds: 4,
       followRaids: true,
       autoClaimDrops: true,
       autoBetPredictions: true,
-      predictionStrategy: 'smart_ratio',
+      predictionStrategy: "smart_ratio",
       maxBetPoints: 100,
-      checkIntervalSeconds: 3
+      checkIntervalSeconds: 3,
     };
 
     this.status = {
-      state: 'running',
+      state: "running",
       uptimeSeconds: isDev ? 1420 : 0,
       totalPointsMined: isDev ? 7340 : 0,
       pointsToday: isDev ? 2450 : 0,
       pointsThisHour: isDev ? 320 : 0,
-      activeSlots: isDev ? ['tarik', 'shroud'] : [],
+      activeSlots: isDev ? ["tarik", "shroud"] : [],
       activeSlotsLimit: 2,
       totalClaims: isDev ? 48 : 0,
       totalRaids: isDev ? 3 : 0,
@@ -91,7 +99,7 @@ export class MinerWorker {
       netPredictionPoints: isDev ? 850 : 0,
       totalDropsClaimed: isDev ? 2 : 0,
       lastActionTimestamp: new Date().toISOString(),
-      isSimulation: isDev
+      isSimulation: isDev,
     };
 
     // Load or seed from Prisma SQLite
@@ -105,7 +113,11 @@ export class MinerWorker {
         this.pubsubUserId = v.userId;
         this.connectPubsub();
       } else if (this.settings.authToken) {
-        this.addLog('WARN', undefined, 'Stored Twitch token is invalid — real points balance unavailable. Reconnect via the settings page.');
+        this.addLog(
+          "WARN",
+          undefined,
+          "Stored Twitch token is invalid — real points balance unavailable. Reconnect via the settings page.",
+        );
       }
     });
   }
@@ -113,14 +125,16 @@ export class MinerWorker {
   private async initDatabase() {
     try {
       // 1. Load Settings from SQLite via Prisma
-      const savedSettings = await prisma.minerSetting.findUnique({ where: { userId: this.userId } });
+      const savedSettings = await prisma.minerSetting.findUnique({
+        where: { userId: this.userId },
+      });
       if (savedSettings) {
         this.settings = {
           authToken: savedSettings.authToken,
           clientId: savedSettings.clientId,
           isSimulationMode: savedSettings.isSimulationMode,
           maxConcurrentStreams: savedSettings.maxConcurrentStreams,
-          priorityMode: (savedSettings.priorityMode as PriorityMode) || 'points_asc',
+          priorityMode: (savedSettings.priorityMode as PriorityMode) || "points_asc",
           autoClaimBonus: savedSettings.autoClaimBonus,
           claimDelaySeconds: savedSettings.claimDelaySeconds,
           followRaids: savedSettings.followRaids,
@@ -128,18 +142,18 @@ export class MinerWorker {
           autoBetPredictions: savedSettings.autoBetPredictions,
           predictionStrategy: savedSettings.predictionStrategy as any,
           maxBetPoints: savedSettings.maxBetPoints,
-          checkIntervalSeconds: savedSettings.checkIntervalSeconds
+          checkIntervalSeconds: savedSettings.checkIntervalSeconds,
         };
       }
 
       // 2. Load Streamers from SQLite via Prisma
       const dbStreamers = await prisma.streamer.findMany({
         where: { userId: this.userId },
-        orderBy: { priority: 'asc' }
+        orderBy: { priority: "asc" },
       });
 
       if (dbStreamers.length > 0) {
-        this.streamers = dbStreamers.map(s => ({
+        this.streamers = dbStreamers.map((s) => ({
           id: s.id,
           userId: s.userId ?? undefined,
           username: s.username,
@@ -165,9 +179,9 @@ export class MinerWorker {
           isFollowing: s.isFollowing,
           isPartner: s.isPartner,
           isAffiliate: s.isAffiliate,
-          subscriptionTier: s.subscriptionTier ?? undefined
+          subscriptionTier: s.subscriptionTier ?? undefined,
         }));
-      } else if (process.env.NODE_ENV === 'development') {
+      } else if (process.env.NODE_ENV === "development") {
         // Seed default streamers ONLY in dev
         await this.seedDefaultData();
       }
@@ -177,7 +191,9 @@ export class MinerWorker {
         if (s.watchStreak > 0 && s.lastWatchDay !== today && s.lastWatchDay !== yesterday) {
           s.watchStreak = 0;
           s.lastWatchDay = undefined;
-          prisma.streamer.update({ where: { id: s.id }, data: { watchStreak: 0, lastWatchDay: null } }).catch(() => {});
+          prisma.streamer
+            .update({ where: { id: s.id }, data: { watchStreak: 0, lastWatchDay: null } })
+            .catch(() => {});
         }
       }
 
@@ -185,22 +201,24 @@ export class MinerWorker {
       const dbLogs = await prisma.logRecord.findMany({
         where: { userId: this.userId },
         take: 100,
-        orderBy: { timestamp: 'desc' }
+        orderBy: { timestamp: "desc" },
       });
 
       if (dbLogs.length > 0) {
-        this.logs = dbLogs.map(l => ({
+        this.logs = dbLogs.map((l) => ({
           id: l.id,
           timestamp: l.timestamp.toISOString(),
           level: l.level as LogLevel,
           channel: l.channel || undefined,
           message: l.message,
-          pointsDelta: l.pointsDelta || undefined
+          pointsDelta: l.pointsDelta || undefined,
         }));
       }
 
       // 4. Calculate total points mined from statistical records
-      const statRecords = await prisma.statisticalRecord.findMany({ where: { userId: this.userId } });
+      const statRecords = await prisma.statisticalRecord.findMany({
+        where: { userId: this.userId },
+      });
       if (statRecords.length > 0) {
         const totalMined = statRecords.reduce((sum, r) => sum + r.pointsMined, 0);
         const totalClaims = statRecords.reduce((sum, r) => sum + r.claimsCount, 0);
@@ -208,17 +226,17 @@ export class MinerWorker {
         const totalPreds = statRecords.reduce((sum, r) => sum + r.netPredictionPoints, 0);
         const netPreds = totalPreds;
         const drops = statRecords.reduce((sum, r) => sum + r.dropsCount, 0);
-        const todayKey = new Date().getHours().toString().padStart(2, '0');
+        const todayKey = new Date().getHours().toString().padStart(2, "0");
         const today = new Date().toISOString().slice(0, 10);
         const todayMined = statRecords
-          .filter(r => r.recordedAt && r.recordedAt.toISOString().slice(0, 10) === today)
+          .filter((r) => r.recordedAt && r.recordedAt.toISOString().slice(0, 10) === today)
           .reduce((sum, r) => sum + r.pointsMined, 0);
 
         this.status.totalPointsMined = Math.max(this.status.totalPointsMined, totalMined);
         this.status.totalClaims = Math.max(this.status.totalClaims, totalClaims);
         this.status.pointsToday = todayMined;
         this.status.pointsThisHour = statRecords
-          .filter(r => r.hourKey === todayKey)
+          .filter((r) => r.hourKey === todayKey)
           .reduce((sum, r) => sum + r.pointsMined, 0);
         this.status.totalRaids = Math.max(this.status.totalRaids, totalRaids);
         this.status.totalPredictionsWon = Math.max(this.status.totalPredictionsWon, totalPreds);
@@ -227,26 +245,29 @@ export class MinerWorker {
       }
 
       this.initialized = true;
-      console.log(`MinerWorker initialized for user ${this.userId} with Prisma SQLite: ${this.streamers.length} streamers loaded.`);
+      console.log(
+        `MinerWorker initialized for user ${this.userId} with Prisma SQLite: ${this.streamers.length} streamers loaded.`,
+      );
       // Immediately run real-time live status check and initial slot connection
       await this.checkAllStreamersOnlineStatus();
       this.rebalanceActiveSlots();
     } catch (err) {
-      console.error('Failed to initialize MinerWorker from Prisma SQLite:', err);
+      console.error("Failed to initialize MinerWorker from Prisma SQLite:", err);
     }
   }
 
   private async seedDefaultData() {
-    if (process.env.NODE_ENV !== 'development') {
+    if (process.env.NODE_ENV !== "development") {
       return;
     }
     const defaults = [
       {
-        username: 'tarik',
-        displayName: 'tarik',
-        avatar: 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=150&auto=format&fit=crop&q=80',
+        username: "tarik",
+        displayName: "tarik",
+        avatar:
+          "https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=150&auto=format&fit=crop&q=80",
         isLive: true,
-        game: 'VALORANT',
+        game: "VALORANT",
         viewerCount: 28410,
         points: 14850,
         watchStreak: 5,
@@ -257,14 +278,15 @@ export class MinerWorker {
         nextChestEstimateSeconds: 42,
         totalPointsMined: 3200,
         lastClaimTime: new Date(Date.now() - 14 * 60000).toISOString(),
-        uptimeMinutes: 340
+        uptimeMinutes: 340,
       },
       {
-        username: 'shroud',
-        displayName: 'shroud',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+        username: "shroud",
+        displayName: "shroud",
+        avatar:
+          "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
         isLive: true,
-        game: 'Counter-Strike 2',
+        game: "Counter-Strike 2",
         viewerCount: 19820,
         points: 11200,
         watchStreak: 3,
@@ -275,14 +297,15 @@ export class MinerWorker {
         nextChestEstimateSeconds: 0,
         totalPointsMined: 2450,
         lastClaimTime: new Date(Date.now() - 15 * 60000).toISOString(),
-        uptimeMinutes: 215
+        uptimeMinutes: 215,
       },
       {
-        username: 'xqcow',
-        displayName: 'xQc',
-        avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
+        username: "xqcow",
+        displayName: "xQc",
+        avatar:
+          "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80",
         isLive: true,
-        game: 'Just Chatting',
+        game: "Just Chatting",
         viewerCount: 42100,
         points: 24900,
         watchStreak: 12,
@@ -293,14 +316,15 @@ export class MinerWorker {
         nextChestEstimateSeconds: 480,
         totalPointsMined: 950,
         lastClaimTime: new Date(Date.now() - 40 * 60000).toISOString(),
-        uptimeMinutes: 520
+        uptimeMinutes: 520,
       },
       {
-        username: 'pokimane',
-        displayName: 'pokimane',
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+        username: "pokimane",
+        displayName: "pokimane",
+        avatar:
+          "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
         isLive: false,
-        game: 'Just Chatting',
+        game: "Just Chatting",
         viewerCount: 0,
         points: 8450,
         watchStreak: 1,
@@ -310,14 +334,15 @@ export class MinerWorker {
         chestAvailable: false,
         nextChestEstimateSeconds: 900,
         totalPointsMined: 400,
-        uptimeMinutes: 0
+        uptimeMinutes: 0,
       },
       {
-        username: 'caedrel',
-        displayName: 'Caedrel',
-        avatar: 'https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=150&auto=format&fit=crop&q=80',
+        username: "caedrel",
+        displayName: "Caedrel",
+        avatar:
+          "https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=150&auto=format&fit=crop&q=80",
         isLive: true,
-        game: 'League of Legends',
+        game: "League of Legends",
         viewerCount: 31250,
         points: 6200,
         watchStreak: 7,
@@ -328,14 +353,15 @@ export class MinerWorker {
         nextChestEstimateSeconds: 310,
         totalPointsMined: 340,
         lastClaimTime: new Date(Date.now() - 65 * 60000).toISOString(),
-        uptimeMinutes: 190
+        uptimeMinutes: 190,
       },
       {
-        username: 'fps_shaka',
-        displayName: 'fps_shaka',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+        username: "fps_shaka",
+        displayName: "fps_shaka",
+        avatar:
+          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
         isLive: false,
-        game: 'Apex Legends',
+        game: "Apex Legends",
         viewerCount: 0,
         points: 15300,
         watchStreak: 0,
@@ -345,13 +371,16 @@ export class MinerWorker {
         chestAvailable: false,
         nextChestEstimateSeconds: 900,
         totalPointsMined: 0,
-        uptimeMinutes: 0
-      }
+        uptimeMinutes: 0,
+      },
     ];
 
     for (const d of defaults) {
-      const existingSeed = await prisma.streamer.findFirst({ where: { userId: this.userId, username: d.username } });
-      const created = existingSeed ?? await prisma.streamer.create({ data: { ...d, userId: this.userId } });
+      const existingSeed = await prisma.streamer.findFirst({
+        where: { userId: this.userId, username: d.username },
+      });
+      const created =
+        existingSeed ?? (await prisma.streamer.create({ data: { ...d, userId: this.userId } }));
       this.streamers.push({
         id: created.id,
         userId: created.userId ?? undefined,
@@ -374,7 +403,7 @@ export class MinerWorker {
         isFollowing: created.isFollowing,
         isPartner: created.isPartner,
         isAffiliate: created.isAffiliate,
-        subscriptionTier: created.subscriptionTier ?? undefined
+        subscriptionTier: created.subscriptionTier ?? undefined,
       });
     }
 
@@ -386,20 +415,25 @@ export class MinerWorker {
     }
   }
 
-  public async addLog(level: LogLevel, channel: string | undefined, message: string, pointsDelta?: number) {
+  public async addLog(
+    level: LogLevel,
+    channel: string | undefined,
+    message: string,
+    pointsDelta?: number,
+  ) {
     const entry: LogEntry = {
       id: Math.random().toString(36).substring(2, 9),
       timestamp: new Date().toISOString(),
       level,
       channel,
       message,
-      pointsDelta
+      pointsDelta,
     };
     this.logs.unshift(entry);
     if (this.logs.length > 500) {
       this.logs.pop();
     }
-    this.hooks.broadcast('log', entry);
+    this.hooks.broadcast("log", entry);
 
     // Persist to Prisma SQLite
     try {
@@ -409,8 +443,8 @@ export class MinerWorker {
           level,
           channel,
           message,
-          pointsDelta: pointsDelta ?? null
-        }
+          pointsDelta: pointsDelta ?? null,
+        },
       });
     } catch (e) {
       // Ignored non-fatal
@@ -431,16 +465,25 @@ export class MinerWorker {
       clearInterval(this.timer);
       this.timer = null;
     }
-    if (this.pubsubPingTimer) { clearInterval(this.pubsubPingTimer); this.pubsubPingTimer = null; }
-    if (this.pubsubReconnectTimer) { clearTimeout(this.pubsubReconnectTimer); this.pubsubReconnectTimer = null; }
-    if (this.pubsubSnapshotTimer) { clearInterval(this.pubsubSnapshotTimer); this.pubsubSnapshotTimer = null; }
+    if (this.pubsubPingTimer) {
+      clearInterval(this.pubsubPingTimer);
+      this.pubsubPingTimer = null;
+    }
+    if (this.pubsubReconnectTimer) {
+      clearTimeout(this.pubsubReconnectTimer);
+      this.pubsubReconnectTimer = null;
+    }
+    if (this.pubsubSnapshotTimer) {
+      clearInterval(this.pubsubSnapshotTimer);
+      this.pubsubSnapshotTimer = null;
+    }
     this.disconnectPubsub();
     this.disconnectAllStreamers();
   }
 
   private tick() {
     if (this.disposed) return;
-    if (this.status.state !== 'running') return;
+    if (this.status.state !== "running") return;
 
     this.status.uptimeSeconds += 2;
     this.status.lastActionTimestamp = new Date().toISOString();
@@ -458,54 +501,60 @@ export class MinerWorker {
     // Twitch claiming exists yet) — only run them in simulation mode.
     if (this.settings.isSimulationMode) {
       for (const s of this.streamers) {
-      if (s.isMining && s.isLive && s.enabled) {
-        // Accrue watch points (+10 pts) every 60 seconds (30 ticks)
-        if (this.tickCount % 30 === 0) {
-          const watchDelta = 10;
-          s.points += watchDelta;
-          s.totalPointsMined += watchDelta;
-          s.uptimeMinutes = (s.uptimeMinutes || 0) + 1;
+        if (s.isMining && s.isLive && s.enabled) {
+          // Accrue watch points (+10 pts) every 60 seconds (30 ticks)
+          if (this.tickCount % 30 === 0) {
+            const watchDelta = 10;
+            s.points += watchDelta;
+            s.totalPointsMined += watchDelta;
+            s.uptimeMinutes = (s.uptimeMinutes || 0) + 1;
 
-          this.status.totalPointsMined += watchDelta;
-          this.status.pointsToday += watchDelta;
-          this.status.pointsThisHour += watchDelta;
+            this.status.totalPointsMined += watchDelta;
+            this.status.pointsToday += watchDelta;
+            this.status.pointsThisHour += watchDelta;
 
-          this.recordStatisticalData({
-            pointsMined: watchDelta,
-            watchTimePoints: watchDelta
-          }).catch(() => {});
+            this.recordStatisticalData({
+              pointsMined: watchDelta,
+              watchTimePoints: watchDelta,
+            }).catch(() => {});
 
-          prisma.streamer.update({
-            where: { id: s.id },
-            data: {
-              points: s.points,
-              totalPointsMined: s.totalPointsMined,
-              uptimeMinutes: s.uptimeMinutes
+            prisma.streamer
+              .update({
+                where: { id: s.id },
+                data: {
+                  points: s.points,
+                  totalPointsMined: s.totalPointsMined,
+                  uptimeMinutes: s.uptimeMinutes,
+                },
+              })
+              .catch(() => {});
+
+            this.noteWatchedDay(s);
+
+            this.addLog(
+              "WATCH",
+              s.username,
+              `Heartbeat: +${watchDelta} Channel Points earned watching ${s.displayName} (${s.game}).`,
+              watchDelta,
+            );
+          }
+
+          if (s.nextChestEstimateSeconds > 0) {
+            s.nextChestEstimateSeconds = Math.max(0, s.nextChestEstimateSeconds - 2);
+            if (s.nextChestEstimateSeconds === 0) {
+              s.chestAvailable = true;
+              this.addLog(
+                "INFO",
+                s.username,
+                `Bonus chest became ready (+50 pts) for ${s.displayName}.`,
+              );
             }
-          }).catch(() => {});
+          }
 
-          this.noteWatchedDay(s);
-
-          this.addLog(
-            'WATCH',
-            s.username,
-            `Heartbeat: +${watchDelta} Channel Points earned watching ${s.displayName} (${s.game}).`,
-            watchDelta
-          );
-        }
-
-        if (s.nextChestEstimateSeconds > 0) {
-          s.nextChestEstimateSeconds = Math.max(0, s.nextChestEstimateSeconds - 2);
-          if (s.nextChestEstimateSeconds === 0) {
-            s.chestAvailable = true;
-            this.addLog('INFO', s.username, `Bonus chest became ready (+50 pts) for ${s.displayName}.`);
+          if (s.chestAvailable && this.settings.autoClaimBonus) {
+            this.executeClaimBonus(s);
           }
         }
-
-        if (s.chestAvailable && this.settings.autoClaimBonus) {
-          this.executeClaimBonus(s);
-        }
-      }
       }
     }
 
@@ -515,7 +564,11 @@ export class MinerWorker {
       this.maybeSimulateEvent();
     }
 
-    if (!this.settings.isSimulationMode && this.settings.autoClaimBonus && this.settings.authToken) {
+    if (
+      !this.settings.isSimulationMode &&
+      this.settings.autoClaimBonus &&
+      this.settings.authToken
+    ) {
       if (this.tickCount % 15 === 0) {
         for (const s of this.streamers) {
           if (s.enabled && (s.isPartner || s.isAffiliate) && !this.claimsInFlight.has(s.username)) {
@@ -526,7 +579,11 @@ export class MinerWorker {
     }
 
     // Drop campaigns: claim completed drops from inventory (10-min sync cadence).
-    if (!this.settings.isSimulationMode && this.settings.autoClaimDrops && this.settings.authToken) {
+    if (
+      !this.settings.isSimulationMode &&
+      this.settings.autoClaimDrops &&
+      this.settings.authToken
+    ) {
       this.claimDrops().catch(() => {});
     }
 
@@ -544,30 +601,30 @@ export class MinerWorker {
       }
     }
 
-    this.hooks.broadcast('status', this.getStatus());
+    this.hooks.broadcast("status", this.getStatus());
   }
 
   public async checkAllStreamersOnlineStatus(): Promise<void> {
     if (this.streamers.length === 0) return;
 
     const loginAliases: Record<string, string> = {
-      xqcow: 'xqc'
+      xqcow: "xqc",
     };
     const reverseAliases: Record<string, string> = {
-      xqc: 'xqcow'
+      xqc: "xqcow",
     };
 
-    const logins = this.streamers.map(s => {
+    const logins = this.streamers.map((s) => {
       const clean = extractTwitchUsername(s.username);
       return loginAliases[clean] || clean;
     });
 
     try {
-      const res = await fetch('https://gql.twitch.tv/gql', {
-        method: 'POST',
+      const res = await fetch("https://gql.twitch.tv/gql", {
+        method: "POST",
         headers: {
-          'Client-Id': this.settings.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-          'Content-Type': 'application/json'
+          "Client-Id": this.settings.clientId || "kimne78kx3ncx6brgo4mv6wki5h1ko",
+          "Content-Type": "application/json",
         },
         body: JSON.stringify([
           {
@@ -592,23 +649,32 @@ export class MinerWorker {
                 }
               }
             }`,
-            variables: { logins }
-          }
+            variables: { logins },
+          },
         ]),
-        signal: AbortSignal.timeout(5000)
+        signal: AbortSignal.timeout(5000),
       });
 
       if (!res.ok) {
-        this.addLog('WARN', undefined, `Streamer status check failed: GQL HTTP ${res.status} (client id ${this.settings.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko'}).`);
+        this.addLog(
+          "WARN",
+          undefined,
+          `Streamer status check failed: GQL HTTP ${res.status} (client id ${this.settings.clientId || "kimne78kx3ncx6brgo4mv6wki5h1ko"}).`,
+        );
         return;
       }
       const json: unknown = await res.json();
-      const root = Array.isArray(json) && json[0] && typeof json[0] === 'object' && 'data' in json[0] ? json[0].data : null;
-      const rawUsers = root && typeof root === 'object' && 'users' in root ? root.users : null;
-      const users: GqlUser[] = Array.isArray(rawUsers) ? rawUsers.filter(u => u !== null && typeof u === 'object') : [];
+      const root =
+        Array.isArray(json) && json[0] && typeof json[0] === "object" && "data" in json[0]
+          ? json[0].data
+          : null;
+      const rawUsers = root && typeof root === "object" && "users" in root ? root.users : null;
+      const users: GqlUser[] = Array.isArray(rawUsers)
+        ? rawUsers.filter((u) => u !== null && typeof u === "object")
+        : [];
       const userMap = new Map<string, GqlUser>();
       for (const u of users) {
-        if (typeof u.login === 'string' && u.login) {
+        if (typeof u.login === "string" && u.login) {
           const login = u.login.toLowerCase();
           userMap.set(login, u);
           if (reverseAliases[login]) {
@@ -617,114 +683,155 @@ export class MinerWorker {
         }
       }
       if (users.length === 0) {
-        this.addLog('WARN', undefined, `Status check parsed 0 users for ${logins.length} logins: ${JSON.stringify(json).slice(0, 200)}`);
+        this.addLog(
+          "WARN",
+          undefined,
+          `Status check parsed 0 users for ${logins.length} logins: ${JSON.stringify(json).slice(0, 200)}`,
+        );
       }
       if (this.tickCount % 300 === 0 && this.tickCount > 0) {
-        this.addLog('INFO', undefined, `Status cycle healthy: ${users.length} GQL users for ${this.streamers.length} streamers, map size ${userMap.size}.`);
+        this.addLog(
+          "INFO",
+          undefined,
+          `Status cycle healthy: ${users.length} GQL users for ${this.streamers.length} streamers, map size ${userMap.size}.`,
+        );
       }
 
-        let stateChanged = false;
+      let stateChanged = false;
 
-        for (const streamer of this.streamers) {
-          const clean = extractTwitchUsername(streamer.username);
-          const targetLogin = loginAliases[clean] || clean;
-          const u = userMap.get(clean) || userMap.get(targetLogin);
+      for (const streamer of this.streamers) {
+        const clean = extractTwitchUsername(streamer.username);
+        const targetLogin = loginAliases[clean] || clean;
+        const u = userMap.get(clean) || userMap.get(targetLogin);
 
-          if (u) {
-            if (typeof u.id === 'string' && u.id) {
-              this.channelIds.set(streamer.username, u.id);
-              this.channelIds.set(targetLogin, u.id);
-            }
-            const wasLive = streamer.isLive;
-            const isTwitchLive = !!u.stream;
-            const realViewers = u.stream ? Number(u.stream.viewersCount || 0) : 0;
-            const realGame = typeof u.stream?.game?.name === 'string' ? u.stream.game.name : (isTwitchLive ? streamer.game : 'Offline');
-            const avatar = typeof u.profileImageURL === 'string' && u.profileImageURL ? u.profileImageURL : streamer.avatar;
-            const displayName = typeof u.displayName === 'string' && u.displayName ? u.displayName : streamer.displayName;
+        if (u) {
+          if (typeof u.id === "string" && u.id) {
+            this.channelIds.set(streamer.username, u.id);
+            this.channelIds.set(targetLogin, u.id);
+          }
+          const wasLive = streamer.isLive;
+          const isTwitchLive = !!u.stream;
+          const realViewers = u.stream ? Number(u.stream.viewersCount || 0) : 0;
+          const realGame =
+            typeof u.stream?.game?.name === "string"
+              ? u.stream.game.name
+              : isTwitchLive
+                ? streamer.game
+                : "Offline";
+          const avatar =
+            typeof u.profileImageURL === "string" && u.profileImageURL
+              ? u.profileImageURL
+              : streamer.avatar;
+          const displayName =
+            typeof u.displayName === "string" && u.displayName
+              ? u.displayName
+              : streamer.displayName;
 
-            // Telemetry strictly mirrors real Twitch stream status & viewer count
-            const targetLive = isTwitchLive;
-            const viewers = isTwitchLive ? realViewers : 0;
-            const game = isTwitchLive ? realGame : 'Offline';
+          // Telemetry strictly mirrors real Twitch stream status & viewer count
+          const targetLive = isTwitchLive;
+          const viewers = isTwitchLive ? realViewers : 0;
+          const game = isTwitchLive ? realGame : "Offline";
 
-            const isPartner = typeof u.roles?.isPartner === 'boolean' ? u.roles.isPartner : streamer.isPartner;
-            const isAffiliate = typeof u.roles?.isAffiliate === 'boolean' ? u.roles.isAffiliate : streamer.isAffiliate;
-            if (
-              streamer.isLive !== targetLive ||
-              streamer.viewerCount !== viewers ||
-              streamer.game !== game ||
-              streamer.avatar !== avatar ||
-              streamer.displayName !== displayName ||
-              streamer.isPartner !== isPartner ||
-              streamer.isAffiliate !== isAffiliate
-            ) {
-              streamer.isLive = targetLive;
-              streamer.viewerCount = viewers;
-              streamer.game = game;
-              streamer.avatar = avatar;
-              streamer.displayName = displayName;
-              streamer.isPartner = isPartner;
-              streamer.isAffiliate = isAffiliate;
-              stateChanged = true;
+          const isPartner =
+            typeof u.roles?.isPartner === "boolean" ? u.roles.isPartner : streamer.isPartner;
+          const isAffiliate =
+            typeof u.roles?.isAffiliate === "boolean" ? u.roles.isAffiliate : streamer.isAffiliate;
+          if (
+            streamer.isLive !== targetLive ||
+            streamer.viewerCount !== viewers ||
+            streamer.game !== game ||
+            streamer.avatar !== avatar ||
+            streamer.displayName !== displayName ||
+            streamer.isPartner !== isPartner ||
+            streamer.isAffiliate !== isAffiliate
+          ) {
+            streamer.isLive = targetLive;
+            streamer.viewerCount = viewers;
+            streamer.game = game;
+            streamer.avatar = avatar;
+            streamer.displayName = displayName;
+            streamer.isPartner = isPartner;
+            streamer.isAffiliate = isAffiliate;
+            stateChanged = true;
 
-              if (!wasLive && targetLive) {
-                this.addLog(
-                  'INFO',
-                  streamer.username,
-                  `🟢 Streamer ${streamer.displayName} is now LIVE! Playing "${game}" with ${viewers.toLocaleString()} viewers.`
-                );
-                this.resetChestProgress(streamer);
-                const today = new Date().toISOString().slice(0, 10);
-                const message = streamer.lurkMessage || '!lurk';
-                const alreadySentToday = streamer.lastLurkDay === today || this.hasRecentLurkMessage(streamer.username, message);
-                if (streamer.lurkEnabled && !this.hasChatEditScope) {
-                  if (!this.warnedMissingChatEdit) {
-                    this.warnedMissingChatEdit = true;
-                    this.addLog('WARN', streamer.username, 'Lurk disabled — the Twitch token predates chat:edit. Reconnect Twitch via settings to enable chat posting.');
-                  }
-                } else if (streamer.lurkEnabled && !alreadySentToday) {
-                  this.ensureChatConnection(streamer.username);
-                  setTimeout(() => {
-                    this.sendIrcMessageWhenOpen(streamer.username, message).then(sent => {
-                      if (sent) {
-                        streamer.lastLurkDay = today;
-                        prisma.streamer.update({ where: { id: streamer.id }, data: { lastLurkDay: today } }).catch(() => {});
-                        if (this.authLoginName && !this.hasRecentLurkMessage(streamer.username, message)) {
-                          this.addStreamerChatMessage(streamer.username, {
-                            id: `lurk-${Date.now()}`,
-                            channel: streamer.username.toLowerCase(),
-                            username: this.authLoginName.toLowerCase(),
-                            displayName: this.authLoginName,
-                            color: '#9146FF',
-                            badges: [],
-                            message,
-                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                            isHighlighted: false,
-                            isBot: false,
-                            isSystem: false
-                          });
-                        }
-                      }
-                      this.addLog(
-                        sent ? 'INFO' : 'WARN',
-                        streamer.username,
-                        sent
-                          ? `Posted "${message}" to #${streamer.username} chat (lurk).`
-                          : `Lurk message not sent to #${streamer.username} — IRC socket did not open in time.`
-                      );
-                    });
-                  }, 500);
-                } else if (streamer.lurkEnabled) {
-                  this.addLog('INFO', streamer.username, `Skipped lurk post to #${streamer.username} — "${message}" already sent today.`);
+            if (!wasLive && targetLive) {
+              this.addLog(
+                "INFO",
+                streamer.username,
+                `🟢 Streamer ${streamer.displayName} is now LIVE! Playing "${game}" with ${viewers.toLocaleString()} viewers.`,
+              );
+              this.resetChestProgress(streamer);
+              const today = new Date().toISOString().slice(0, 10);
+              const message = streamer.lurkMessage || "!lurk";
+              const alreadySentToday =
+                streamer.lastLurkDay === today ||
+                this.hasRecentLurkMessage(streamer.username, message);
+              if (streamer.lurkEnabled && !this.hasChatEditScope) {
+                if (!this.warnedMissingChatEdit) {
+                  this.warnedMissingChatEdit = true;
+                  this.addLog(
+                    "WARN",
+                    streamer.username,
+                    "Lurk disabled — the Twitch token predates chat:edit. Reconnect Twitch via settings to enable chat posting.",
+                  );
                 }
-              } else if (wasLive && !targetLive) {
+              } else if (streamer.lurkEnabled && !alreadySentToday) {
+                this.ensureChatConnection(streamer.username);
+                setTimeout(() => {
+                  this.sendIrcMessageWhenOpen(streamer.username, message).then((sent) => {
+                    if (sent) {
+                      streamer.lastLurkDay = today;
+                      prisma.streamer
+                        .update({ where: { id: streamer.id }, data: { lastLurkDay: today } })
+                        .catch(() => {});
+                      if (
+                        this.authLoginName &&
+                        !this.hasRecentLurkMessage(streamer.username, message)
+                      ) {
+                        this.addStreamerChatMessage(streamer.username, {
+                          id: `lurk-${Date.now()}`,
+                          channel: streamer.username.toLowerCase(),
+                          username: this.authLoginName.toLowerCase(),
+                          displayName: this.authLoginName,
+                          color: "#9146FF",
+                          badges: [],
+                          message,
+                          timestamp: new Date().toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          }),
+                          isHighlighted: false,
+                          isBot: false,
+                          isSystem: false,
+                        });
+                      }
+                    }
+                    this.addLog(
+                      sent ? "INFO" : "WARN",
+                      streamer.username,
+                      sent
+                        ? `Posted "${message}" to #${streamer.username} chat (lurk).`
+                        : `Lurk message not sent to #${streamer.username} — IRC socket did not open in time.`,
+                    );
+                  });
+                }, 500);
+              } else if (streamer.lurkEnabled) {
                 this.addLog(
-                  'WARN',
+                  "INFO",
                   streamer.username,
-                  `🔴 Streamer ${streamer.displayName} has gone OFFLINE. Releasing watch slot.`
+                  `Skipped lurk post to #${streamer.username} — "${message}" already sent today.`,
                 );
               }
-              prisma.streamer.update({
+            } else if (wasLive && !targetLive) {
+              this.addLog(
+                "WARN",
+                streamer.username,
+                `🔴 Streamer ${streamer.displayName} has gone OFFLINE. Releasing watch slot.`,
+              );
+            }
+            prisma.streamer
+              .update({
                 where: { id: streamer.id },
                 data: {
                   isLive: targetLive,
@@ -733,21 +840,30 @@ export class MinerWorker {
                   avatar,
                   displayName,
                   isPartner,
-                  isAffiliate
-                }
-              }).catch(err => {
-                this.addLog('WARN', streamer.username, `Streamer DB update failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+                  isAffiliate,
+                },
+              })
+              .catch((err) => {
+                this.addLog(
+                  "WARN",
+                  streamer.username,
+                  `Streamer DB update failed: ${err instanceof Error ? err.message : "unknown error"}`,
+                );
               });
-            }
           }
         }
+      }
 
-        if (stateChanged) {
-          this.rebalanceActiveSlots();
-          this.hooks.broadcast('streamers', this.streamers);
-        }
+      if (stateChanged) {
+        this.rebalanceActiveSlots();
+        this.hooks.broadcast("streamers", this.streamers);
+      }
     } catch (err) {
-      this.addLog('WARN', undefined, `Streamer status check failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      this.addLog(
+        "WARN",
+        undefined,
+        `Streamer status check failed: ${err instanceof Error ? err.message : "unknown error"}`,
+      );
     }
   }
 
@@ -758,15 +874,19 @@ export class MinerWorker {
   public ensureChatConnection(username: string) {
     const clean = username.trim().toLowerCase();
     const existing = this.activeConnections.get(clean);
-    if (existing && (existing.connectionState === 'connected' || existing.connectionState === 'connecting') && existing.ws) {
+    if (
+      existing &&
+      (existing.connectionState === "connected" || existing.connectionState === "connecting") &&
+      existing.ws
+    ) {
       return;
     }
-    const streamer = this.streamers.find(s => s.username === clean);
+    const streamer = this.streamers.find((s) => s.username === clean);
     this.connectIrcSocket(clean, streamer?.displayName || clean);
   }
 
   private connectToStreamer(streamer: Streamer) {
-    if (!streamer.isLive || !streamer.enabled || this.status.state !== 'running') {
+    if (!streamer.isLive || !streamer.enabled || this.status.state !== "running") {
       return;
     }
     const clean = streamer.username.toLowerCase();
@@ -775,58 +895,62 @@ export class MinerWorker {
 
   private connectIrcSocket(clean: string, displayName: string) {
     const existing = this.activeConnections.get(clean);
-    if (existing && (existing.connectionState === 'connected' || existing.connectionState === 'connecting') && existing.ws) {
+    if (
+      existing &&
+      (existing.connectionState === "connected" || existing.connectionState === "connecting") &&
+      existing.ws
+    ) {
       return;
     }
 
     const connection: ActiveSlotConnection = {
       username: clean,
       connectedAt: new Date().toISOString(),
-      connectionState: 'connecting',
+      connectionState: "connecting",
       lastPing: new Date().toISOString(),
-      reconnectAttempts: 0
+      reconnectAttempts: 0,
     };
     this.activeConnections.set(clean, connection);
 
     this.addLog(
-      'WATCH',
+      "WATCH",
       clean,
-      `Connecting to real-time Twitch IRC chat for ${displayName} on #${clean}...`
+      `Connecting to real-time Twitch IRC chat for ${displayName} on #${clean}...`,
     );
 
     try {
-      if (typeof WebSocket === 'undefined') {
+      if (typeof WebSocket === "undefined") {
         // Never report success without a real socket — this was masking
         // runtimes without WebSocket support (e.g. Node < 21) as "connected".
         this.addLog(
-          'ERROR',
+          "ERROR",
           clean,
-          `Cannot connect to Twitch IRC for ${displayName}: this runtime has no WebSocket support. Chat stays offline.`
+          `Cannot connect to Twitch IRC for ${displayName}: this runtime has no WebSocket support. Chat stays offline.`,
         );
         this.activeConnections.delete(clean);
         return;
       }
 
-      if (typeof WebSocket !== 'undefined') {
-        const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+      if (typeof WebSocket !== "undefined") {
+        const ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
         connection.ws = ws;
 
-        const targetChannel = clean === 'xqcow' ? 'xqc' : clean;
+        const targetChannel = clean === "xqcow" ? "xqc" : clean;
 
         ws.onopen = () => {
-          connection.connectionState = 'connected';
+          connection.connectionState = "connected";
           connection.connectedAt = new Date().toISOString();
           connection.lastPing = new Date().toISOString();
           connection.reconnectAttempts = 0;
 
           try {
-            ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership\r\n');
-            const authToken = this.settings.authToken.replace(/^oauth:/i, '');
+            ws.send("CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership\r\n");
+            const authToken = this.settings.authToken.replace(/^oauth:/i, "");
             if (authToken && this.authLoginName) {
               ws.send(`PASS oauth:${authToken}\r\n`);
               ws.send(`NICK ${this.authLoginName}\r\n`);
             } else {
-              ws.send('PASS SCHMOOPIE\r\n');
+              ws.send("PASS SCHMOOPIE\r\n");
               const anonNick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
               ws.send(`NICK ${anonNick}\r\n`);
             }
@@ -834,49 +958,49 @@ export class MinerWorker {
           } catch (e) {}
 
           this.addLog(
-            'SUCCESS',
+            "SUCCESS",
             clean,
-            `Connected to #${targetChannel} live Twitch IRC. Streaming 100% authentic Twitch chat.`
+            `Connected to #${targetChannel} live Twitch IRC. Streaming 100% authentic Twitch chat.`,
           );
-          this.hooks.broadcast('status', this.getStatus());
+          this.hooks.broadcast("status", this.getStatus());
         };
 
         ws.onmessage = (event) => {
-          const rawData = String(event.data || '');
-          const lines = rawData.split('\r\n');
+          const rawData = String(event.data || "");
+          const lines = rawData.split("\r\n");
 
           for (const raw of lines) {
             if (!raw) continue;
 
-            if (raw.startsWith('PING')) {
+            if (raw.startsWith("PING")) {
               try {
-                ws.send('PONG :tmi.twitch.tv\r\n');
+                ws.send("PONG :tmi.twitch.tv\r\n");
               } catch (e) {}
               connection.lastPing = new Date().toISOString();
               continue;
             }
 
-            if (raw.includes('PRIVMSG')) {
+            if (raw.includes("PRIVMSG")) {
               const match = raw.match(/(?:@([^ ]+) )?:([^!]+)![^ ]+ PRIVMSG #([^ ]+) :(.+)/);
               if (match) {
-                const tagString = match[1] || '';
+                const tagString = match[1] || "";
                 const fallbackNick = match[2];
                 const text = match[4];
 
                 let displayName = fallbackNick;
-                let color = '#9146FF';
+                let color = "#9146FF";
                 const badges: string[] = [];
 
                 if (tagString) {
-                  const tags = tagString.split(';');
+                  const tags = tagString.split(";");
                   for (const tag of tags) {
-                    const [k, v] = tag.split('=');
-                    if (k === 'display-name' && v) displayName = v;
-                    if (k === 'color' && v) color = v;
-                    if (k === 'badges' && v) {
-                      const badgePairs = v.split(',');
+                    const [k, v] = tag.split("=");
+                    if (k === "display-name" && v) displayName = v;
+                    if (k === "color" && v) color = v;
+                    if (k === "badges" && v) {
+                      const badgePairs = v.split(",");
                       for (const bp of badgePairs) {
-                        const bName = bp.split('/')[0];
+                        const bName = bp.split("/")[0];
                         if (bName) badges.push(bName);
                       }
                     }
@@ -884,56 +1008,60 @@ export class MinerWorker {
                 }
 
                 const isKnownBot = KNOWN_CHAT_BOTS.has(fallbackNick.toLowerCase());
-                if (badges.includes('broadcaster') || isKnownBot) continue;
+                if (badges.includes("broadcaster") || isKnownBot) continue;
 
                 const chatMsg: ChatMessage = {
                   id: `irc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
                   channel: clean,
                   username: fallbackNick,
                   displayName: displayName || fallbackNick,
-                  color: color || '#9146FF',
+                  color: color || "#9146FF",
                   badges,
                   message: text,
-                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                  isHighlighted: badges.includes('moderator') || badges.includes('vip'),
+                  timestamp: new Date().toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  }),
+                  isHighlighted: badges.includes("moderator") || badges.includes("vip"),
                   isBot: false,
-                  isSystem: false
+                  isSystem: false,
                 };
 
                 this.addStreamerChatMessage(clean, chatMsg);
               }
             }
 
-            if (raw.includes('USERNOTICE') && raw.includes('msg-id=raid')) {
+            if (raw.includes("USERNOTICE") && raw.includes("msg-id=raid")) {
               const raidMatch = raw.match(/msg-param-displayName=([^;]+)/);
-              const raider = raidMatch ? raidMatch[1] : 'Raider';
+              const raider = raidMatch ? raidMatch[1] : "Raider";
               this.addLog(
-                'RAID',
+                "RAID",
                 clean,
-                `Channel raid detected by ${raider} in #${targetChannel}. Following the raid to earn the bonus…`
+                `Channel raid detected by ${raider} in #${targetChannel}. Following the raid to earn the bonus…`,
               );
             }
           }
         };
 
         ws.onerror = () => {
-          connection.connectionState = 'disconnected';
+          connection.connectionState = "disconnected";
           connection.reconnectAttempts += 1;
         };
 
         ws.onclose = () => {
-          connection.connectionState = 'disconnected';
+          connection.connectionState = "disconnected";
           connection.ws = null;
           connection.reconnectAttempts += 1;
         };
       }
     } catch (err) {
-      connection.connectionState = 'disconnected';
+      connection.connectionState = "disconnected";
       connection.reconnectAttempts += 1;
       this.addLog(
-        'ERROR',
+        "ERROR",
         clean,
-        `Twitch IRC connection failed for #${clean}: ${err instanceof Error ? err.message : String(err)}`
+        `Twitch IRC connection failed for #${clean}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -948,11 +1076,11 @@ export class MinerWorker {
         }
       } catch (e) {}
       this.activeConnections.delete(clean);
-      const streamer = this.streamers.find(s => s.username === clean);
+      const streamer = this.streamers.find((s) => s.username === clean);
       this.addLog(
-        'INFO',
+        "INFO",
         clean,
-        `Disconnected watch slot from ${streamer ? streamer.displayName : clean}.`
+        `Disconnected watch slot from ${streamer ? streamer.displayName : clean}.`,
       );
     }
   }
@@ -971,24 +1099,24 @@ export class MinerWorker {
         username: conn.username,
         connectedAt: conn.connectedAt,
         connectionState: conn.connectionState,
-        lastPing: conn.lastPing
+        lastPing: conn.lastPing,
       };
     }
     return result;
   }
 
   private rebalanceActiveSlots() {
-    if (this.status.state !== 'running') {
+    if (this.status.state !== "running") {
       this.disconnectAllStreamers();
       return;
     }
 
-    const sorted = [...this.streamers].filter(s => s.enabled);
-    if (this.settings.priorityMode === 'points_asc') {
+    const sorted = [...this.streamers].filter((s) => s.enabled);
+    if (this.settings.priorityMode === "points_asc") {
       sorted.sort((a, b) => a.points - b.points);
-    } else if (this.settings.priorityMode === 'points_desc') {
+    } else if (this.settings.priorityMode === "points_desc") {
       sorted.sort((a, b) => b.points - a.points);
-    } else if (this.settings.priorityMode === 'streak') {
+    } else if (this.settings.priorityMode === "streak") {
       sorted.sort((a, b) => b.watchStreak - a.watchStreak);
     } else {
       sorted.sort((a, b) => a.priority - b.priority);
@@ -1014,14 +1142,16 @@ export class MinerWorker {
           this.disconnectFromStreamer(s.username);
         }
         // Update in SQLite
-        prisma.streamer.update({
-          where: { id: s.id },
-          data: { isMining: shouldMine }
-        }).catch(() => {});
+        prisma.streamer
+          .update({
+            where: { id: s.id },
+            data: { isMining: shouldMine },
+          })
+          .catch(() => {});
       } else if (shouldMine) {
         // Ensure connected if should be mining
         const existingConn = this.activeConnections.get(s.username);
-        if (!existingConn || existingConn.connectionState === 'disconnected') {
+        if (!existingConn || existingConn.connectionState === "disconnected") {
           this.connectToStreamer(s);
         }
       }
@@ -1029,8 +1159,8 @@ export class MinerWorker {
 
     this.status.activeSlots = targetMining;
     if (slotsChanged) {
-      this.hooks.broadcast('streamers', this.streamers);
-      this.hooks.broadcast('status', this.getStatus());
+      this.hooks.broadcast("streamers", this.streamers);
+      this.hooks.broadcast("status", this.getStatus());
     }
   }
 
@@ -1038,20 +1168,34 @@ export class MinerWorker {
 
   public async fetchAvailableClaim(channelLogin: string): Promise<string | null> {
     try {
-      const res = await fetch('https://gql.twitch.tv/gql', {
-        method: 'POST',
+      const res = await fetch("https://gql.twitch.tv/gql", {
+        method: "POST",
         headers: this.authenticatedGqlHeaders(),
         body: JSON.stringify({
-          query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { availableClaim { id } } } } } }',
-          variables: { login: channelLogin }
+          query:
+            "query($login: String!) { user(login: $login) { channel { self { communityPoints { availableClaim { id } } } } } }",
+          variables: { login: channelLogin },
         }),
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(8000),
       });
       const j: unknown = await res.json();
-      if (typeof j !== 'object' || j === null || !('data' in j) || typeof j.data !== 'object' || j.data === null) return null;
-      const data = j.data as { user?: { channel?: { self?: { communityPoints?: { availableClaim?: { id?: unknown } | null } | null } | null } | null } | null };
+      if (
+        typeof j !== "object" ||
+        j === null ||
+        !("data" in j) ||
+        typeof j.data !== "object" ||
+        j.data === null
+      )
+        return null;
+      const data = j.data as {
+        user?: {
+          channel?: {
+            self?: { communityPoints?: { availableClaim?: { id?: unknown } | null } | null } | null;
+          } | null;
+        } | null;
+      };
       const id = data.user?.channel?.self?.communityPoints?.availableClaim?.id;
-      return typeof id === 'string' ? id : null;
+      return typeof id === "string" ? id : null;
     } catch {
       return null;
     }
@@ -1059,66 +1203,99 @@ export class MinerWorker {
 
   private authenticatedGqlHeaders(): Record<string, string> {
     return {
-      'Authorization': `OAuth ${this.settings.authToken}`,
-      'Client-Id': 'ue6666qo983tsx6so1t0vnawi233wa',
-      'X-Device-Id': '2fKtD7vbBQY6Sg9PQkebQGxtJBHpHBlx',
-      'Content-Type': 'application/json'
+      Authorization: `OAuth ${this.settings.authToken}`,
+      "Client-Id": "ue6666qo983tsx6so1t0vnawi233wa",
+      "X-Device-Id": "2fKtD7vbBQY6Sg9PQkebQGxtJBHpHBlx",
+      "Content-Type": "application/json",
     };
   }
 
-  public async claimRealBonus(streamer: Streamer): Promise<{ success: boolean; points: number; message: string }> {
+  public async claimRealBonus(
+    streamer: Streamer,
+  ): Promise<{ success: boolean; points: number; message: string }> {
     if (!this.settings.authToken) {
-      return { success: false, points: 0, message: 'Not connected to Twitch.' };
+      return { success: false, points: 0, message: "Not connected to Twitch." };
     }
     if (this.claimsInFlight.has(streamer.username)) {
-      return { success: false, points: 0, message: 'A claim is already in progress.' };
+      return { success: false, points: 0, message: "A claim is already in progress." };
     }
     this.claimsInFlight.add(streamer.username);
     try {
       const claimId = await this.fetchAvailableClaim(streamer.username);
       if (!claimId) {
-        return { success: false, points: 0, message: `No bonus chest available on ${streamer.displayName}'s channel right now.` };
+        return {
+          success: false,
+          points: 0,
+          message: `No bonus chest available on ${streamer.displayName}'s channel right now.`,
+        };
       }
-      const channelRes = await fetch('https://gql.twitch.tv/gql', {
-        method: 'POST',
+      const channelRes = await fetch("https://gql.twitch.tv/gql", {
+        method: "POST",
         headers: this.authenticatedGqlHeaders(),
         body: JSON.stringify({
-          query: 'query($login: String!) { user(login: $login) { id } }',
-          variables: { login: streamer.username }
+          query: "query($login: String!) { user(login: $login) { id } }",
+          variables: { login: streamer.username },
         }),
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(8000),
       });
       const channelJson: unknown = await channelRes.json();
       let channelId: string | undefined;
-      if (typeof channelJson === 'object' && channelJson !== null && 'data' in channelJson) {
+      if (typeof channelJson === "object" && channelJson !== null && "data" in channelJson) {
         const d = channelJson.data as { user?: { id?: unknown } | null } | undefined;
         const id = d?.user?.id;
-        if (typeof id === 'string') channelId = id;
+        if (typeof id === "string") channelId = id;
       }
-      if (!channelId || typeof channelId !== 'string') {
-        return { success: false, points: 0, message: `Could not resolve channel id for ${streamer.username}.` };
+      if (!channelId || typeof channelId !== "string") {
+        return {
+          success: false,
+          points: 0,
+          message: `Could not resolve channel id for ${streamer.username}.`,
+        };
       }
-      const claimRes = await fetch('https://gql.twitch.tv/gql', {
-        method: 'POST',
+      const claimRes = await fetch("https://gql.twitch.tv/gql", {
+        method: "POST",
         headers: this.authenticatedGqlHeaders(),
         body: JSON.stringify({
-          operationName: 'ClaimCommunityPoints',
-          extensions: { persistedQuery: { version: 1, sha256Hash: '46aaeebe02c99afdf4fc97c7c0cba964124bf6b0af229395f1f6d1feed05b3d0' } },
-          variables: { input: { channelID: channelId, claimID: claimId } }
+          operationName: "ClaimCommunityPoints",
+          extensions: {
+            persistedQuery: {
+              version: 1,
+              sha256Hash: "46aaeebe02c99afdf4fc97c7c0cba964124bf6b0af229395f1f6d1feed05b3d0",
+            },
+          },
+          variables: { input: { channelID: channelId, claimID: claimId } },
         }),
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(8000),
       });
       const claimJson: unknown = await claimRes.json();
-      if (typeof claimJson !== 'object' || claimJson === null || !('data' in claimJson) || typeof claimJson.data !== 'object' || claimJson.data === null) {
-        return { success: false, points: 0, message: 'Claim request failed.' };
+      if (
+        typeof claimJson !== "object" ||
+        claimJson === null ||
+        !("data" in claimJson) ||
+        typeof claimJson.data !== "object" ||
+        claimJson.data === null
+      ) {
+        return { success: false, points: 0, message: "Claim request failed." };
       }
-      const claimData = claimJson.data as { claimCommunityPoints?: { claim?: { pointsEarnedTotal?: unknown } | null; currentPoints?: unknown; error?: unknown } | null };
+      const claimData = claimJson.data as {
+        claimCommunityPoints?: {
+          claim?: { pointsEarnedTotal?: unknown } | null;
+          currentPoints?: unknown;
+          error?: unknown;
+        } | null;
+      };
       const payload = claimData.claimCommunityPoints;
       if (!payload || payload.error) {
-        return { success: false, points: 0, message: `Claim rejected: ${payload?.error ?? 'unknown error'}` };
+        return {
+          success: false,
+          points: 0,
+          message: `Claim rejected: ${payload?.error ?? "unknown error"}`,
+        };
       }
-      const earned = typeof payload.claim?.pointsEarnedTotal === 'number' ? payload.claim.pointsEarnedTotal : 0;
-      const currentPoints = typeof payload.currentPoints === 'number' ? payload.currentPoints : null;
+      const earned =
+        typeof payload.claim?.pointsEarnedTotal === "number" ? payload.claim.pointsEarnedTotal : 0;
+      const currentPoints =
+        typeof payload.currentPoints === "number" ? payload.currentPoints : null;
       if (currentPoints !== null) {
         this.applyRealBalance(streamer.username, currentPoints, earned);
       }
@@ -1127,13 +1304,26 @@ export class MinerWorker {
       await this.recordStatisticalData({
         pointsMined: earned,
         claimsCount: 1,
-        chestsPoints: earned
+        chestsPoints: earned,
       });
-      this.hooks.broadcast('status', this.getStatus());
-      this.addLog('CLAIM', streamer.username, `Real bonus claimed on ${streamer.displayName}: +${earned} pts (Twitch balance: ${currentPoints?.toLocaleString() ?? '?'}).`, earned);
-      return { success: true, points: earned, message: `Claimed +${earned} pts on ${streamer.displayName}` };
+      this.hooks.broadcast("status", this.getStatus());
+      this.addLog(
+        "CLAIM",
+        streamer.username,
+        `Real bonus claimed on ${streamer.displayName}: +${earned} pts (Twitch balance: ${currentPoints?.toLocaleString() ?? "?"}).`,
+        earned,
+      );
+      return {
+        success: true,
+        points: earned,
+        message: `Claimed +${earned} pts on ${streamer.displayName}`,
+      };
     } catch (err) {
-      return { success: false, points: 0, message: err instanceof Error ? err.message : 'Claim failed' };
+      return {
+        success: false,
+        points: 0,
+        message: err instanceof Error ? err.message : "Claim failed",
+      };
     } finally {
       this.claimsInFlight.delete(streamer.username);
     }
@@ -1142,11 +1332,7 @@ export class MinerWorker {
   public async executeClaimBonus(streamer: Streamer) {
     if (!this.settings.isSimulationMode) {
       const result = await this.claimRealBonus(streamer);
-      this.addLog(
-        result.success ? 'CLAIM' : 'WARN',
-        streamer.username,
-        result.message
-      );
+      this.addLog(result.success ? "CLAIM" : "WARN", streamer.username, result.message);
       return;
     }
     streamer.chestAvailable = false;
@@ -1163,7 +1349,7 @@ export class MinerWorker {
     await this.recordStatisticalData({
       pointsMined: 50,
       claimsCount: 1,
-      chestsPoints: 50
+      chestsPoints: 50,
     });
 
     try {
@@ -1174,27 +1360,27 @@ export class MinerWorker {
           totalPointsMined: streamer.totalPointsMined,
           lastClaimTime: streamer.lastClaimTime,
           chestAvailable: false,
-          nextChestEstimateSeconds: 900
-        }
+          nextChestEstimateSeconds: 900,
+        },
       });
     } catch (e) {
       void 0;
     }
 
     this.addLog(
-      'CLAIM',
+      "CLAIM",
       streamer.username,
       `Successfully claimed Community Points Bonus (+50 pts) for ${streamer.displayName}! Total balance: ${streamer.points.toLocaleString()} pts.`,
-      50
+      50,
     );
 
-    this.hooks.broadcast('streamers', this.streamers);
+    this.hooks.broadcast("streamers", this.streamers);
   }
 
   private maybeSimulateEvent() {
     // 1. Heartbeat watch time (+10 pts)
     if (Math.random() < 0.08) {
-      const active = this.streamers.filter(s => s.isMining && s.isLive);
+      const active = this.streamers.filter((s) => s.isMining && s.isLive);
       if (active.length > 0) {
         const chosen = active[Math.floor(Math.random() * active.length)];
         const pts = 10;
@@ -1206,29 +1392,31 @@ export class MinerWorker {
 
         this.recordStatisticalData({
           pointsMined: pts,
-          watchTimePoints: pts
+          watchTimePoints: pts,
         });
 
-        prisma.streamer.update({
-          where: { id: chosen.id },
-          data: {
-            points: chosen.points,
-            totalPointsMined: chosen.totalPointsMined
-          }
-        }).catch(() => {});
+        prisma.streamer
+          .update({
+            where: { id: chosen.id },
+            data: {
+              points: chosen.points,
+              totalPointsMined: chosen.totalPointsMined,
+            },
+          })
+          .catch(() => {});
 
         this.addLog(
-          'WATCH',
+          "WATCH",
           chosen.username,
           `Heartbeat watch credit (+${pts} pts) received for ${chosen.displayName}.`,
-          pts
+          pts,
         );
       }
     }
 
     // 2. Raid event (+250 pts)
     if (this.settings.followRaids && Math.random() < 0.015) {
-      const active = this.streamers.filter(s => s.isMining && s.isLive);
+      const active = this.streamers.filter((s) => s.isMining && s.isLive);
       if (active.length > 0) {
         const chosen = active[Math.floor(Math.random() * active.length)];
         const raidBonus = 250;
@@ -1240,29 +1428,31 @@ export class MinerWorker {
 
         this.recordStatisticalData({
           pointsMined: raidBonus,
-          raidsCount: 1
+          raidsCount: 1,
         });
 
-        prisma.streamer.update({
-          where: { id: chosen.id },
-          data: {
-            points: chosen.points,
-            totalPointsMined: chosen.totalPointsMined
-          }
-        }).catch(() => {});
+        prisma.streamer
+          .update({
+            where: { id: chosen.id },
+            data: {
+              points: chosen.points,
+              totalPointsMined: chosen.totalPointsMined,
+            },
+          })
+          .catch(() => {});
 
         this.addLog(
-          'RAID',
+          "RAID",
           chosen.username,
           `Raid detected on ${chosen.displayName}'s channel! Joined raid and claimed +${raidBonus} points.`,
-          raidBonus
+          raidBonus,
         );
       }
     }
 
     // 3. Predictions (+net)
     if (this.settings.autoBetPredictions && Math.random() < 0.012) {
-      const active = this.streamers.filter(s => s.isMining && s.isLive);
+      const active = this.streamers.filter((s) => s.isMining && s.isLive);
       if (active.length > 0) {
         const chosen = active[Math.floor(Math.random() * active.length)];
         const betAmount = Math.min(this.settings.maxBetPoints, 100);
@@ -1281,22 +1471,24 @@ export class MinerWorker {
           this.recordStatisticalData({
             pointsMined: net,
             predictionsWon: 1,
-            netPredictionPoints: net
+            netPredictionPoints: net,
           });
 
-          prisma.streamer.update({
-            where: { id: chosen.id },
-            data: {
-              points: chosen.points,
-              totalPointsMined: chosen.totalPointsMined
-            }
-          }).catch(() => {});
+          prisma.streamer
+            .update({
+              where: { id: chosen.id },
+              data: {
+                points: chosen.points,
+                totalPointsMined: chosen.totalPointsMined,
+              },
+            })
+            .catch(() => {});
 
           this.addLog(
-            'PREDICTION',
+            "PREDICTION",
             chosen.username,
             `Prediction resolved WON on ${chosen.displayName}! Strategy [${this.settings.predictionStrategy}] returned +${winPoints} pts (+${net} net profit).`,
-            net
+            net,
           );
         } else {
           chosen.points = Math.max(0, chosen.points - betAmount);
@@ -1304,14 +1496,14 @@ export class MinerWorker {
 
           this.recordStatisticalData({
             predictionsLost: 1,
-            netPredictionPoints: -betAmount
+            netPredictionPoints: -betAmount,
           });
 
           this.addLog(
-            'PREDICTION',
+            "PREDICTION",
             chosen.username,
             `Prediction resolved lost on ${chosen.displayName}. Lost ${betAmount} pts. Strategy risk within limits.`,
-            -betAmount
+            -betAmount,
           );
         }
       }
@@ -1319,24 +1511,24 @@ export class MinerWorker {
 
     // 4. Drops Claimed
     if (this.settings.autoClaimDrops && Math.random() < 0.008) {
-      const active = this.streamers.filter(s => s.isMining && s.isLive);
+      const active = this.streamers.filter((s) => s.isMining && s.isLive);
       if (active.length > 0) {
         const chosen = active[Math.floor(Math.random() * active.length)];
         this.status.totalDropsClaimed += 1;
 
         this.recordStatisticalData({
-          dropsCount: 1
+          dropsCount: 1,
         });
 
         this.addLog(
-          'DROP',
+          "DROP",
           chosen.username,
-          `Twitch Drop Campaign reward reached 100% for ${chosen.game}! Auto-claimed to Twitch Inventory.`
+          `Twitch Drop Campaign reward reached 100% for ${chosen.game}! Auto-claimed to Twitch Inventory.`,
         );
       }
     }
 
-    this.hooks.broadcast('streamers', this.streamers);
+    this.hooks.broadcast("streamers", this.streamers);
   }
 
   public async recordStatisticalData(data: unknown) {
@@ -1352,7 +1544,7 @@ export class MinerWorker {
       watchTimePoints?: number;
       channel?: string;
     };
-    const hourKey = new Date().getHours().toString().padStart(2, '0') + ':00';
+    const hourKey = new Date().getHours().toString().padStart(2, "0") + ":00";
     try {
       await prisma.statisticalRecord.create({
         data: {
@@ -1367,11 +1559,11 @@ export class MinerWorker {
           dropsCount: d.dropsCount ?? 0,
           chestsPoints: d.chestsPoints ?? 0,
           watchTimePoints: d.watchTimePoints ?? 0,
-          channel: d.channel ?? null
-        }
+          channel: d.channel ?? null,
+        },
       });
     } catch (err) {
-      console.error('Failed to store statistical record in Prisma SQLite:', err);
+      console.error("Failed to store statistical record in Prisma SQLite:", err);
     }
   }
 
@@ -1380,24 +1572,28 @@ export class MinerWorker {
   }
 
   public getSettings(): MinerSettings & { hasAuthToken: boolean } {
-    return { ...this.settings, authToken: '', hasAuthToken: Boolean(this.settings.authToken) };
+    return { ...this.settings, authToken: "", hasAuthToken: Boolean(this.settings.authToken) };
   }
 
-  public async validateStoredAuthToken(): Promise<{ login: string; userId: string; hasChatEdit: boolean } | null> {
+  public async validateStoredAuthToken(): Promise<{
+    login: string;
+    userId: string;
+    hasChatEdit: boolean;
+  } | null> {
     const token = this.settings.authToken;
     if (!token) return null;
-    const res = await fetch('https://id.twitch.tv/oauth2/validate', {
-      headers: { 'Authorization': `OAuth ${token}` },
-      signal: AbortSignal.timeout(8000)
+    const res = await fetch("https://id.twitch.tv/oauth2/validate", {
+      headers: { Authorization: `OAuth ${token}` },
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
     const v: unknown = await res.json();
-    if (typeof v !== 'object' || v === null || !('login' in v) || !('user_id' in v)) return null;
+    if (typeof v !== "object" || v === null || !("login" in v) || !("user_id" in v)) return null;
     const login = v.login;
     const userId = v.user_id;
-    const scopes = 'scopes' in v && Array.isArray(v.scopes) ? v.scopes : [];
-    if (typeof login !== 'string' || typeof userId !== 'string') return null;
-    return { login, userId, hasChatEdit: scopes.includes('chat:edit') };
+    const scopes = "scopes" in v && Array.isArray(v.scopes) ? v.scopes : [];
+    if (typeof login !== "string" || typeof userId !== "string") return null;
+    return { login, userId, hasChatEdit: scopes.includes("chat:edit") };
   }
 
   private connectPubsub() {
@@ -1405,10 +1601,14 @@ export class MinerWorker {
     if (this.disposed) return;
     if (this.pubsubWs && this.pubsubWs.readyState === WebSocket.OPEN) return;
     try {
-      const ws = new WebSocket('wss://pubsub-edge.twitch.tv/v1');
+      const ws = new WebSocket("wss://pubsub-edge.twitch.tv/v1");
       this.pubsubWs = ws;
       ws.onopen = () => {
-        this.addLog('SUCCESS', undefined, 'Authenticated Twitch PubSub connected — real Channel Points balance sync active.');
+        this.addLog(
+          "SUCCESS",
+          undefined,
+          "Authenticated Twitch PubSub connected — real Channel Points balance sync active.",
+        );
         const topics = [`community-points-user-v1.${this.pubsubUserId}`];
         for (const s of this.streamers) {
           if (s.isMining && s.isLive && s.enabled) {
@@ -1420,74 +1620,109 @@ export class MinerWorker {
             }
           }
         }
-        ws.send(JSON.stringify({
-          type: 'LISTEN',
-          nonce: 'balance-listen',
-          data: {
-            topics,
-            auth_token: this.settings.authToken
-          }
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "LISTEN",
+            nonce: "balance-listen",
+            data: {
+              topics,
+              auth_token: this.settings.authToken,
+            },
+          }),
+        );
         this.fetchBalanceSnapshot();
         clearInterval(this.pubsubSnapshotTimer);
         this.pubsubSnapshotTimer = setInterval(() => this.fetchBalanceSnapshot(), 300_000);
         this.pubsubPingTimer = setInterval(() => {
-          try { ws.send(JSON.stringify({ type: 'PING' })); } catch { void 0; }
+          try {
+            ws.send(JSON.stringify({ type: "PING" }));
+          } catch {
+            void 0;
+          }
         }, 120_000);
       };
       ws.onmessage = (event) => {
         try {
           const msg: unknown = JSON.parse(String(event.data));
-          if (typeof msg !== 'object' || msg === null || !('type' in msg)) return;
-          if (msg.type === 'RESPONSE' && 'error' in msg && typeof msg.error === 'string' && msg.error) {
-            this.addLog('ERROR', undefined, `PubSub LISTEN rejected: ${msg.error}`);
+          if (typeof msg !== "object" || msg === null || !("type" in msg)) return;
+          if (
+            msg.type === "RESPONSE" &&
+            "error" in msg &&
+            typeof msg.error === "string" &&
+            msg.error
+          ) {
+            this.addLog("ERROR", undefined, `PubSub LISTEN rejected: ${msg.error}`);
             return;
           }
-          if (msg.type !== 'MESSAGE' || !('data' in msg) || typeof msg.data !== 'object' || msg.data === null) return;
+          if (
+            msg.type !== "MESSAGE" ||
+            !("data" in msg) ||
+            typeof msg.data !== "object" ||
+            msg.data === null
+          )
+            return;
           const data = msg.data as { topic?: unknown; message?: unknown };
-          if (typeof data.topic !== 'string') return;
-          const payload: unknown = typeof data.message === 'string' ? JSON.parse(data.message) : null;
-          if (typeof payload !== 'object' || payload === null) return;
+          if (typeof data.topic !== "string") return;
+          const payload: unknown =
+            typeof data.message === "string" ? JSON.parse(data.message) : null;
+          if (typeof payload !== "object" || payload === null) return;
 
-          if (data.topic.startsWith('community-points-user-v1.')) {
-            if (typeof payload !== 'object' || payload === null || !('type' in payload)) return;
+          if (data.topic.startsWith("community-points-user-v1.")) {
+            if (typeof payload !== "object" || payload === null || !("type" in payload)) return;
             if (
-              payload.type !== 'points-earned' &&
-              payload.type !== 'points-spent' &&
-              payload.type !== 'claim-available' &&
-              payload.type !== 'points-reward'
-            ) return;
-            const reasonCode = 'reason_code' in payload && typeof payload.reason_code === 'string' ? payload.reason_code : null;
-            const balanceData = 'balance' in payload ? payload.balance : null;
+              payload.type !== "points-earned" &&
+              payload.type !== "points-spent" &&
+              payload.type !== "claim-available" &&
+              payload.type !== "points-reward"
+            )
+              return;
+            const reasonCode =
+              "reason_code" in payload && typeof payload.reason_code === "string"
+                ? payload.reason_code
+                : null;
+            const balanceData = "balance" in payload ? payload.balance : null;
             const balance =
-              typeof balanceData === 'object' && balanceData !== null && 'balance' in balanceData && typeof balanceData.balance === 'number'
+              typeof balanceData === "object" &&
+              balanceData !== null &&
+              "balance" in balanceData &&
+              typeof balanceData.balance === "number"
                 ? balanceData.balance
                 : null;
-            const channelLogin = 'channel' in payload && typeof payload.channel === 'string'
-              ? payload.channel.toLowerCase()
-              : this.streamers.find(s => s.isMining)?.username.toLowerCase();
+            const channelLogin =
+              "channel" in payload && typeof payload.channel === "string"
+                ? payload.channel.toLowerCase()
+                : this.streamers.find((s) => s.isMining)?.username.toLowerCase();
             if (balance !== null && channelLogin) this.applyRealBalance(channelLogin, balance);
-            if (reasonCode === 'WATCH_STREAK' && channelLogin) {
-              const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === channelLogin);
+            if (reasonCode === "WATCH_STREAK" && channelLogin) {
+              const streamer = this.streamers.find(
+                (s) => extractTwitchUsername(s.username) === channelLogin,
+              );
               if (streamer) {
                 this.noteWatchedDay(streamer);
-                this.hooks.broadcast('streamers', this.streamers);
+                this.hooks.broadcast("streamers", this.streamers);
               }
             }
             return;
           }
 
-          if (data.topic.startsWith('raid.')) {
-            if (typeof payload !== 'object' || payload === null || !('type' in payload)) return;
-            if (payload.type !== 'raid_update_v2' && payload.type !== 'raid_go_v2') return;
-            const raid = 'raid' in payload && typeof payload.raid === 'object' && payload.raid !== null ? payload.raid : null;
+          if (data.topic.startsWith("raid.")) {
+            if (typeof payload !== "object" || payload === null || !("type" in payload)) return;
+            if (payload.type !== "raid_update_v2" && payload.type !== "raid_go_v2") return;
+            const raid =
+              "raid" in payload && typeof payload.raid === "object" && payload.raid !== null
+                ? payload.raid
+                : null;
             if (!raid) return;
-            if (!('id' in raid) || typeof raid.id !== 'string') return;
-            if (!('target_login' in raid) || typeof raid.target_login !== 'string') return;
-            if (payload.type === 'raid_go_v2' && this.settings.followRaids) {
-              const topicId = data.topic.split('.')[1];
-              const watchedLogin = [...this.channelIds.entries()].find(([, id]) => id === topicId)?.[0]?.toLowerCase();
-              const watched = watchedLogin ? this.streamers.find(s => extractTwitchUsername(s.username) === watchedLogin) : undefined;
+            if (!("id" in raid) || typeof raid.id !== "string") return;
+            if (!("target_login" in raid) || typeof raid.target_login !== "string") return;
+            if (payload.type === "raid_go_v2" && this.settings.followRaids) {
+              const topicId = data.topic.split(".")[1];
+              const watchedLogin = [...this.channelIds.entries()]
+                .find(([, id]) => id === topicId)?.[0]
+                ?.toLowerCase();
+              const watched = watchedLogin
+                ? this.streamers.find((s) => extractTwitchUsername(s.username) === watchedLogin)
+                : undefined;
               if (watched) {
                 this.status.totalRaids += 1;
                 this.recordStatisticalData({ raidsCount: 1, channel: watchedLogin });
@@ -1497,18 +1732,30 @@ export class MinerWorker {
             return;
           }
 
-          if (data.topic.startsWith('predictions-channel-v1.')) {
-            const event = 'event' in payload && typeof payload.event === 'object' && payload.event !== null ? payload.event : null;
-            if (!event || !('id' in event) || typeof event.id !== 'string') return;
-            const status = 'status' in event && typeof event.status === 'string' ? event.status : '';
-            if (status !== 'ACTIVE') return;
-            if (!('outcomes' in event) || !Array.isArray(event.outcomes)) return;
-            const outcomes = event.outcomes as Array<{ id?: unknown; title?: unknown; color?: unknown }>;
-            const outcomesTyped = outcomes.filter(o => typeof o === 'object' && o !== null && 'id' in o && typeof o.id === 'string');
+          if (data.topic.startsWith("predictions-channel-v1.")) {
+            const event =
+              "event" in payload && typeof payload.event === "object" && payload.event !== null
+                ? payload.event
+                : null;
+            if (!event || !("id" in event) || typeof event.id !== "string") return;
+            const status =
+              "status" in event && typeof event.status === "string" ? event.status : "";
+            if (status !== "ACTIVE") return;
+            if (!("outcomes" in event) || !Array.isArray(event.outcomes)) return;
+            const outcomes = event.outcomes as Array<{
+              id?: unknown;
+              title?: unknown;
+              color?: unknown;
+            }>;
+            const outcomesTyped = outcomes.filter(
+              (o) => typeof o === "object" && o !== null && "id" in o && typeof o.id === "string",
+            );
             if (outcomesTyped.length < 2) return;
 
-            const channelLogin = data.topic.split('.')[1] ?? '';
-            const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === channelLogin);
+            const channelLogin = data.topic.split(".")[1] ?? "";
+            const streamer = this.streamers.find(
+              (s) => extractTwitchUsername(s.username) === channelLogin,
+            );
             if (!streamer || !streamer.isMining) return;
 
             const strategy = this.settings.predictionStrategy;
@@ -1517,57 +1764,93 @@ export class MinerWorker {
             if (balance < 10) return;
 
             let outcomeIndex: number;
-            if (strategy === 'highest_odds') {
+            if (strategy === "highest_odds") {
               outcomeIndex = 1;
-            } else if (strategy === 'conservative') {
+            } else if (strategy === "conservative") {
               outcomeIndex = 0;
             } else {
               outcomeIndex = 0;
             }
             const outcome = outcomesTyped[outcomeIndex];
-            if (!outcome || typeof outcome.id !== 'string') return;
+            if (!outcome || typeof outcome.id !== "string") return;
 
             const betAmount = Math.min(maxBet, Math.max(10, Math.floor(balance * 0.1)));
-            const transactionId = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-            fetch('https://gql.twitch.tv/gql', {
-              method: 'POST',
+            const transactionId = Array.from({ length: 32 }, () =>
+              Math.floor(Math.random() * 16).toString(16),
+            ).join("");
+            fetch("https://gql.twitch.tv/gql", {
+              method: "POST",
               headers: this.authenticatedGqlHeaders(),
               body: JSON.stringify({
-                operationName: 'MakePrediction',
-                extensions: { persistedQuery: { version: 1, sha256Hash: 'b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8' } },
+                operationName: "MakePrediction",
+                extensions: {
+                  persistedQuery: {
+                    version: 1,
+                    sha256Hash: "b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8",
+                  },
+                },
                 variables: {
                   input: {
                     eventID: event.id,
                     outcomeID: outcome.id,
                     points: betAmount,
-                    transactionID: transactionId
-                  }
-                }
+                    transactionID: transactionId,
+                  },
+                },
               }),
-              signal: AbortSignal.timeout(10000)
-            }).then(res => res.json()).then((j: unknown) => {
-              const ok = typeof j === 'object' && j !== null && 'data' in j &&
-                typeof j.data === 'object' && j.data !== null &&
-                'makePrediction' in j.data && j.data.makePrediction !== null;
-              if (ok) {
-                const outcomeTitle = typeof outcome.title === 'string' ? outcome.title : outcomeIndex === 0 ? 'Blue' : 'Pink';
-                this.addLog('PREDICTION', streamer.username, `Bet ${betAmount} pts on "${outcomeTitle}" for ${streamer.displayName} (${strategy}).`);
-                this.status.totalPredictionsPlaced += 1;
-              } else {
-                this.addLog('WARN', streamer.username, `Prediction bet rejected (${JSON.stringify(j).slice(0, 120)}).`);
-              }
-            }).catch(() => {});
+              signal: AbortSignal.timeout(10000),
+            })
+              .then((res) => res.json())
+              .then((j: unknown) => {
+                const ok =
+                  typeof j === "object" &&
+                  j !== null &&
+                  "data" in j &&
+                  typeof j.data === "object" &&
+                  j.data !== null &&
+                  "makePrediction" in j.data &&
+                  j.data.makePrediction !== null;
+                if (ok) {
+                  const outcomeTitle =
+                    typeof outcome.title === "string"
+                      ? outcome.title
+                      : outcomeIndex === 0
+                        ? "Blue"
+                        : "Pink";
+                  this.addLog(
+                    "PREDICTION",
+                    streamer.username,
+                    `Bet ${betAmount} pts on "${outcomeTitle}" for ${streamer.displayName} (${strategy}).`,
+                  );
+                  this.status.totalPredictionsPlaced += 1;
+                } else {
+                  this.addLog(
+                    "WARN",
+                    streamer.username,
+                    `Prediction bet rejected (${JSON.stringify(j).slice(0, 120)}).`,
+                  );
+                }
+              })
+              .catch(() => {});
             return;
           }
 
-          if (data.topic.startsWith('community-points-channel-v1.')) {
-            if (!('type' in payload) || payload.type !== 'claim-available') return;
-            const claim = 'claim' in payload && typeof payload.claim === 'object' && payload.claim !== null ? payload.claim : null;
-            const claimId = claim && 'id' in claim && typeof claim.id === 'string' ? claim.id : null;
+          if (data.topic.startsWith("community-points-channel-v1.")) {
+            if (!("type" in payload) || payload.type !== "claim-available") return;
+            const claim =
+              "claim" in payload && typeof payload.claim === "object" && payload.claim !== null
+                ? payload.claim
+                : null;
+            const claimId =
+              claim && "id" in claim && typeof claim.id === "string" ? claim.id : null;
             if (!claimId) return;
-            const topicId = data.topic.split('.')[1];
-            const watchedLogin = [...this.channelIds.entries()].find(([, id]) => id === topicId)?.[0]?.toLowerCase();
-            const streamer = watchedLogin ? this.streamers.find(s => extractTwitchUsername(s.username) === watchedLogin) : undefined;
+            const topicId = data.topic.split(".")[1];
+            const watchedLogin = [...this.channelIds.entries()]
+              .find(([, id]) => id === topicId)?.[0]
+              ?.toLowerCase();
+            const streamer = watchedLogin
+              ? this.streamers.find((s) => extractTwitchUsername(s.username) === watchedLogin)
+              : undefined;
             if (
               streamer &&
               this.settings.autoClaimBonus &&
@@ -1579,60 +1862,108 @@ export class MinerWorker {
               this.claimRealBonus(streamer).catch(() => {});
             }
           }
-        } catch { void 0; }
+        } catch {
+          void 0;
+        }
       };
       ws.onclose = () => {
-        if (this.pubsubPingTimer) { clearInterval(this.pubsubPingTimer); this.pubsubPingTimer = null; }
+        if (this.pubsubPingTimer) {
+          clearInterval(this.pubsubPingTimer);
+          this.pubsubPingTimer = null;
+        }
         if (!this.disposed && this.settings.authToken && this.pubsubUserId) {
           this.pubsubReconnectTimer = setTimeout(() => this.connectPubsub(), 10_000);
         }
       };
-      ws.onerror = () => { try { ws.close(); } catch { void 0; } };
+      ws.onerror = () => {
+        try {
+          ws.close();
+        } catch {
+          void 0;
+        }
+      };
     } catch (err) {
-      this.addLog('ERROR', undefined, `PubSub connection failed: ${err instanceof Error ? err.message : 'unknown'}`);
+      this.addLog(
+        "ERROR",
+        undefined,
+        `PubSub connection failed: ${err instanceof Error ? err.message : "unknown"}`,
+      );
     }
   }
 
   public disconnectPubsub() {
-    if (this.pubsubPingTimer) { clearInterval(this.pubsubPingTimer); this.pubsubPingTimer = null; }
-    if (this.pubsubReconnectTimer) { clearTimeout(this.pubsubReconnectTimer); this.pubsubReconnectTimer = null; }
-    if (this.pubsubSnapshotTimer) { clearInterval(this.pubsubSnapshotTimer); this.pubsubSnapshotTimer = null; }
-    if (this.pubsubWs) { try { this.pubsubWs.close(); } catch { void 0; } this.pubsubWs = null; }
+    if (this.pubsubPingTimer) {
+      clearInterval(this.pubsubPingTimer);
+      this.pubsubPingTimer = null;
+    }
+    if (this.pubsubReconnectTimer) {
+      clearTimeout(this.pubsubReconnectTimer);
+      this.pubsubReconnectTimer = null;
+    }
+    if (this.pubsubSnapshotTimer) {
+      clearInterval(this.pubsubSnapshotTimer);
+      this.pubsubSnapshotTimer = null;
+    }
+    if (this.pubsubWs) {
+      try {
+        this.pubsubWs.close();
+      } catch {
+        void 0;
+      }
+      this.pubsubWs = null;
+    }
     this.pubsubUserId = null;
   }
 
   private async fetchBalanceSnapshot() {
-    const miningStreamers = this.streamers.filter(s => s.isMining);
-    const relationshipStreamers = this.streamers.filter(s => s.enabled && !(s.isMining && miningStreamers.includes(s)));
-    const relationshipOnly = new Set(relationshipStreamers.map(s => s.username));
+    const miningStreamers = this.streamers.filter((s) => s.isMining);
+    const relationshipStreamers = this.streamers.filter(
+      (s) => s.enabled && !(s.isMining && miningStreamers.includes(s)),
+    );
+    const relationshipOnly = new Set(relationshipStreamers.map((s) => s.username));
     if (miningStreamers.length === 0 && relationshipStreamers.length === 0) return;
     for (const mining of [...miningStreamers, ...relationshipStreamers]) {
       const relationshipOnlyLogin = relationshipOnly.has(mining.username) && !mining.isMining;
       try {
-        const res = await fetch('https://gql.twitch.tv/gql', {
-          method: 'POST',
+        const res = await fetch("https://gql.twitch.tv/gql", {
+          method: "POST",
           headers: this.authenticatedGqlHeaders(),
           body: JSON.stringify({
-            query: 'query($login: String!) { user(login: $login) { channel { self { communityPoints { balance } } } self { follower { followedAt } subscriptionBenefit { tier } } } }',
-            variables: { login: mining.username }
+            query:
+              "query($login: String!) { user(login: $login) { channel { self { communityPoints { balance } } } self { follower { followedAt } subscriptionBenefit { tier } } } }",
+            variables: { login: mining.username },
           }),
-          signal: AbortSignal.timeout(8000)
+          signal: AbortSignal.timeout(8000),
         });
         const j: unknown = await res.json();
-        if (typeof j !== 'object' || j === null || !('data' in j) || typeof j.data !== 'object' || j.data === null) continue;
-        if ('errors' in j && Array.isArray(j.errors) && j.errors.length > 0) continue;
+        if (
+          typeof j !== "object" ||
+          j === null ||
+          !("data" in j) ||
+          typeof j.data !== "object" ||
+          j.data === null
+        )
+          continue;
+        if ("errors" in j && Array.isArray(j.errors) && j.errors.length > 0) continue;
         const data = j.data as {
           user?: {
             channel?: { self?: { communityPoints?: { balance?: unknown } | null } | null } | null;
-            self?: { follower?: { followedAt?: unknown } | null; subscriptionBenefit?: { tier?: unknown } | null } | null;
+            self?: {
+              follower?: { followedAt?: unknown } | null;
+              subscriptionBenefit?: { tier?: unknown } | null;
+            } | null;
           } | null;
         };
         const balance = data.user?.channel?.self?.communityPoints?.balance;
         if (!relationshipOnlyLogin) {
-          if (typeof balance === 'number') {
+          if (typeof balance === "number") {
             this.applyRealBalance(mining.username, balance);
           } else {
-            this.addLog('WARN', mining.username, 'Balance snapshot unavailable — will sync on the next points event.');
+            this.addLog(
+              "WARN",
+              mining.username,
+              "Balance snapshot unavailable — will sync on the next points event.",
+            );
           }
         }
 
@@ -1641,21 +1972,30 @@ export class MinerWorker {
         const follow = user.self?.follower ?? null;
         const tier = user.self?.subscriptionBenefit?.tier;
         const newIsFollowing = follow !== null;
-        const newTier = typeof tier === 'string' ? tier : null;
-        if (newIsFollowing !== mining.isFollowing || newTier !== (mining.subscriptionTier ?? null)) {
+        const newTier = typeof tier === "string" ? tier : null;
+        if (
+          newIsFollowing !== mining.isFollowing ||
+          newTier !== (mining.subscriptionTier ?? null)
+        ) {
           mining.isFollowing = newIsFollowing;
           mining.subscriptionTier = newTier;
-          prisma.streamer.update({
-            where: { id: mining.id },
-            data: {
-              isFollowing: newIsFollowing,
-              subscriptionTier: newTier
-            }
-          }).catch(() => {});
-          this.hooks.broadcast('streamers', this.streamers);
+          prisma.streamer
+            .update({
+              where: { id: mining.id },
+              data: {
+                isFollowing: newIsFollowing,
+                subscriptionTier: newTier,
+              },
+            })
+            .catch(() => {});
+          this.hooks.broadcast("streamers", this.streamers);
         }
       } catch (err) {
-        this.addLog('WARN', mining.username, `Balance snapshot failed: ${err instanceof Error ? err.message : 'unknown'}`);
+        this.addLog(
+          "WARN",
+          mining.username,
+          `Balance snapshot failed: ${err instanceof Error ? err.message : "unknown"}`,
+        );
       }
     }
   }
@@ -1666,92 +2006,137 @@ export class MinerWorker {
     if (Date.now() - this.lastDropSync < 10 * 60_000) return;
     this.lastDropSync = Date.now();
     try {
-      const res = await fetch('https://gql.twitch.tv/gql', {
-        method: 'POST',
+      const res = await fetch("https://gql.twitch.tv/gql", {
+        method: "POST",
         headers: this.authenticatedGqlHeaders(),
         body: JSON.stringify({
-          operationName: 'Inventory',
+          operationName: "Inventory",
           variables: { fetchRewardCampaigns: false },
-          extensions: { persistedQuery: { version: 1, sha256Hash: '8337eb8541b314040b0edde0c09c5c7a2783ba1960aa9edfbf3bac16d0fec404' } }
+          extensions: {
+            persistedQuery: {
+              version: 1,
+              sha256Hash: "8337eb8541b314040b0edde0c09c5c7a2783ba1960aa9edfbf3bac16d0fec404",
+            },
+          },
         }),
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(10000),
       });
       const j: unknown = await res.json();
-      if (typeof j !== 'object' || j === null || !('data' in j) || typeof j.data !== 'object' || j.data === null) return;
-      const data = j.data as { currentUser?: { inventory?: { dropCampaignsInProgress?: unknown } | null } | null };
+      if (
+        typeof j !== "object" ||
+        j === null ||
+        !("data" in j) ||
+        typeof j.data !== "object" ||
+        j.data === null
+      )
+        return;
+      const data = j.data as {
+        currentUser?: { inventory?: { dropCampaignsInProgress?: unknown } | null } | null;
+      };
       const campaigns = data.currentUser?.inventory?.dropCampaignsInProgress;
       if (!Array.isArray(campaigns)) return;
       for (const campaign of campaigns) {
-        if (typeof campaign !== 'object' || campaign === null) continue;
-        const drops = 'timeBasedDrops' in campaign && Array.isArray(campaign.timeBasedDrops) ? campaign.timeBasedDrops : [];
+        if (typeof campaign !== "object" || campaign === null) continue;
+        const drops =
+          "timeBasedDrops" in campaign && Array.isArray(campaign.timeBasedDrops)
+            ? campaign.timeBasedDrops
+            : [];
         for (const drop of drops) {
-          if (typeof drop !== 'object' || drop === null) continue;
-          const self = 'self' in drop && typeof drop.self === 'object' && drop.self !== null ? drop.self : {};
-          const isClaimed = 'isClaimed' in self && self.isClaimed === true;
-          const isClaimable = 'isClaimable' in self && self.isClaimable === true;
-          const instanceId = 'id' in self && typeof self.id === 'string' ? self.id : null;
+          if (typeof drop !== "object" || drop === null) continue;
+          const self =
+            "self" in drop && typeof drop.self === "object" && drop.self !== null ? drop.self : {};
+          const isClaimed = "isClaimed" in self && self.isClaimed === true;
+          const isClaimable = "isClaimable" in self && self.isClaimable === true;
+          const instanceId = "id" in self && typeof self.id === "string" ? self.id : null;
           if (isClaimed || !isClaimable || !instanceId) continue;
-          const claimRes = await fetch('https://gql.twitch.tv/gql', {
-            method: 'POST',
+          const claimRes = await fetch("https://gql.twitch.tv/gql", {
+            method: "POST",
             headers: this.authenticatedGqlHeaders(),
             body: JSON.stringify({
-              operationName: 'DropsPage_ClaimDropRewards',
-              extensions: { persistedQuery: { version: 1, sha256Hash: 'a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930' } },
-              variables: { input: { dropInstanceID: instanceId } }
+              operationName: "DropsPage_ClaimDropRewards",
+              extensions: {
+                persistedQuery: {
+                  version: 1,
+                  sha256Hash: "a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930",
+                },
+              },
+              variables: { input: { dropInstanceID: instanceId } },
             }),
-            signal: AbortSignal.timeout(10000)
+            signal: AbortSignal.timeout(10000),
           });
           const claimJson: unknown = await claimRes.json();
-          const ok = typeof claimJson === 'object' && claimJson !== null && 'data' in claimJson &&
-            typeof claimJson.data === 'object' && claimJson.data !== null &&
-            'claimDropRewards' in claimJson.data && claimJson.data.claimDropRewards !== null;
-          this.addLog(ok ? 'SUCCESS' : 'WARN', undefined, `Drop claim for ${instanceId.slice(0, 8)}: ${ok ? 'claimed' : 'failed'} (${claimRes.status}).`);
-          await new Promise(r => setTimeout(r, 5000 + Math.random() * 5000));
+          const ok =
+            typeof claimJson === "object" &&
+            claimJson !== null &&
+            "data" in claimJson &&
+            typeof claimJson.data === "object" &&
+            claimJson.data !== null &&
+            "claimDropRewards" in claimJson.data &&
+            claimJson.data.claimDropRewards !== null;
+          this.addLog(
+            ok ? "SUCCESS" : "WARN",
+            undefined,
+            `Drop claim for ${instanceId.slice(0, 8)}: ${ok ? "claimed" : "failed"} (${claimRes.status}).`,
+          );
+          await new Promise((r) => setTimeout(r, 5000 + Math.random() * 5000));
         }
       }
     } catch (err) {
-      this.addLog('WARN', undefined, `Drop sync failed: ${err instanceof Error ? err.message : 'unknown'}`);
+      this.addLog(
+        "WARN",
+        undefined,
+        `Drop sync failed: ${err instanceof Error ? err.message : "unknown"}`,
+      );
     }
   }
 
   private async sendMinuteWatched(streamer: Streamer) {
-    const channelRes = await fetch('https://gql.twitch.tv/gql', {
-      method: 'POST',
+    const channelRes = await fetch("https://gql.twitch.tv/gql", {
+      method: "POST",
       headers: this.authenticatedGqlHeaders(),
       body: JSON.stringify({
-        query: 'query($login: String!) { user(login: $login) { id stream { id } } }',
-        variables: { login: streamer.username }
+        query: "query($login: String!) { user(login: $login) { id stream { id } } }",
+        variables: { login: streamer.username },
       }),
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(8000),
     });
     const channelJson: unknown = await channelRes.json();
-    if (typeof channelJson !== 'object' || channelJson === null || !('data' in channelJson) || typeof channelJson.data !== 'object' || channelJson.data === null) return;
-    const d = channelJson.data as { user?: { id?: unknown; stream?: { id?: unknown } | null } | null };
+    if (
+      typeof channelJson !== "object" ||
+      channelJson === null ||
+      !("data" in channelJson) ||
+      typeof channelJson.data !== "object" ||
+      channelJson.data === null
+    )
+      return;
+    const d = channelJson.data as {
+      user?: { id?: unknown; stream?: { id?: unknown } | null } | null;
+    };
     const channelId = d?.user?.id;
     const broadcastId = d?.user?.stream?.id;
-    if (typeof channelId !== 'string' || typeof broadcastId !== 'string') return;
+    if (typeof channelId !== "string" || typeof broadcastId !== "string") return;
 
     const eventProperties: Record<string, unknown> = {
       channel_id: channelId,
       broadcast_id: broadcastId,
-      player: 'site',
+      player: "site",
       user_id: this.pubsubUserId,
       live: true,
-      channel: streamer.username
+      channel: streamer.username,
     };
     const payload = Buffer.from(
-      JSON.stringify([{ event: 'minute-watched', properties: eventProperties }]),
-      'utf-8'
-    ).toString('base64');
+      JSON.stringify([{ event: "minute-watched", properties: eventProperties }]),
+      "utf-8",
+    ).toString("base64");
 
-    const spadeRes = await fetch('https://spade.twitch.tv/track', {
-      method: 'POST',
+    const spadeRes = await fetch("https://spade.twitch.tv/track", {
+      method: "POST",
       headers: {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0',
-        'Content-Type': 'application/x-www-form-urlencoded'
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0",
+        "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({ data: payload }),
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(8000),
     });
     if (spadeRes.status === 204) {
       streamer.uptimeMinutes = (streamer.uptimeMinutes || 0) + 1;
@@ -1760,53 +2145,69 @@ export class MinerWorker {
       streamer.nextChestEstimateSeconds = Math.max(0, (15 - watched) * 60);
       streamer.chestAvailable = watched >= 15;
       this.noteWatchedDay(streamer);
-      this.hooks.broadcast('streamers', this.streamers);
+      this.hooks.broadcast("streamers", this.streamers);
     }
   }
 
   private joinRaid(raidId: string, targetLogin: string, watched?: Streamer) {
     const target = targetLogin.toLowerCase();
-    const streamer = watched ?? this.streamers.find(s => extractTwitchUsername(s.username) === target);
+    const streamer =
+      watched ?? this.streamers.find((s) => extractTwitchUsername(s.username) === target);
     if (!streamer || !this.settings.authToken) return;
-    fetch('https://gql.twitch.tv/gql', {
-      method: 'POST',
+    fetch("https://gql.twitch.tv/gql", {
+      method: "POST",
       headers: this.authenticatedGqlHeaders(),
       body: JSON.stringify({
-        operationName: 'JoinRaid',
-        extensions: { persistedQuery: { version: 1, sha256Hash: 'c6a332a86d1087fbbb1a8623aa01bd1313d2386e7c63be60fdb2d1901f01a4ae' } },
-        variables: { input: { raidID: raidId } }
+        operationName: "JoinRaid",
+        extensions: {
+          persistedQuery: {
+            version: 1,
+            sha256Hash: "c6a332a86d1087fbbb1a8623aa01bd1313d2386e7c63be60fdb2d1901f01a4ae",
+          },
+        },
+        variables: { input: { raidID: raidId } },
       }),
-      signal: AbortSignal.timeout(8000)
-    }).then(res => {
-      this.addLog('RAID', streamer.username, `Joined raid from ${streamer.displayName} to ${targetLogin} (JoinRaid ${res.status}).`);
-    }).catch(() => {
-      this.addLog('WARN', streamer.username, `Raid join to ${targetLogin} failed.`);
-    });
+      signal: AbortSignal.timeout(8000),
+    })
+      .then((res) => {
+        this.addLog(
+          "RAID",
+          streamer.username,
+          `Joined raid from ${streamer.displayName} to ${targetLogin} (JoinRaid ${res.status}).`,
+        );
+      })
+      .catch(() => {
+        this.addLog("WARN", streamer.username, `Raid join to ${targetLogin} failed.`);
+      });
   }
-
 
   private resetChestProgress(streamer: Streamer) {
     streamer.watchedMinutesSinceChest = 0;
     streamer.nextChestEstimateSeconds = 900;
     streamer.chestAvailable = false;
-    prisma.streamer.update({
-      where: { id: streamer.id },
-      data: { nextChestEstimateSeconds: 900, chestAvailable: false }
-    }).catch(() => {});
+    prisma.streamer
+      .update({
+        where: { id: streamer.id },
+        data: { nextChestEstimateSeconds: 900, chestAvailable: false },
+      })
+      .catch(() => {});
   }
 
   private applyRealBalance(channelLogin: string, balance: number, alreadyRecorded = 0) {
-    const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === channelLogin)
-      ?? this.streamers.find(s => extractTwitchUsername(s.username) === channelLogin.replace(/^_+/, ''));
+    const streamer =
+      this.streamers.find((s) => extractTwitchUsername(s.username) === channelLogin) ??
+      this.streamers.find(
+        (s) => extractTwitchUsername(s.username) === channelLogin.replace(/^_+/, ""),
+      );
     if (!streamer) return;
 
     const firstSync = !this.balanceBaselines.has(streamer.username);
     if (firstSync) {
       this.balanceBaselines.set(streamer.username, balance);
       this.addLog(
-        'SUCCESS',
+        "SUCCESS",
         streamer.username,
-        `Real Channel Points balance synced for ${streamer.displayName}: ${balance.toLocaleString()} pts (baseline set, simulated counters retired).`
+        `Real Channel Points balance synced for ${streamer.displayName}: ${balance.toLocaleString()} pts (baseline set, simulated counters retired).`,
       );
     }
     const baseline = this.balanceBaselines.get(streamer.username) ?? balance;
@@ -1824,13 +2225,13 @@ export class MinerWorker {
         this.recordStatisticalData({
           pointsMined: watchDelta,
           watchTimePoints: watchDelta,
-          channel: streamer.username
+          channel: streamer.username,
         }).catch(() => {});
       }
     }
     this.balanceBaselines.set(streamer.username, balance);
-    this.hooks.broadcast('streamers', this.streamers);
-    this.hooks.broadcast('status', this.getStatus());
+    this.hooks.broadcast("streamers", this.streamers);
+    this.hooks.broadcast("status", this.getStatus());
   }
   private noteWatchedDay(streamer: Streamer) {
     const watchDay = new Date().toISOString().slice(0, 10);
@@ -1838,21 +2239,28 @@ export class MinerWorker {
     const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
     streamer.watchStreak = streamer.lastWatchDay === yesterday ? streamer.watchStreak + 1 : 1;
     streamer.lastWatchDay = watchDay;
-    prisma.streamer.update({
-      where: { id: streamer.id },
-      data: { watchStreak: streamer.watchStreak, lastWatchDay: watchDay }
-    }).catch(() => {});
-    this.addLog('WATCH', streamer.username, `Watch streak day ${streamer.watchStreak} for ${streamer.displayName}.`);
+    prisma.streamer
+      .update({
+        where: { id: streamer.id },
+        data: { watchStreak: streamer.watchStreak, lastWatchDay: watchDay },
+      })
+      .catch(() => {});
+    this.addLog(
+      "WATCH",
+      streamer.username,
+      `Watch streak day ${streamer.watchStreak} for ${streamer.displayName}.`,
+    );
   }
 
-
-  public async updateSettings(newSettings: Partial<MinerSettings>): Promise<MinerSettings & { hasAuthToken: boolean }> {
+  public async updateSettings(
+    newSettings: Partial<MinerSettings>,
+  ): Promise<MinerSettings & { hasAuthToken: boolean }> {
     // Guard: an invalid GQL Client-Id makes every Twitch API call fail with
     // HTTP 400 and silently freezes live telemetry. Only accept the known-good
     // public web client id or a non-empty custom one that was verified.
     if (newSettings.clientId !== undefined) {
       const candidate = newSettings.clientId.trim();
-      const PUBLIC_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+      const PUBLIC_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko";
       if (!candidate) {
         // Empty value = explicit reset to the public web client id.
         newSettings.clientId = PUBLIC_CLIENT_ID;
@@ -1860,34 +2268,40 @@ export class MinerWorker {
         // Probe the candidate against GQL before trusting it: a bad id makes
         // every Twitch call fail with HTTP 400 and silently freezes telemetry.
         try {
-          const probe = await fetch('https://gql.twitch.tv/gql', {
-            method: 'POST',
-            headers: { 'Client-Id': candidate, 'Content-Type': 'application/json' },
-            body: JSON.stringify([{ query: 'query { user(login: "twitch") { id } }', variables: {} }]),
-            signal: AbortSignal.timeout(5000)
+          const probe = await fetch("https://gql.twitch.tv/gql", {
+            method: "POST",
+            headers: { "Client-Id": candidate, "Content-Type": "application/json" },
+            body: JSON.stringify([
+              { query: 'query { user(login: "twitch") { id } }', variables: {} },
+            ]),
+            signal: AbortSignal.timeout(5000),
           });
           if (probe.status === 400) {
             this.addLog(
-              'WARN',
+              "WARN",
               undefined,
-              `Rejected invalid Twitch Client-Id "${candidate}" (GQL returned ${probe.status}). Keeping the current one.`
+              `Rejected invalid Twitch Client-Id "${candidate}" (GQL returned ${probe.status}). Keeping the current one.`,
             );
             delete newSettings.clientId;
           }
         } catch {
-          this.addLog('WARN', undefined, 'Could not verify new Twitch Client-Id (network error). Keeping the current one.');
+          this.addLog(
+            "WARN",
+            undefined,
+            "Could not verify new Twitch Client-Id (network error). Keeping the current one.",
+          );
           delete newSettings.clientId;
         }
       }
     }
-    if (newSettings.authToken === '') {
+    if (newSettings.authToken === "") {
       delete newSettings.authToken;
     }
     this.settings = { ...this.settings, ...newSettings };
     if (newSettings.priorityMode) {
       this.rebalanceActiveSlots();
     }
-    this.addLog('INFO', undefined, 'Miner configuration settings updated.');
+    this.addLog("INFO", undefined, "Miner configuration settings updated.");
 
     // Save to Prisma SQLite
     try {
@@ -1906,7 +2320,7 @@ export class MinerWorker {
           autoBetPredictions: this.settings.autoBetPredictions,
           predictionStrategy: this.settings.predictionStrategy,
           maxBetPoints: this.settings.maxBetPoints,
-          checkIntervalSeconds: this.settings.checkIntervalSeconds
+          checkIntervalSeconds: this.settings.checkIntervalSeconds,
         },
         create: {
           userId: this.userId,
@@ -1922,13 +2336,13 @@ export class MinerWorker {
           autoBetPredictions: this.settings.autoBetPredictions,
           predictionStrategy: this.settings.predictionStrategy,
           maxBetPoints: this.settings.maxBetPoints,
-          checkIntervalSeconds: this.settings.checkIntervalSeconds
-        }
+          checkIntervalSeconds: this.settings.checkIntervalSeconds,
+        },
       });
     } catch (err) {
-      console.error('Failed to save miner settings to Prisma SQLite:', err);
+      console.error("Failed to save miner settings to Prisma SQLite:", err);
     }
-    this.hooks.broadcast('settings', this.getSettings());
+    this.hooks.broadcast("settings", this.getSettings());
     return this.getSettings();
   }
 
@@ -1952,7 +2366,7 @@ export class MinerWorker {
         displayName: username,
         isLive: false,
         viewerCount: 0,
-        game: 'Offline'
+        game: "Offline",
       };
     }
     const controller = new AbortController();
@@ -1960,16 +2374,16 @@ export class MinerWorker {
 
     try {
       const headers: Record<string, string> = {
-        ...this.authenticatedGqlHeaders()
+        ...this.authenticatedGqlHeaders(),
       };
       if (!this.settings.authToken) {
-        headers['Client-Id'] = this.settings.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko';
-        delete headers['Authorization'];
-        delete headers['X-Device-Id'];
+        headers["Client-Id"] = this.settings.clientId || "kimne78kx3ncx6brgo4mv6wki5h1ko";
+        delete headers["Authorization"];
+        delete headers["X-Device-Id"];
       }
 
-      const res = await fetch('https://gql.twitch.tv/gql', {
-        method: 'POST',
+      const res = await fetch("https://gql.twitch.tv/gql", {
+        method: "POST",
         headers,
         body: JSON.stringify([
           {
@@ -2005,53 +2419,83 @@ export class MinerWorker {
                 }
               }
             }`,
-            variables: { login: clean }
-          }
+            variables: { login: clean },
+          },
         ]),
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeout);
       if (res.ok) {
         const json: unknown = await res.json();
         let user: Record<string, unknown> | null = null;
-        if (Array.isArray(json) && json[0] && typeof json[0] === 'object' && 'data' in json[0] && json[0].data && typeof json[0].data === 'object' && 'user' in json[0].data) {
+        if (
+          Array.isArray(json) &&
+          json[0] &&
+          typeof json[0] === "object" &&
+          "data" in json[0] &&
+          json[0].data &&
+          typeof json[0].data === "object" &&
+          "user" in json[0].data
+        ) {
           const rawUser = json[0].data.user;
-          if (rawUser && typeof rawUser === 'object') {
+          if (rawUser && typeof rawUser === "object") {
             user = rawUser as Record<string, unknown>;
           }
         }
         if (user) {
           const rawStream = user.stream;
-          const stream = rawStream && typeof rawStream === 'object' ? rawStream as { viewersCount?: unknown; game?: { name?: unknown } | null } : null;
+          const stream =
+            rawStream && typeof rawStream === "object"
+              ? (rawStream as { viewersCount?: unknown; game?: { name?: unknown } | null })
+              : null;
           const isLive = !!stream;
           const viewerCount = stream ? Number(stream.viewersCount || 0) : 0;
-          const game = stream?.game && typeof stream.game === 'object' && typeof stream.game.name === 'string'
-            ? stream.game.name
-            : (isLive ? 'Variety Stream' : 'Offline');
+          const game =
+            stream?.game && typeof stream.game === "object" && typeof stream.game.name === "string"
+              ? stream.game.name
+              : isLive
+                ? "Variety Stream"
+                : "Offline";
           const rawChannel = user.channel;
-          const points = rawChannel && typeof rawChannel === 'object' && 'self' in rawChannel && rawChannel.self && typeof rawChannel.self === 'object'
-            ? (rawChannel.self as { communityPoints?: { balance?: unknown } }).communityPoints?.balance
-            : undefined;
+          const points =
+            rawChannel &&
+            typeof rawChannel === "object" &&
+            "self" in rawChannel &&
+            rawChannel.self &&
+            typeof rawChannel.self === "object"
+              ? (rawChannel.self as { communityPoints?: { balance?: unknown } }).communityPoints
+                  ?.balance
+              : undefined;
 
           const rawSelf = user.self;
-          const tier = rawSelf && typeof rawSelf === 'object' && 'subscriptionBenefit' in rawSelf && rawSelf.subscriptionBenefit && typeof rawSelf.subscriptionBenefit === 'object'
-            ? (rawSelf.subscriptionBenefit as { tier?: unknown }).tier
-            : undefined;
-          const follow = rawSelf && typeof rawSelf === 'object' && 'follower' in rawSelf && rawSelf.follower && typeof rawSelf.follower === 'object'
-            ? rawSelf.follower
-            : null;
+          const tier =
+            rawSelf &&
+            typeof rawSelf === "object" &&
+            "subscriptionBenefit" in rawSelf &&
+            rawSelf.subscriptionBenefit &&
+            typeof rawSelf.subscriptionBenefit === "object"
+              ? (rawSelf.subscriptionBenefit as { tier?: unknown }).tier
+              : undefined;
+          const follow =
+            rawSelf &&
+            typeof rawSelf === "object" &&
+            "follower" in rawSelf &&
+            rawSelf.follower &&
+            typeof rawSelf.follower === "object"
+              ? rawSelf.follower
+              : null;
           const rawDisplayName = user.displayName;
           const rawAvatar = user.profileImageURL;
           return {
-            displayName: typeof rawDisplayName === 'string' ? rawDisplayName : clean,
-            avatar: typeof rawAvatar === 'string' ? rawAvatar : undefined,
+            displayName: typeof rawDisplayName === "string" ? rawDisplayName : clean,
+            avatar: typeof rawAvatar === "string" ? rawAvatar : undefined,
             isLive,
             viewerCount,
             game,
-            points: typeof points === 'number' ? points : undefined,
+            points: typeof points === "number" ? points : undefined,
             isFollowing: follow !== null,
-            subscriptionTier: typeof tier === 'string' ? tier : null
+            subscriptionTier: typeof tier === "string" ? tier : null,
           };
         }
       }
@@ -2061,20 +2505,20 @@ export class MinerWorker {
       clearTimeout(timeout);
     }
 
-    const existing = this.streamers.find(s => extractTwitchUsername(s.username) === clean);
+    const existing = this.streamers.find((s) => extractTwitchUsername(s.username) === clean);
     return {
       displayName: existing?.displayName || clean,
       avatar: existing?.avatar,
       isLive: existing?.isLive ?? false,
       viewerCount: existing?.isLive ? (existing?.viewerCount ?? 0) : 0,
-      game: existing?.game ?? 'Offline',
-      points: existing?.points
+      game: existing?.game ?? "Offline",
+      points: existing?.points,
     };
   }
 
   public async getLiveStats(username: string) {
     const clean = extractTwitchUsername(username);
-    const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === clean);
+    const streamer = this.streamers.find((s) => extractTwitchUsername(s.username) === clean);
     if (!streamer) {
       return null;
     }
@@ -2084,23 +2528,25 @@ export class MinerWorker {
       const live = await this.fetchTwitchLiveStats(clean);
       if (live) {
         if (live.isLive !== undefined) streamer.isLive = live.isLive;
-        if (typeof live.viewerCount === 'number') streamer.viewerCount = live.viewerCount;
+        if (typeof live.viewerCount === "number") streamer.viewerCount = live.viewerCount;
         if (live.game) streamer.game = live.game;
         if (live.avatar) streamer.avatar = live.avatar;
         if (live.displayName) streamer.displayName = live.displayName;
-        if (typeof live.points === 'number') streamer.points = live.points;
+        if (typeof live.points === "number") streamer.points = live.points;
 
-        await prisma.streamer.update({
-          where: { id: streamer.id },
-          data: {
-            isLive: streamer.isLive,
-            viewerCount: streamer.viewerCount,
-            game: streamer.game,
-            avatar: streamer.avatar,
-            displayName: streamer.displayName,
-            points: streamer.points
-          }
-        }).catch(() => {});
+        await prisma.streamer
+          .update({
+            where: { id: streamer.id },
+            data: {
+              isLive: streamer.isLive,
+              viewerCount: streamer.viewerCount,
+              game: streamer.game,
+              avatar: streamer.avatar,
+              displayName: streamer.displayName,
+              points: streamer.points,
+            },
+          })
+          .catch(() => {});
       }
     } catch (e) {
       // Return cached
@@ -2125,7 +2571,7 @@ export class MinerWorker {
       uptimeMinutes: streamer.uptimeMinutes,
       isPartner: streamer.isPartner,
       isAffiliate: streamer.isAffiliate,
-      fetchedAt: new Date().toISOString()
+      fetchedAt: new Date().toISOString(),
     };
   }
 
@@ -2134,12 +2580,20 @@ export class MinerWorker {
     return this.streamers;
   }
 
-  public async addStreamer(username: string, displayName: string, userId: string): Promise<Streamer> {
+  public async addStreamer(
+    username: string,
+    displayName: string,
+    userId: string,
+  ): Promise<Streamer> {
     const cleanUsername = extractTwitchUsername(username);
     if (!cleanUsername) {
-      throw new Error('Invalid Twitch channel username or URL');
+      throw new Error("Invalid Twitch channel username or URL");
     }
-    const existing = this.streamers.find(s => extractTwitchUsername(s.username) === cleanUsername && (s.userId ?? null) === (userId ?? null));
+    const existing = this.streamers.find(
+      (s) =>
+        extractTwitchUsername(s.username) === cleanUsername &&
+        (s.userId ?? null) === (userId ?? null),
+    );
     if (existing) {
       // Refresh live stats directly from Twitch
       const live = await this.fetchTwitchLiveStats(cleanUsername);
@@ -2147,18 +2601,20 @@ export class MinerWorker {
       existing.viewerCount = live.viewerCount;
       if (live.displayName) existing.displayName = live.displayName;
       if (live.avatar) existing.avatar = live.avatar;
-      await prisma.streamer.update({
-        where: { id: existing.id },
-        data: {
-          isLive: existing.isLive,
-          viewerCount: existing.viewerCount,
-          game: existing.game,
-          avatar: existing.avatar,
-          displayName: existing.displayName
-        }
-      }).catch(() => {});
+      await prisma.streamer
+        .update({
+          where: { id: existing.id },
+          data: {
+            isLive: existing.isLive,
+            viewerCount: existing.viewerCount,
+            game: existing.game,
+            avatar: existing.avatar,
+            displayName: existing.displayName,
+          },
+        })
+        .catch(() => {});
       this.rebalanceActiveSlots();
-      this.hooks.broadcast('streamers', this.streamers);
+      this.hooks.broadcast("streamers", this.streamers);
       return existing;
     }
 
@@ -2170,12 +2626,12 @@ export class MinerWorker {
       displayName: live.displayName || displayName || cleanUsername,
       avatar: live.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${cleanUsername}`,
       isLive: live.isLive,
-      game: live.game || (live.isLive ? 'Variety Stream' : 'Offline'),
+      game: live.game || (live.isLive ? "Variety Stream" : "Offline"),
       viewerCount: live.isLive ? live.viewerCount : 0,
       points: live.points ?? 0,
       isMining: false,
       lurkEnabled: false,
-      lurkMessage: '!lurk',
+      lurkMessage: "!lurk",
       priority: this.streamers.length + 1,
       watchStreak: 0,
       nextChestEstimateSeconds: 900,
@@ -2185,7 +2641,7 @@ export class MinerWorker {
       isFollowing: live.isFollowing === true,
       isPartner: false,
       isAffiliate: false,
-      subscriptionTier: typeof live.subscriptionTier === 'string' ? live.subscriptionTier : null
+      subscriptionTier: typeof live.subscriptionTier === "string" ? live.subscriptionTier : null,
     };
 
     // Store in SQLite database via Prisma ORM engine
@@ -2196,9 +2652,9 @@ export class MinerWorker {
         viewerCount: newStreamerData.viewerCount,
         displayName: newStreamerData.displayName,
         isFollowing: newStreamerData.isFollowing,
-        subscriptionTier: newStreamerData.subscriptionTier
+        subscriptionTier: newStreamerData.subscriptionTier,
       },
-      create: newStreamerData
+      create: newStreamerData,
     });
 
     const streamer: Streamer = {
@@ -2226,37 +2682,37 @@ export class MinerWorker {
       isFollowing: savedInDb.isFollowing,
       isPartner: savedInDb.isPartner,
       isAffiliate: savedInDb.isAffiliate,
-      subscriptionTier: savedInDb.subscriptionTier ?? undefined
+      subscriptionTier: savedInDb.subscriptionTier ?? undefined,
     };
     this.streamers.push(streamer);
     this.addLog(
-      'INFO',
+      "INFO",
       cleanUsername,
-      `Added streamer ${streamer.displayName} to mining watchlist (${streamer.isLive ? `LIVE with ${streamer.viewerCount.toLocaleString()} viewers playing ${streamer.game}` : 'Offline'}).`
+      `Added streamer ${streamer.displayName} to mining watchlist (${streamer.isLive ? `LIVE with ${streamer.viewerCount.toLocaleString()} viewers playing ${streamer.game}` : "Offline"}).`,
     );
     this.rebalanceActiveSlots();
-    this.hooks.broadcast('streamers', this.streamers);
+    this.hooks.broadcast("streamers", this.streamers);
     return streamer;
   }
 
   public async removeStreamer(username: string): Promise<boolean> {
     const clean = extractTwitchUsername(username);
     this.disconnectFromStreamer(clean);
-    const index = this.streamers.findIndex(s => extractTwitchUsername(s.username) === clean);
+    const index = this.streamers.findIndex((s) => extractTwitchUsername(s.username) === clean);
     if (index !== -1) {
       const removed = this.streamers.splice(index, 1)[0];
       // Remove from SQLite database via Prisma ORM engine
       try {
         await prisma.streamer.delete({
-          where: { id: removed.id }
+          where: { id: removed.id },
         });
       } catch (err) {
-        console.error('Failed to delete streamer from Prisma SQLite:', err);
+        console.error("Failed to delete streamer from Prisma SQLite:", err);
       }
 
-      this.addLog('INFO', clean, `Removed streamer ${removed.displayName} from mining watchlist.`);
+      this.addLog("INFO", clean, `Removed streamer ${removed.displayName} from mining watchlist.`);
       this.rebalanceActiveSlots();
-      this.hooks.broadcast('streamers', this.streamers);
+      this.hooks.broadcast("streamers", this.streamers);
       return true;
     }
     return false;
@@ -2264,10 +2720,20 @@ export class MinerWorker {
 
   public async updateStreamer(username: string, patch: unknown): Promise<Streamer | null> {
     const clean = extractTwitchUsername(username);
-    const s = this.streamers.find(item => extractTwitchUsername(item.username) === clean);
+    const s = this.streamers.find((item) => extractTwitchUsername(item.username) === clean);
     if (!s) return null;
     const p = patch as Partial<Streamer>;
-    const allowed: Array<keyof Streamer> = ['points', 'priority', 'enabled', 'isMining', 'isLive', 'viewerCount', 'game', 'lurkEnabled', 'lurkMessage'];
+    const allowed: Array<keyof Streamer> = [
+      "points",
+      "priority",
+      "enabled",
+      "isMining",
+      "isLive",
+      "viewerCount",
+      "game",
+      "lurkEnabled",
+      "lurkMessage",
+    ];
     for (const key of allowed) {
       if (p[key] !== undefined) {
         (s as Record<keyof Streamer, unknown>)[key] = p[key];
@@ -2279,16 +2745,43 @@ export class MinerWorker {
       await prisma.streamer.update({
         where: { id: s.id },
         data: {
-          points: (patch as Partial<Streamer>).points !== undefined ? (patch as Partial<Streamer>).points : undefined,
-          priority: (patch as Partial<Streamer>).priority !== undefined ? (patch as Partial<Streamer>).priority : undefined,
-          enabled: (patch as Partial<Streamer>).enabled !== undefined ? (patch as Partial<Streamer>).enabled : undefined,
-          isMining: (patch as Partial<Streamer>).isMining !== undefined ? (patch as Partial<Streamer>).isMining : undefined,
-          isLive: (patch as Partial<Streamer>).isLive !== undefined ? (patch as Partial<Streamer>).isLive : undefined,
-          viewerCount: (patch as Partial<Streamer>).viewerCount !== undefined ? (patch as Partial<Streamer>).viewerCount : undefined,
-          game: (patch as Partial<Streamer>).game !== undefined ? (patch as Partial<Streamer>).game : undefined,
-          lurkEnabled: (patch as Partial<Streamer>).lurkEnabled !== undefined ? (patch as Partial<Streamer>).lurkEnabled : undefined,
-          lurkMessage: (patch as Partial<Streamer>).lurkMessage !== undefined ? (patch as Partial<Streamer>).lurkMessage : undefined
-        }
+          points:
+            (patch as Partial<Streamer>).points !== undefined
+              ? (patch as Partial<Streamer>).points
+              : undefined,
+          priority:
+            (patch as Partial<Streamer>).priority !== undefined
+              ? (patch as Partial<Streamer>).priority
+              : undefined,
+          enabled:
+            (patch as Partial<Streamer>).enabled !== undefined
+              ? (patch as Partial<Streamer>).enabled
+              : undefined,
+          isMining:
+            (patch as Partial<Streamer>).isMining !== undefined
+              ? (patch as Partial<Streamer>).isMining
+              : undefined,
+          isLive:
+            (patch as Partial<Streamer>).isLive !== undefined
+              ? (patch as Partial<Streamer>).isLive
+              : undefined,
+          viewerCount:
+            (patch as Partial<Streamer>).viewerCount !== undefined
+              ? (patch as Partial<Streamer>).viewerCount
+              : undefined,
+          game:
+            (patch as Partial<Streamer>).game !== undefined
+              ? (patch as Partial<Streamer>).game
+              : undefined,
+          lurkEnabled:
+            (patch as Partial<Streamer>).lurkEnabled !== undefined
+              ? (patch as Partial<Streamer>).lurkEnabled
+              : undefined,
+          lurkMessage:
+            (patch as Partial<Streamer>).lurkMessage !== undefined
+              ? (patch as Partial<Streamer>).lurkMessage
+              : undefined,
+        },
       });
     } catch (e) {
       // Ignored
@@ -2296,13 +2789,13 @@ export class MinerWorker {
 
     this.streamers.sort((a, b) => a.priority - b.priority);
     this.rebalanceActiveSlots();
-    this.hooks.broadcast('streamers', this.streamers);
+    this.hooks.broadcast("streamers", this.streamers);
     return s;
   }
 
   public async toggleStreamerLive(username: string, forceLive?: boolean): Promise<Streamer | null> {
     const clean = extractTwitchUsername(username);
-    const streamer = this.streamers.find(s => extractTwitchUsername(s.username) === clean);
+    const streamer = this.streamers.find((s) => extractTwitchUsername(s.username) === clean);
     if (!streamer) return null;
 
     const newLive = forceLive !== undefined ? forceLive : !streamer.isLive;
@@ -2331,22 +2824,22 @@ export class MinerWorker {
           isLive: streamer.isLive,
           viewerCount: streamer.viewerCount,
           game: streamer.game,
-          isMining: streamer.isMining
-        }
+          isMining: streamer.isMining,
+        },
       });
     } catch (e) {}
 
     this.addLog(
-      newLive ? 'INFO' : 'WARN',
+      newLive ? "INFO" : "WARN",
       clean,
       newLive
         ? `🟢 Channel ${streamer.displayName} status set to ONLINE (${streamer.game}, ${streamer.viewerCount.toLocaleString()} viewers).`
-        : `🔴 Channel ${streamer.displayName} status set to OFFLINE. Released from active watch slot.`
+        : `🔴 Channel ${streamer.displayName} status set to OFFLINE. Released from active watch slot.`,
     );
 
     this.rebalanceActiveSlots();
-    this.hooks.broadcast('streamers', this.streamers);
-    this.hooks.broadcast('status', this.getStatus());
+    this.hooks.broadcast("streamers", this.streamers);
+    this.hooks.broadcast("status", this.getStatus());
     return streamer;
   }
 
@@ -2369,26 +2862,30 @@ export class MinerWorker {
     if (list.length > 200) {
       list.shift();
     }
-    this.hooks.broadcast('chat', { channel: clean, message: msg });
+    this.hooks.broadcast("chat", { channel: clean, message: msg });
   }
 
-  public handleUserChatMessage(channel: string, text: string, senderName = 'You'): ChatMessage {
+  public handleUserChatMessage(channel: string, text: string, senderName = "You"): ChatMessage {
     const clean = channel.trim().toLowerCase();
-    const streamer = this.streamers.find(s => s.username === clean);
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const streamer = this.streamers.find((s) => s.username === clean);
+    const time = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       channel: clean,
-      username: senderName.toLowerCase().replace(/\s+/g, '_'),
+      username: senderName.toLowerCase().replace(/\s+/g, "_"),
       displayName: senderName,
-      color: '#00F593',
-      badges: ['sub'],
+      color: "#00F593",
+      badges: ["sub"],
       message: text,
       timestamp: time,
       isHighlighted: false,
       isBot: false,
-      isSystem: false
+      isSystem: false,
     };
 
     this.addStreamerChatMessage(clean, userMsg);
@@ -2397,7 +2894,7 @@ export class MinerWorker {
     const conn = this.activeConnections.get(clean);
     if (conn?.ws && conn.ws.readyState === 1) {
       try {
-        const targetChannel = clean === 'xqcow' ? 'xqc' : clean;
+        const targetChannel = clean === "xqcow" ? "xqc" : clean;
         conn.ws.send(`PRIVMSG #${targetChannel} :${text}\r\n`);
       } catch (e) {}
     }
@@ -2405,13 +2902,13 @@ export class MinerWorker {
     const trimmed = text.trim();
     const lower = trimmed.toLowerCase();
 
-    if (lower === '!claim' || lower === '!chest') {
+    if (lower === "!claim" || lower === "!chest") {
       if (streamer) {
         this.executeClaimBonus(streamer);
       }
     }
 
-    this.addLog('CHAT', clean, `<${senderName}> ${text}`);
+    this.addLog("CHAT", clean, `<${senderName}> ${text}`);
     return userMsg;
   }
 
@@ -2438,61 +2935,70 @@ export class MinerWorker {
           return false;
         }
       }
-      if (!conn || conn.connectionState === 'disconnected') return false;
-      await new Promise<void>(resolve => setTimeout(resolve, 500));
+      if (!conn || conn.connectionState === "disconnected") return false;
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
     }
     return false;
   }
 
   private hasRecentLurkMessage(channel: string, message: string): boolean {
     const history = this.streamerChats.get(channel.toLowerCase()) ?? [];
-    return history.some(m =>
-      m.message.trim().toLowerCase() === message.trim().toLowerCase() &&
-      m.username === this.authLoginName?.toLowerCase()
+    return history.some(
+      (m) =>
+        m.message.trim().toLowerCase() === message.trim().toLowerCase() &&
+        m.username === this.authLoginName?.toLowerCase(),
     );
   }
 
   public startMiner() {
-    this.status.state = 'running';
-    this.addLog('SUCCESS', undefined, 'Miner engine started. Monitoring channels and priority queues.');
+    this.status.state = "running";
+    this.addLog(
+      "SUCCESS",
+      undefined,
+      "Miner engine started. Monitoring channels and priority queues.",
+    );
     this.rebalanceActiveSlots();
-    this.hooks.broadcast('status', this.getStatus());
+    this.hooks.broadcast("status", this.getStatus());
   }
 
   public pauseMiner() {
-    this.status.state = 'paused';
+    this.status.state = "paused";
     this.disconnectAllStreamers();
     for (const s of this.streamers) {
       s.isMining = false;
     }
     this.status.activeSlots = [];
-    this.addLog('WARN', undefined, 'Miner engine paused. Watch time and bonus claim tasks suspended.');
-    this.hooks.broadcast('status', this.getStatus());
-    this.hooks.broadcast('streamers', this.streamers);
+    this.addLog(
+      "WARN",
+      undefined,
+      "Miner engine paused. Watch time and bonus claim tasks suspended.",
+    );
+    this.hooks.broadcast("status", this.getStatus());
+    this.hooks.broadcast("streamers", this.streamers);
   }
 
   public stopMiner() {
-    this.status.state = 'stopped';
+    this.status.state = "stopped";
     this.disconnectAllStreamers();
     for (const s of this.streamers) {
       s.isMining = false;
     }
     this.status.activeSlots = [];
-    this.addLog('WARN', undefined, 'Miner engine stopped.');
-    this.hooks.broadcast('status', this.getStatus());
-    this.hooks.broadcast('streamers', this.streamers);
+    this.addLog("WARN", undefined, "Miner engine stopped.");
+    this.hooks.broadcast("status", this.getStatus());
+    this.hooks.broadcast("streamers", this.streamers);
   }
 
   public async triggerTestClaim(channelName?: string) {
-    let target = this.streamers.find(s => s.isMining && s.isLive);
+    let target = this.streamers.find((s) => s.isMining && s.isLive);
     if (channelName) {
-      target = this.streamers.find(s => s.username === channelName.toLowerCase());
+      target = this.streamers.find((s) => s.username === channelName.toLowerCase());
     }
     if (!target) {
       target = this.streamers[0];
     }
     if (!target) {
-      return { success: false, message: 'No available channel to claim' };
+      return { success: false, message: "No available channel to claim" };
     }
     if (this.settings.isSimulationMode) {
       await this.executeClaimBonus(target);
@@ -2503,13 +3009,14 @@ export class MinerWorker {
 
   public getLogs(limit = 100, level?: string, search?: string): LogEntry[] {
     let result = [...this.logs];
-    if (level && level !== 'ALL') {
-      result = result.filter(l => l.level === level);
+    if (level && level !== "ALL") {
+      result = result.filter((l) => l.level === level);
     }
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(
-        l => l.message.toLowerCase().includes(q) || (l.channel && l.channel.toLowerCase().includes(q))
+        (l) =>
+          l.message.toLowerCase().includes(q) || (l.channel && l.channel.toLowerCase().includes(q)),
       );
     }
     return result.slice(0, limit);
@@ -2522,15 +3029,15 @@ export class MinerWorker {
     } catch (e) {
       void 0;
     }
-    this.addLog('INFO', undefined, 'Log history cleared by user.');
+    this.addLog("INFO", undefined, "Log history cleared by user.");
   }
 
   public async getStatisticalRecords(): Promise<StatisticalRecord[]> {
     const records = await prisma.statisticalRecord.findMany({
       where: { userId: this.userId },
-      orderBy: { recordedAt: 'asc' }
+      orderBy: { recordedAt: "asc" },
     });
-    return records.map(r => ({
+    return records.map((r) => ({
       id: r.id,
       userId: r.userId,
       hourKey: r.hourKey,
@@ -2543,7 +3050,7 @@ export class MinerWorker {
       dropsCount: r.dropsCount,
       chestsPoints: r.chestsPoints,
       watchTimePoints: r.watchTimePoints,
-      recordedAt: r.recordedAt.toISOString()
+      recordedAt: r.recordedAt.toISOString(),
     }));
   }
 
@@ -2551,7 +3058,7 @@ export class MinerWorker {
     // Read actual statistical records from SQLite via Prisma
     const records = await prisma.statisticalRecord.findMany({
       where: { userId: this.userId },
-      orderBy: { recordedAt: 'asc' }
+      orderBy: { recordedAt: "asc" },
     });
 
     const hourlyMap = new Map<string, { points: number; claims: number }>();
@@ -2579,11 +3086,11 @@ export class MinerWorker {
     }
 
     // Default fallbacks if empty - ONLY in development mode
-    if (hourlyMap.size === 0 && process.env.NODE_ENV === 'development') {
+    if (hourlyMap.size === 0 && process.env.NODE_ENV === "development") {
       const now = new Date();
       for (let i = 8; i >= 0; i--) {
         const d = new Date(now.getTime() - i * 3600000);
-        const hourStr = d.getHours().toString().padStart(2, '0') + ':00';
+        const hourStr = d.getHours().toString().padStart(2, "0") + ":00";
         hourlyMap.set(hourStr, { points: 200, claims: 4 });
       }
       totalChests = 3250;
@@ -2596,28 +3103,38 @@ export class MinerWorker {
     const hourlyHistory = Array.from(hourlyMap.entries()).map(([time, data]) => ({
       time,
       points: data.points,
-      claims: data.claims
+      claims: data.claims,
     }));
 
-    const colors = ['#9146FF', '#00F593', '#F59E0B', '#3B82F6', '#EC4899', '#8B5CF6'];
-    const totalEarnedAll = Math.max(1, Array.from(channelEarned.values()).reduce((acc, v) => acc + v, 0));
+    const colors = ["#9146FF", "#00F593", "#F59E0B", "#3B82F6", "#EC4899", "#8B5CF6"];
+    const totalEarnedAll = Math.max(
+      1,
+      Array.from(channelEarned.values()).reduce((acc, v) => acc + v, 0),
+    );
 
-    const channelDistribution = Array.from(channelEarned.entries()).map(([username, earned], idx) => {
-      const s = this.streamers.find(st => st.username === username);
-      return {
-        channel: s?.displayName ?? username,
-        points: earned,
-        percentage: Math.round((earned / totalEarnedAll) * 100),
-        color: colors[idx % colors.length]
-      };
-    });
+    const channelDistribution = Array.from(channelEarned.entries()).map(
+      ([username, earned], idx) => {
+        const s = this.streamers.find((st) => st.username === username);
+        return {
+          channel: s?.displayName ?? username,
+          points: earned,
+          percentage: Math.round((earned / totalEarnedAll) * 100),
+          color: colors[idx % colors.length],
+        };
+      },
+    );
 
     const categoryBreakdown = [
-      { name: 'Community Chests (+50)', value: totalChests, points: totalChests, color: '#9146FF' },
-      { name: 'Watch Time Heartbeats', value: totalWatch, points: totalWatch, color: '#00F593' },
-      { name: 'Raid Bonuses (+250)', value: totalRaids, points: totalRaids, color: '#F59E0B' },
-      { name: 'Predictions & Betting', value: Math.max(0, totalPreds), points: totalPreds, color: '#3B82F6' },
-      { name: 'Drops Claimed', value: totalDrops, points: totalDrops, color: '#EC4899' }
+      { name: "Community Chests (+50)", value: totalChests, points: totalChests, color: "#9146FF" },
+      { name: "Watch Time Heartbeats", value: totalWatch, points: totalWatch, color: "#00F593" },
+      { name: "Raid Bonuses (+250)", value: totalRaids, points: totalRaids, color: "#F59E0B" },
+      {
+        name: "Predictions & Betting",
+        value: Math.max(0, totalPreds),
+        points: totalPreds,
+        color: "#3B82F6",
+      },
+      { name: "Drops Claimed", value: totalDrops, points: totalDrops, color: "#EC4899" },
     ];
 
     return {
@@ -2629,8 +3146,8 @@ export class MinerWorker {
         totalWatchTimePoints: totalWatch,
         totalRaidPoints: totalRaids,
         totalPredictionPoints: totalPreds,
-        totalDropPoints: totalDrops
-      }
+        totalDropPoints: totalDrops,
+      },
     };
   }
 }
