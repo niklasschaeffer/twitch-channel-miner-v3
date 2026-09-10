@@ -3,7 +3,7 @@ type: reference
 title: Database
 description: SQLite via Prisma — schema-first db push workflow, seed behavior,
   and the single-file bind-mount WAL hazard.
-tags: [ sqlite, prisma, wal, backup, database ]
+tags: [sqlite, prisma, wal, backup, database]
 last_updated: 2026-09-10T08:41:05.159Z
 updated_by: Niklas Schäffer
 ---
@@ -21,7 +21,7 @@ SQLite through Prisma. Schema: `prisma/schema.prisma`; live DB: `prisma/dev.db` 
 
 ## Single-file bind-mount WAL hazard
 
-⚠️ **The one operational rule that matters most.** The compose volume mounts a *single file* (`./prisma/dev.db:/app/data/miner.db`), so the `-wal` and `-shm` sidecars live **inside the container only**:
+⚠️ **The one operational rule that matters most.** The compose volume mounts a _single file_ (`./prisma/dev.db:/app/data/miner.db`), so the `-wal` and `-shm` sidecars live **inside the container only**:
 
 - **Host-side reads/copies of `dev.db` see stale data** — recent writes are still in the container's WAL, not yet checkpointed into the main file
 - **A host-side `prisma db push` while the container runs corrupts the DB** (`invalid rootpage`) — the host and container write competing page layouts through different sidecar state

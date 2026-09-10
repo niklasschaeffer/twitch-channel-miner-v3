@@ -3,7 +3,7 @@ type: reference
 title: Frontend
 description: React 19 + Vite + Tailwind 4 app — component map, data flow over
   SSE and REST, theming, and i18n (en/de).
-tags: [ frontend, react, vite, tailwind, i18n ]
+tags: [frontend, react, vite, tailwind, i18n]
 last_updated: 2026-09-10T08:41:22.934Z
 updated_by: Niklas Schäffer
 ---
@@ -24,19 +24,19 @@ updated_by: Niklas Schäffer
 
 ## Component map (`src/components/`)
 
-| Component | Role |
-| --- | --- |
-| `Header` | App title, engine state badge, simulation badge when `isSimulationMode`, theme toggle (class-based dark variant), language switcher, auth/user menu |
-| `MetricsOverview` | Top-level counters: total points, today, hourly rate, claims, raids, drops |
-| `ActiveSlotsCard` | Which channels currently occupy watch slots |
-| `StreamerList` | The watchlist: live status, viewers, points, streak badges, lurk toggle, chat/console filter, remove, manual reordering (persisted via priority, 1.9.5), priority-mode selector |
-| `AddStreamerModal` | Add a channel by username/URL (sanitized client-side via `extractTwitchUsername` in `src/lib/twitch.ts`) |
-| `SlotIrcChat` | IRC chat panel; channel bar scrolls sideways; bots/broadcaster filtered |
-| `LiveConsole` | Real-time event log with per-channel and per-level filters (Claims / Watch / Raids / Predictions / Drops) |
-| `AnalyticsView` | Charts (recharts): hourly history, channel distribution, category breakdown |
-| `SettingsModal` | Engine controls, concurrency, toggles, prediction strategy + max bet, client-id field, Twitch connect/disconnect |
-| `TwitchConnect` | Device-flow widget: code + `twitch.tv/activate` link, polls `/api/twitch/device/poll` up to a minute, shows Connected with login name, stale-token banner |
-| `AuthModal` | Login/register (and Google button when configured) |
+| Component          | Role                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Header`           | App title, engine state badge, simulation badge when `isSimulationMode`, theme toggle (class-based dark variant), language switcher, auth/user menu                             |
+| `MetricsOverview`  | Top-level counters: total points, today, hourly rate, claims, raids, drops                                                                                                      |
+| `ActiveSlotsCard`  | Which channels currently occupy watch slots                                                                                                                                     |
+| `StreamerList`     | The watchlist: live status, viewers, points, streak badges, lurk toggle, chat/console filter, remove, manual reordering (persisted via priority, 1.9.5), priority-mode selector |
+| `AddStreamerModal` | Add a channel by username/URL (sanitized client-side via `extractTwitchUsername` in `src/lib/twitch.ts`)                                                                        |
+| `SlotIrcChat`      | IRC chat panel; channel bar scrolls sideways; bots/broadcaster filtered                                                                                                         |
+| `LiveConsole`      | Real-time event log with per-channel and per-level filters (Claims / Watch / Raids / Predictions / Drops)                                                                       |
+| `AnalyticsView`    | Charts (recharts): hourly history, channel distribution, category breakdown                                                                                                     |
+| `SettingsModal`    | Engine controls, concurrency, toggles, prediction strategy + max bet, client-id field, Twitch connect/disconnect                                                                |
+| `TwitchConnect`    | Device-flow widget: code + `twitch.tv/activate` link, polls `/api/twitch/device/poll` up to a minute, shows Connected with login name, stale-token banner                       |
+| `AuthModal`        | Login/register (and Google button when configured)                                                                                                                              |
 
 Helpers in `src/lib/`: `badges.ts` (`formatSubTier` maps `1000/2000/3000/prime`), `gravatar.ts` (md5 for identicons, shared with the server), `twitch.ts` (username extraction), `prismaClient.ts`.
 

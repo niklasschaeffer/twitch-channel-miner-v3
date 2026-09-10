@@ -3,7 +3,7 @@ type: reference
 title: Conventions & Code Rules
 description: Enforced code style — no any, no comments, no tiny wrappers, i18n
   in en+de, comment-checker hook, merge discipline.
-tags: [ conventions, code-style, i18n, rules ]
+tags: [conventions, code-style, i18n, rules]
 last_updated: 2026-09-10T08:41:17.066Z
 updated_by: Niklas Schäffer
 ---

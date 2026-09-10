@@ -3,7 +3,7 @@ type: reference
 title: Architecture Overview
 description: Server entrypoint, miner engine manager, and per-user miner worker
   — the three layers that run the mining engine and expose the API.
-tags: [ architecture, express, miner-engine, miner-worker, sse ]
+tags: [architecture, express, miner-engine, miner-worker, sse]
 last_updated: 2026-09-10T08:40:08.449Z
 updated_by: Niklas Schäffer
 ---
@@ -40,18 +40,18 @@ Single entrypoint for API, auth, and static assets:
 
 ### API map
 
-| Method & path | Purpose |
-| --- | --- |
-| `GET /api/health` | Health check (public; used by the Compose healthcheck) |
-| `POST /api/auth/register` / `login` / `logout`, `GET /api/auth/me` | Local account lifecycle |
-| `GET /api/auth/google/start` / `callback` | Google OAuth authorization-code flow |
-| `POST /api/twitch/device/start` / `poll`, `GET /api/twitch/status`, `POST /api/twitch/disconnect` | Device flow pairing + connection state |
-| `GET /api/status`, `GET /api/miner/connections`, `POST /api/miner/start` / `pause` / `stop` / `test-claim` | Engine control |
-| `GET/POST /api/streamers`, `DELETE/PATCH /api/streamers/:username` | Watchlist CRUD (ownership-scoped) |
-| `GET /api/streamers/:username/live-stats` / `chat`, `POST .../chat`, `POST .../toggle-live`, `POST /api/streamers/refresh-live` | Per-channel live data and chat |
-| `GET/POST /api/settings` | Miner settings (token never returned — `hasAuthToken` flag instead) |
-| `GET /api/logs`, `POST /api/logs/clear`, `GET /api/logs/stream` | Logs + SSE |
-| `GET/POST /api/statistics`, `GET /api/analytics` | Stats records and aggregation |
+| Method & path                                                                                                                   | Purpose                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `GET /api/health`                                                                                                               | Health check (public; used by the Compose healthcheck)              |
+| `POST /api/auth/register` / `login` / `logout`, `GET /api/auth/me`                                                              | Local account lifecycle                                             |
+| `GET /api/auth/google/start` / `callback`                                                                                       | Google OAuth authorization-code flow                                |
+| `POST /api/twitch/device/start` / `poll`, `GET /api/twitch/status`, `POST /api/twitch/disconnect`                               | Device flow pairing + connection state                              |
+| `GET /api/status`, `GET /api/miner/connections`, `POST /api/miner/start` / `pause` / `stop` / `test-claim`                      | Engine control                                                      |
+| `GET/POST /api/streamers`, `DELETE/PATCH /api/streamers/:username`                                                              | Watchlist CRUD (ownership-scoped)                                   |
+| `GET /api/streamers/:username/live-stats` / `chat`, `POST .../chat`, `POST .../toggle-live`, `POST /api/streamers/refresh-live` | Per-channel live data and chat                                      |
+| `GET/POST /api/settings`                                                                                                        | Miner settings (token never returned — `hasAuthToken` flag instead) |
+| `GET /api/logs`, `POST /api/logs/clear`, `GET /api/logs/stream`                                                                 | Logs + SSE                                                          |
+| `GET/POST /api/statistics`, `GET /api/analytics`                                                                                | Stats records and aggregation                                       |
 
 ## MinerEngine — the manager (`server/minerEngine.ts`)
 

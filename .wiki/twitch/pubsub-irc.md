@@ -3,7 +3,7 @@ type: reference
 title: PubSub & IRC
 description: Twitch PubSub topics and event handling, the IRC chat websocket,
   and the auto-lurk feature with its two-layer dedupe.
-tags: [ twitch, pubsub, irc, chat, lurk, raid ]
+tags: [twitch, pubsub, irc, chat, lurk, raid]
 last_updated: 2026-09-10T08:40:49.239Z
 updated_by: Niklas Schäffer
 ---
@@ -25,12 +25,12 @@ Keepalive and resilience: `PING` sent every 120s, reconnect timer on close, and 
 
 ### Topic handling
 
-| Topic | Handling |
-| --- | --- |
-| `community-points-user-v1.*` | Balance sync per channel; chest claimable → claim flow; `points-earned` with `reason_code: WATCH_STREAK` → advance local streak |
-| `raid.{channelId}` | On `raid_go_v2`: resolve the watched channel by reverse-looking up the topic id through `channelIds`, join via `JoinRaid`, record `raidsCount` for the **watched** channel. Never attribute to `raid.target_login` — that's the raid destination, not the watched channel |
-| `predictions-channel-v1.{channelId}` | When an event goes ACTIVE: place a `MakePrediction` bet (see [Drops & predictions](./drops-predictions.md)) |
-| `community-points-channel-v1.{channelId}` | Per-channel points context for mining channels |
+| Topic                                     | Handling                                                                                                                                                                                                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `community-points-user-v1.*`              | Balance sync per channel; chest claimable → claim flow; `points-earned` with `reason_code: WATCH_STREAK` → advance local streak                                                                                                                                           |
+| `raid.{channelId}`                        | On `raid_go_v2`: resolve the watched channel by reverse-looking up the topic id through `channelIds`, join via `JoinRaid`, record `raidsCount` for the **watched** channel. Never attribute to `raid.target_login` — that's the raid destination, not the watched channel |
+| `predictions-channel-v1.{channelId}`      | When an event goes ACTIVE: place a `MakePrediction` bet (see [Drops & predictions](./drops-predictions.md))                                                                                                                                                               |
+| `community-points-channel-v1.{channelId}` | Per-channel points context for mining channels                                                                                                                                                                                                                            |
 
 ## IRC (`wss://irc-ws.chat.twitch.tv:443`)
 

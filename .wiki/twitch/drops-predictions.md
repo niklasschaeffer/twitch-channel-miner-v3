@@ -3,7 +3,7 @@ type: reference
 title: Drops & Predictions
 description: Drop inventory polling and claim gating, plus prediction
   auto-betting strategy and caps.
-tags: [ twitch, drops, predictions, betting ]
+tags: [twitch, drops, predictions, betting]
 last_updated: 2026-09-10T08:40:53.272Z
 updated_by: Niklas Schäffer
 ---
@@ -32,11 +32,11 @@ updated_by: Niklas Schäffer
 
 ## Where counters land
 
-| Event | Status counter | StatisticalRecord fields |
-| --- | --- | --- |
-| Chest claimed | `totalClaims` | `claimsCount`, `chestsPoints` |
-| Raid joined | `totalRaids` | `raidsCount` (attributed to watched channel) |
-| Drop claimed | `totalDropsClaimed` | `dropsCount` |
+| Event                      | Status counter                                        | StatisticalRecord fields                                   |
+| -------------------------- | ----------------------------------------------------- | ---------------------------------------------------------- |
+| Chest claimed              | `totalClaims`                                         | `claimsCount`, `chestsPoints`                              |
+| Raid joined                | `totalRaids`                                          | `raidsCount` (attributed to watched channel)               |
+| Drop claimed               | `totalDropsClaimed`                                   | `dropsCount`                                               |
 | Prediction placed/won/lost | `totalPredictionsPlaced`/`Won`, `netPredictionPoints` | `predictionsWon`, `predictionsLost`, `netPredictionPoints` |
 
 All of these are zero in production unless a real Twitch event caused them — see [Development → Simulation mode](../development/simulation-mode.md) for the dev-only fabricated counterparts.

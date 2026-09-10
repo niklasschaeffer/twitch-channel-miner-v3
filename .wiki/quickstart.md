@@ -3,7 +3,7 @@ type: guide
 title: Quickstart
 description: Install, configure, and run the miner — Docker deployment,
   first-run account + Twitch device-flow pairing, and development commands.
-tags: [ quickstart, setup, docker, dev ]
+tags: [quickstart, setup, docker, dev]
 last_updated: 2026-09-10T08:39:54.263Z
 updated_by: Niklas Schäffer
 ---

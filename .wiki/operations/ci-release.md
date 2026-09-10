@@ -3,7 +3,7 @@ type: reference
 title: CI & Release
 description: Lint/typecheck gate, husky hooks, semantic-release pipeline, and
   the scheduled wiki update workflow.
-tags: [ ci, release, semantic-release, husky, github-actions ]
+tags: [ci, release, semantic-release, husky, github-actions]
 last_updated: 2026-09-10T08:41:09.037Z
 updated_by: Niklas Schäffer
 ---
@@ -12,7 +12,7 @@ updated_by: Niklas Schäffer
 
 ## Pre-commit and merge gates
 
-- Husky pre-commit (`.husky/pre-commit`) runs **oxlint + `tsc --noEmit`**; `npm run lint` *is* `tsc --noEmit`
+- Husky pre-commit (`.husky/pre-commit`) runs **oxlint + `tsc --noEmit`**; `npm run lint` _is_ `tsc --noEmit`
 - `tsc --noEmit` MUST pass before any commit/merge; CI re-runs it (`bun run lint`) on every push to `main` (`.github/workflows/release.yml`, Bun setup)
 - There is no full test suite — see [Development → Testing](../development/index.md)
 

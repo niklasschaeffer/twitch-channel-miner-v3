@@ -3,7 +3,7 @@ type: reference
 title: Client IDs & GQL
 description: Which client id to use where, authenticated GQL headers, persisted
   mutations, and the settings probe that rejects custom client ids.
-tags: [ twitch, gql, client-id, mutations ]
+tags: [twitch, gql, client-id, mutations]
 last_updated: 2026-09-10T08:40:35.819Z
 updated_by: Niklas Schäffer
 ---
@@ -12,10 +12,10 @@ updated_by: Niklas Schäffer
 
 ## The two client ids
 
-| Credential | Id | Used for |
-| --- | --- | --- |
-| TV client id | `ue6666qo983tsx6so1t0vnawi233wa` | Twitch device-flow token pairing (`TWITCH_CLIENT_ID`), **authenticated GQL viewer context** (balance binding — verified live 2026-09-08) |
-| Public web client id | `kimne78kx3ncx6brgo4mv6wki5h1ko` | Anonymous GQL telemetry (status checks, channel lookups without a token); default value of `MinerSettings.clientId` |
+| Credential           | Id                               | Used for                                                                                                                                 |
+| -------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| TV client id         | `ue6666qo983tsx6so1t0vnawi233wa` | Twitch device-flow token pairing (`TWITCH_CLIENT_ID`), **authenticated GQL viewer context** (balance binding — verified live 2026-09-08) |
+| Public web client id | `kimne78kx3ncx6brgo4mv6wki5h1ko` | Anonymous GQL telemetry (status checks, channel lookups without a token); default value of `MinerSettings.clientId`                      |
 
 Rules:
 
@@ -38,12 +38,12 @@ Representative operations in `minerWorker.ts`:
 
 Claims/raids/drops/predictions use persisted-query GQL mutations (mirroring upstream TwitchDropsMiner's `Twitch.py`) with a `sha256Hash` in `extensions.persistedQuery` — e.g. `JoinRaid` with hash `c6a332a86d1087fbbb1a8623aa01bd1313d2386e7c63be60fdb2d1901f01a4ae`. No Client-Integrity token is needed for any of them.
 
-| Action | Mutation |
-| --- | --- |
-| Bonus chest | `ClaimCommunityPoints` |
-| Raid join | `JoinRaid` |
-| Prediction bet | `MakePrediction` |
-| Drop claim | `DropsPage_ClaimDropRewards` |
+| Action         | Mutation                     |
+| -------------- | ---------------------------- |
+| Bonus chest    | `ClaimCommunityPoints`       |
+| Raid join      | `JoinRaid`                   |
+| Prediction bet | `MakePrediction`             |
+| Drop claim     | `DropsPage_ClaimDropRewards` |
 
 Chest claiming is additionally gated: the channel must be partner/affiliate (`roles` from the status check) and the claim id must be currently available; `claimsInFlight` prevents double-claims per channel and each fetch/mutation uses an 8s `AbortSignal.timeout`.
 

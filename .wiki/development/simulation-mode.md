@@ -3,7 +3,7 @@ type: reference
 title: Simulation Mode
 description: What isSimulationMode gates, its dev-only default, and why
   production must never fabricate data.
-tags: [ simulation, dev-mode, honesty, data-integrity ]
+tags: [simulation, dev-mode, honesty, data-integrity]
 last_updated: 2026-09-10T08:41:26.700Z
 updated_by: Niklas Schäffer
 ---

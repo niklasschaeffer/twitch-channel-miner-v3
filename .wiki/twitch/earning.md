@@ -3,7 +3,7 @@ type: reference
 title: Watch Earning & Chests
 description: Spade minute-watched heartbeats, chest progress and eligibility,
   and local watch-streak tracking.
-tags: [ twitch, spade, heartbeat, chest, watch-streak ]
+tags: [twitch, spade, heartbeat, chest, watch-streak]
 last_updated: 2026-09-10T08:40:43.435Z
 updated_by: Niklas Schäffer
 ---

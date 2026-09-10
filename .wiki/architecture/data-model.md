@@ -3,7 +3,7 @@ type: reference
 title: Data Model
 description: Prisma SQLite schema — users, streamers, settings, sessions, log
   and statistical records; ownership scoping and analytics integrity rules.
-tags: [ prisma, sqlite, schema, data-model ]
+tags: [prisma, sqlite, schema, data-model]
 last_updated: 2026-09-10T08:40:17.233Z
 updated_by: Niklas Schäffer
 ---
@@ -26,15 +26,15 @@ DB-backed session: `id` (64-char random hex) is the `miner_session` cookie value
 
 One row per watched channel per user, `@@unique([userId, username])`, cascade-deleted with the user. Fields worth knowing:
 
-| Field | Meaning |
-| --- | --- |
-| `points`, `totalPointsMined`, `uptimeMinutes` | Per-channel balance, lifetime mined, watched minutes |
-| `watchStreak`, `lastWatchDay` | Local watch-streak tracking (UTC `YYYY-MM-DD`); Twitch GQL has no streak field |
-| `isMining`, `enabled`, `priority` | Slot assignment, watchlist toggle, order rank (manual ordering persists here) |
-| `lurkEnabled`, `lurkMessage` (default `!lurk`), `lastLurkDay` | Auto-lurk config + daily dedupe marker |
-| `isPartner`, `isAffiliate`, `subscriptionTier` | Eligibility data from GQL `roles` — chest claims require partner/affiliate |
-| `chestAvailable`, `nextChestEstimateSeconds`, `lastClaimTime` | Bonus-chest progress (see `server/chest.ts`) |
-| `isLive`, `viewerCount`, `game`, `avatar`, `displayName` | Refreshed by `checkAllStreamersOnlineStatus` |
+| Field                                                         | Meaning                                                                        |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `points`, `totalPointsMined`, `uptimeMinutes`                 | Per-channel balance, lifetime mined, watched minutes                           |
+| `watchStreak`, `lastWatchDay`                                 | Local watch-streak tracking (UTC `YYYY-MM-DD`); Twitch GQL has no streak field |
+| `isMining`, `enabled`, `priority`                             | Slot assignment, watchlist toggle, order rank (manual ordering persists here)  |
+| `lurkEnabled`, `lurkMessage` (default `!lurk`), `lastLurkDay` | Auto-lurk config + daily dedupe marker                                         |
+| `isPartner`, `isAffiliate`, `subscriptionTier`                | Eligibility data from GQL `roles` — chest claims require partner/affiliate     |
+| `chestAvailable`, `nextChestEstimateSeconds`, `lastClaimTime` | Bonus-chest progress (see `server/chest.ts`)                                   |
+| `isLive`, `viewerCount`, `game`, `avatar`, `displayName`      | Refreshed by `checkAllStreamersOnlineStatus`                                   |
 
 `userId` is technically nullable for the legacy-adoption path; fresh rows always carry the owner (see below).
 

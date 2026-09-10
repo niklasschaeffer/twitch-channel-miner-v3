@@ -53,6 +53,7 @@ There is no test suite. Verification = `tsc --noEmit` plus live smoke tests agai
 - Runtime i18n audit (when checking keys): walk `resources.en.translation` via `bun -e` import of `src/i18n.ts` — regex-parsing the file produces false positives
 
 <!-- wiki-agent -->
+
 ## Wiki Agent
 
 This repository is managed by [wiki-agent](https://github.com/nx-solutions-ug/wiki-agent).

@@ -3,7 +3,7 @@ type: reference
 title: Authentication
 description: Session model, local and Google accounts, the Twitch device flow,
   and which API routes are public.
-tags: [ auth, sessions, oauth, device-flow, security ]
+tags: [auth, sessions, oauth, device-flow, security]
 last_updated: 2026-09-10T08:40:24.287Z
 updated_by: Niklas Schäffer
 ---

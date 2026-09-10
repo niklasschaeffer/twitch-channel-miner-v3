@@ -3,7 +3,7 @@ type: reference
 title: Deployment
 description: Docker Compose setup, environment variables, container boot
   sequence, and health checks.
-tags: [ docker, compose, env, deploy ]
+tags: [docker, compose, env, deploy]
 last_updated: 2026-09-10T08:41:00.472Z
 updated_by: Niklas Schäffer
 ---
@@ -31,12 +31,12 @@ The `"prepare": "husky || true"` script keeps production installs green without 
 
 ## Environment variables (`.env`, documented in `.env.example`)
 
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `TWITCH_CLIENT_ID` | yes | TV client id `ue6666qo983tsx6so1t0vnawi233wa` — device-flow tokens pair with it for GQL viewer context; custom ids get HTTP 400 |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional | Enables Google login; redirect URI `<APP_URL>/api/auth/google/callback` |
-| `APP_URL` | yes | Real origin, e.g. `http://localhost:3000` — OAuth redirects break otherwise |
-| `DATABASE_URL` | yes | `file:./dev.db` locally; the container overrides to `file:/app/data/miner.db` |
+| Variable                                    | Required | Notes                                                                                                                           |
+| ------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `TWITCH_CLIENT_ID`                          | yes      | TV client id `ue6666qo983tsx6so1t0vnawi233wa` — device-flow tokens pair with it for GQL viewer context; custom ids get HTTP 400 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional | Enables Google login; redirect URI `<APP_URL>/api/auth/google/callback`                                                         |
+| `APP_URL`                                   | yes      | Real origin, e.g. `http://localhost:3000` — OAuth redirects break otherwise                                                     |
+| `DATABASE_URL`                              | yes      | `file:./dev.db` locally; the container overrides to `file:/app/data/miner.db`                                                   |
 
 ## Update procedure
 
