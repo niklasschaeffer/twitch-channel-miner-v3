@@ -18,7 +18,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   currentUser,
   onLoginSuccess,
-  _onLogout,
+  onLogout,
 }) => {
   const { t } = useTranslation();
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -122,9 +122,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {currentUser.username} ({currentUser.email})
               </div>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 uppercase bg-zinc-200 dark:bg-[#26262C] text-zinc-700 dark:text-[#ADADB8]">
-              {currentUser.provider}
-            </span>
+            <div className="flex flex-col items-center gap-1.5">
+              <span className="text-[10px] font-mono px-2 py-0.5 uppercase bg-zinc-200 dark:bg-[#26262C] text-zinc-700 dark:text-[#ADADB8]">
+                {currentUser.provider}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  void onLogout();
+                  onClose();
+                }}
+                className="text-[10px] font-mono px-2 py-0.5 text-red-600 dark:text-red-400 hover:bg-red-500/10 border border-red-500/30 transition-colors cursor-pointer"
+              >
+                {t("auth.logout")}
+              </button>
+            </div>
           </div>
         )}
 
