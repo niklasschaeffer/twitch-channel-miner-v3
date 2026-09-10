@@ -1,3 +1,11 @@
+# [1.11.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.10.1...v1.11.0) (2026-09-10)
+
+
+### Features
+
+* rework streamerlist ([0f57758](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/0f57758dea1b1d644714e26bd22dcb8ebaceb301))
+* update configs ([ae63c93](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/ae63c9342cc426b8ef77d827fa29ad0e8c633ef0))
+
 ## [1.10.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.10.0...v1.10.1) (2026-09-10)
 
 
