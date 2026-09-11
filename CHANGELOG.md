@@ -1,3 +1,11 @@
+# [1.21.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.20.0...v1.21.0) (2026-09-11)
+
+
+### Features
+
+* claim Twitch drops and show live campaign progress in analytics ([ba9c504](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/ba9c504d29cf5f63ba5bf80f6f27245e70da2c7d))
+* show drops claimed in the last 30 days in analytics ([7b7a371](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/7b7a371e0f8be811c1fcb3c950331d31850ca995))
+
 # [1.20.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.19.2...v1.20.0) (2026-09-10)
 
 
