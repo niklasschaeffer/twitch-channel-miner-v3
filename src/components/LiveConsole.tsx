@@ -181,7 +181,7 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
                 ? "bg-zinc-100 dark:bg-[#141416] text-zinc-900 dark:text-[#EFEFF1] border-zinc-300 dark:border-[#26262C]"
                 : "bg-zinc-50 dark:bg-[#0E0E10] text-zinc-400 dark:text-[#71717A] border-zinc-200 dark:border-[#26262C] hover:text-zinc-600"
             }`}
-            title="Toggle autoscroll to latest entries"
+            title={t("console.autoScrollTooltip")}
           >
             <ArrowDown
               className={`w-3 h-3 ${autoScroll ? "text-[#00a865] dark:text-[#00F593]" : ""}`}
@@ -192,7 +192,7 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
           <button
             onClick={handleExport}
             className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:text-[#ADADB8] dark:hover:text-[#EFEFF1] bg-zinc-50 dark:bg-[#141416] border border-zinc-200 dark:border-[#26262C] transition cursor-pointer"
-            title="Download log file"
+            title={t("console.downloadTooltip")}
           >
             <Download className="w-3.5 h-3.5" />
           </button>
@@ -255,8 +255,8 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
             { id: "ALL", label: t("console.filterAll") },
             { id: "CLAIM", label: t("console.filterClaims") },
             { id: "WATCH", label: t("console.filterWatch") },
-            { id: "CHAT", label: "Chat & IRC" },
-            { id: "CMD", label: "Bot Commands" },
+            { id: "CHAT", label: t("console.filterChat") },
+            { id: "CMD", label: t("console.filterBotCmds") },
             { id: "RAID", label: t("console.filterRaids") },
             { id: "PREDICTION", label: t("console.filterPreds") },
             { id: "DROP", label: t("console.filterDrops") },
@@ -316,7 +316,7 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
                 {log.channel && (
                   <button
                     onClick={() => onSelectChannel?.(log.channel || null)}
-                    title="Click to filter console by this channel"
+                    title={t("console.channelFilterTooltip")}
                     className="text-[11px] text-[#9146FF] font-semibold shrink-0 bg-[#9146FF]/10 hover:bg-[#9146FF]/20 px-1 border border-[#9146FF]/30 cursor-pointer transition"
                   >
                     #{log.channel}
@@ -349,10 +349,12 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
       {/* Terminal Footer Info */}
       <div className="pt-2 border-t border-zinc-200 dark:border-[#26262C] flex items-center justify-between text-[11px] text-zinc-400 dark:text-[#71717A]">
         <span>
-          Showing {filteredLogs.length} of {logs.length} events
-          {selectedChannel && ` (filtered to #${selectedChannel})`}
+          {t("console.showingEvents", { shown: filteredLogs.length, total: logs.length })}
+          {selectedChannel && t("console.filteredToChannel", { channel: selectedChannel })}
         </span>
-        <span className="font-mono text-zinc-500 dark:text-[#ADADB8]">Buffer: 500 max</span>
+        <span className="font-mono text-zinc-500 dark:text-[#ADADB8]">
+          {t("console.bufferMax", { max: 500 })}
+        </span>
       </div>
     </div>
   );

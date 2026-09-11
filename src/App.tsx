@@ -190,20 +190,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!authChecked || !currentUser) return;
     fetchData();
-  }, [fetchData, currentUser]);
+  }, [fetchData, currentUser, authChecked]);
 
   // Real-time Server-Sent Events (SSE) connection
   useEffect(() => {
-    if (!currentUser) return;
+    if (!authChecked || !currentUser) return;
     let eventSource: EventSource | null = null;
     let pollInterval: NodeJS.Timeout | null = null;
+    const connectedRef = { current: false };
+    let statusSeq = 0;
+    let streamersSeq = 0;
+    let analyticsSeq = 0;
 
     try {
       eventSource = new EventSource("/api/logs/stream");
 
       eventSource.onopen = () => {
+        connectedRef.current = true;
         setIsConnected(true);
       };
 
@@ -219,6 +224,7 @@ export default function App() {
       eventSource.addEventListener("status", (e: MessageEvent) => {
         try {
           const newStatus: MinerStatus = JSON.parse(e.data);
+          statusSeq += 1;
           setStatus(newStatus);
         } catch (err) {
           console.error("Failed to parse status event", err);
@@ -228,6 +234,7 @@ export default function App() {
       eventSource.addEventListener("streamers", (e: MessageEvent) => {
         try {
           const newStreamers: Streamer[] = JSON.parse(e.data);
+          streamersSeq += 1;
           setStreamers(newStreamers);
         } catch (err) {
           console.error("Failed to parse streamers event", err);
@@ -255,27 +262,42 @@ export default function App() {
       });
 
       eventSource.onerror = () => {
+        connectedRef.current = false;
         setIsConnected(false);
       };
     } catch {
       console.warn("SSE not supported or failed, falling back to interval polling");
     }
 
-    // Polling fallback every 3.5 seconds
+    // Polling fallback every 3.5 seconds, only while SSE is not connected
     pollInterval = setInterval(() => {
+      if (connectedRef.current) return;
+
+      const statusRequestSeq = ++statusSeq;
       fetch("/api/status")
         .then((r) => r.json())
-        .then((data) => setStatus(data))
+        .then((data) => {
+          if (statusRequestSeq !== statusSeq) return;
+          setStatus(data);
+        })
         .catch(() => {});
 
+      const streamersRequestSeq = ++streamersSeq;
       fetch("/api/streamers")
         .then((r) => r.json())
-        .then((data) => setStreamers(data))
+        .then((data) => {
+          if (streamersRequestSeq !== streamersSeq) return;
+          setStreamers(data);
+        })
         .catch(() => {});
 
+      const analyticsRequestSeq = ++analyticsSeq;
       fetch("/api/analytics")
         .then((r) => r.json())
-        .then((data) => setAnalytics(data))
+        .then((data) => {
+          if (analyticsRequestSeq !== analyticsSeq) return;
+          setAnalytics(data);
+        })
         .catch(() => {});
     }, 3500);
 
@@ -283,7 +305,7 @@ export default function App() {
       if (eventSource) eventSource.close();
       if (pollInterval) clearInterval(pollInterval);
     };
-  }, [currentUser]);
+  }, [currentUser, authChecked]);
 
   // Control handlers
   const handleTogglePlay = async () => {
@@ -294,11 +316,7 @@ export default function App() {
       const data = await res.json();
       if (data.status) {
         setStatus(data.status);
-        showToast(
-          status.state === "running"
-            ? "Miner paused. Active tasks suspended."
-            : "Miner started! Prioritizing streams...",
-        );
+        showToast(status.state === "running" ? t("toast.minerPaused") : t("toast.minerStarted"));
       }
     } catch (err) {
       console.error(err);
@@ -314,7 +332,9 @@ export default function App() {
         body: JSON.stringify({}),
       });
       const data = await res.json();
-      showToast(data.message ?? (data.success ? "Claim processed." : "Claim failed."));
+      showToast(
+        data.message ?? (data.success ? t("toast.claimProcessed") : t("toast.claimFailed")),
+      );
       if (!data.success) console.warn("Claim failed:", data.message);
     } catch (err) {
       console.error(err);
@@ -331,7 +351,9 @@ export default function App() {
         body: JSON.stringify({ channel: streamer.username }),
       });
       const data = await res.json();
-      showToast(data.message ?? (data.success ? "Claim processed." : "Claim failed."));
+      showToast(
+        data.message ?? (data.success ? t("toast.claimProcessed") : t("toast.claimFailed")),
+      );
       if (!data.success) console.warn("Claim failed:", data.message);
     } catch (err) {
       console.error(err);
@@ -347,7 +369,7 @@ export default function App() {
       });
       const data = await res.json();
       setSettings(data);
-      showToast("Miner configuration updated.");
+      showToast(t("toast.settingsUpdated"));
     } catch (err) {
       console.error(err);
     }
@@ -366,7 +388,11 @@ export default function App() {
       });
       if (res.ok) {
         setStreamers((prev) => prev.map((s) => (s.username === username ? { ...s, enabled } : s)));
-        showToast(`Streamer @${username} ${enabled ? "enabled" : "disabled"}.`);
+        showToast(
+          enabled
+            ? t("toast.streamerEnabled", { username })
+            : t("toast.streamerDisabled", { username }),
+        );
       }
     } catch (err) {
       console.error(err);
@@ -384,7 +410,11 @@ export default function App() {
         setStreamers((prev) =>
           prev.map((s) => (s.username === username ? { ...s, lurkEnabled } : s)),
         );
-        showToast(`Lurk ${lurkEnabled ? "enabled" : "disabled"} for @${username}.`);
+        showToast(
+          lurkEnabled
+            ? t("toast.lurkEnabledFor", { username })
+            : t("toast.lurkDisabledFor", { username }),
+        );
       }
     } catch (err) {
       console.error(err);
@@ -396,7 +426,7 @@ export default function App() {
       const res = await fetch(`/api/streamers/${username}`, { method: "DELETE" });
       if (res.ok) {
         setStreamers((prev) => prev.filter((s) => s.username !== username));
-        showToast(`Removed @${username} from watchlist.`);
+        showToast(t("toast.streamerRemoved", { username }));
       }
     } catch (err) {
       console.error(err);
@@ -416,7 +446,7 @@ export default function App() {
           if (prev.some((s) => s.username === newStreamer.username)) return prev;
           return [...prev, newStreamer];
         });
-        showToast(`Added @${newStreamer.displayName} to monitoring list.`);
+        showToast(t("toast.streamerAdded", { name: newStreamer.displayName }));
       }
     } catch (err) {
       console.error(err);
@@ -458,7 +488,7 @@ export default function App() {
     try {
       await fetch("/api/logs/clear", { method: "POST" });
       setLogs([]);
-      showToast("Console logs cleared.");
+      showToast(t("toast.logsCleared"));
     } catch (err) {
       console.error(err);
     }
@@ -471,7 +501,7 @@ export default function App() {
     } catch {
       // Ignored
     }
-    showToast(`Welcome, ${user.username}!`);
+    showToast(t("toast.welcomeUser", { name: user.username }));
     fetchData();
   };
 
@@ -487,7 +517,7 @@ export default function App() {
     } catch {
       // Ignored
     }
-    showToast("Logged out successfully.");
+    showToast(t("toast.loggedOut"));
   };
 
   return (
@@ -503,29 +533,28 @@ export default function App() {
       )}
       {(!authChecked || currentUser) && (
         <>
+          {twitchStale && (
+            <div className="fixed top-0 inset-x-0 z-50 bg-red-600 text-white px-4 py-2 text-xs font-medium flex items-center justify-between gap-4">
+              <span>
+                {t("twitch.tokenStaleBanner")} — {t("twitch.tokenStaleAction")}
+              </span>
+              <button
+                onClick={() => {
+                  setTwitchStale(false);
+                  setIsSettingsOpen(true);
+                }}
+                className="px-3 py-1 bg-white text-red-600 rounded font-semibold hover:bg-red-50 transition cursor-pointer shrink-0"
+              >
+                {t("twitch.reconnect")}
+              </button>
+            </div>
+          )}
+
           {/* Toast Notification */}
           {toastMessage && (
             <div className="fixed bottom-5 right-5 z-50 bg-white dark:bg-[#18181B] border border-zinc-300 dark:border-[#26262C] text-zinc-900 dark:text-[#EFEFF1] px-4 py-2.5 shadow-xl text-xs flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#00a865] dark:bg-[#00F593]" />
               <span>{toastMessage}</span>
-              {twitchStale && (
-                <div className="bg-red-600 text-white px-4 py-2 text-xs font-medium flex items-center justify-between gap-4">
-                  <span>
-                    {t("twitch.tokenStaleBanner")} — {t("twitch.tokenStaleAction")}
-                  </span>
-                  <button
-                    onClick={() => {
-                      setTwitchStale(false);
-                      setIsSettingsOpen(true);
-                    }}
-                    className="px-3 py-1 bg-white text-red-600 rounded font-semibold hover:bg-red-50 transition cursor-pointer shrink-0"
-                  >
-                    {t("twitch.reconnect")}
-                  </button>
-                </div>
-              )}
-
-              {/* Header Navigation */}
             </div>
           )}
 
@@ -578,6 +607,7 @@ export default function App() {
                   <div className="lg:col-span-5 min-w-0">
                     <StreamerList
                       streamers={streamers}
+                      maxSlots={settings?.maxConcurrentStreams || 2}
                       priorityMode={settings?.priorityMode || "points_asc"}
                       onChangePriorityMode={handleChangePriorityMode}
                       onToggleEnabled={handleToggleEnabled}

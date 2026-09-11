@@ -180,7 +180,7 @@ export const Header: React.FC<HeaderProps> = ({
               {avatarSrc ? (
                 <img
                   src={avatarSrc}
-                  alt={currentUser?.username || "User"}
+                  alt={currentUser?.username || t("auth.userFallback")}
                   referrerPolicy="no-referrer"
                   className="w-6 h-6 rounded-full border border-[#9146FF] object-cover"
                 />

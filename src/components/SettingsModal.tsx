@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { X, Sliders, Zap, Gift, Target, Key, CheckCircle2 } from "lucide-react";
 import { MinerSettings, PriorityMode } from "../types";
@@ -51,12 +51,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   );
   const [savedAlert, setSavedAlert] = useState(false);
   const [activeSection, setActiveSection] = useState<SettingsSection>("queue");
+  const wasOpenRef = useRef(isOpen);
+  const seededRef = useRef(false);
 
   React.useEffect(() => {
-    if (settings) {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+    if (!settings) return;
+    if (isOpen && !wasOpen) {
       setForm({ ...settings });
+      seededRef.current = true;
+      return;
     }
-  }, [settings]);
+    if (!isOpen && !seededRef.current) {
+      setForm({ ...settings });
+      seededRef.current = true;
+    }
+  }, [isOpen, settings]);
 
   if (!isOpen || !settings) return null;
 

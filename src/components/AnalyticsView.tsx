@@ -89,7 +89,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
             <span>{t("analytics.estimatedYield")}</span>
           </div>
           <p className="text-xl font-bold text-[#00a865] dark:text-[#00F593] font-mono mt-1">
-            {dailyYield === null ? "—" : `~${dailyYield.toLocaleString()} pts / day`}
+            {dailyYield === null
+              ? "—"
+              : t("analytics.dailyYieldValue", { value: dailyYield.toLocaleString() })}
           </p>
           <p className="text-xs text-zinc-500 dark:text-[#ADADB8] mt-1">
             {t("analytics.dailyRateDesc")}
@@ -138,7 +140,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
                 itemStyle={{ color: "#9146FF" }}
                 formatter={(value: TooltipValueType | undefined) => [
                   `${value ?? "–"} pts`,
-                  "Points",
+                  t("analytics.tooltipPoints"),
                 ]}
               />
               <Area
@@ -227,7 +229,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
                   }}
                   formatter={(value: TooltipValueType | undefined) => [
                     `${value ?? "–"} pts`,
-                    "Balance",
+                    t("analytics.tooltipBalance"),
                   ]}
                 />
                 <Bar dataKey="points" fill="#9146FF" />

@@ -22,6 +22,7 @@ import { formatSubTier } from "../lib/badges";
 
 interface StreamerListProps {
   streamers: Streamer[];
+  maxSlots: number;
   priorityMode: PriorityMode;
   onChangePriorityMode: (mode: PriorityMode) => void;
   onToggleEnabled: (username: string, enabled: boolean) => void;
@@ -38,6 +39,7 @@ interface StreamerListProps {
 
 export const StreamerList: React.FC<StreamerListProps> = ({
   streamers,
+  maxSlots,
   priorityMode,
   onChangePriorityMode,
   onToggleEnabled,
@@ -176,7 +178,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                           onClick={() => onMovePriority(streamer.username, "up")}
                           disabled={index === 0}
                           className="hover:text-zinc-900 dark:hover:text-[#EFEFF1] disabled:opacity-20 cursor-pointer p-0.5"
-                          title="Move up in priority"
+                          title={t("streamersList.moveUp")}
                         >
                           <ChevronUp className="w-3 h-3" />
                         </button>
@@ -184,7 +186,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                           onClick={() => onMovePriority(streamer.username, "down")}
                           disabled={index === filteredStreamers.length - 1}
                           className="hover:text-zinc-900 dark:hover:text-[#EFEFF1] disabled:opacity-20 cursor-pointer p-0.5"
-                          title="Move down in priority"
+                          title={t("streamersList.moveDown")}
                         >
                           <ChevronDown className="w-3 h-3" />
                         </button>
@@ -220,7 +222,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                         </span>
                       </div>
                       <div className="text-[11px] text-zinc-500 dark:text-[#ADADB8] truncate">
-                        {streamer.game || "Variety"}
+                        {streamer.game || t("streamersList.variety")}
                       </div>
                     </div>
                   </div>
@@ -320,11 +322,11 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                   {streamer.isMining ? (
                     <span className="px-1.5 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/30 dark:border-[#00F593]/40 flex items-center gap-1 font-bold">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#00a865] dark:bg-[#00F593] animate-pulse" />
-                      MINING
+                      {t("status.activeMining")}
                     </span>
                   ) : streamer.isLive ? (
                     <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                      QUEUE
+                      {t("streamersList.queueBadge")}
                     </span>
                   ) : null}
 
@@ -387,7 +389,9 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                       </span>
                     ) : (
                       <span className="text-zinc-500 dark:text-[#ADADB8]">
-                        Chest: ~{streamer.nextChestEstimateSeconds}s
+                        {t("streamersList.chestCountdown", {
+                          seconds: streamer.nextChestEstimateSeconds,
+                        })}
                       </span>
                     )}
                   </div>
@@ -401,12 +405,17 @@ export const StreamerList: React.FC<StreamerListProps> = ({
       {/* Footer Summary */}
       <div className="pt-3 border-t border-zinc-200 dark:border-[#26262C] flex items-center justify-between text-[11px] text-zinc-500 dark:text-[#ADADB8]">
         <span>
-          Showing {filteredStreamers.length} channels •{" "}
-          {filteredStreamers.filter((s) => s.isLive).length} online •{" "}
-          {filteredStreamers.filter((s) => s.isMining).length} mining
+          {t("streamersList.footerSummary", {
+            total: filteredStreamers.length,
+            live: filteredStreamers.filter((s) => s.isLive).length,
+            mining: filteredStreamers.filter((s) => s.isMining).length,
+          })}
         </span>
         <span className="font-mono font-medium text-zinc-600 dark:text-[#ADADB8]">
-          Slots: {streamers.filter((s) => s.isMining).length}/2
+          {t("streamersList.footerSlots", {
+            mining: streamers.filter((s) => s.isMining).length,
+            max: maxSlots,
+          })}
         </span>
       </div>
     </div>

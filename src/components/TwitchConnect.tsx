@@ -54,7 +54,7 @@ export const TwitchConnect: React.FC = () => {
       const res = await fetch("/api/twitch/device/start", { method: "POST" });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        setLoginState({ phase: "error", message: body?.error ?? "Could not start login" });
+        setLoginState({ phase: "error", message: body?.error ?? t("twitch.couldNotStartLogin") });
         return;
       }
       const session: DeviceStartResponse = await res.json();
@@ -66,7 +66,7 @@ export const TwitchConnect: React.FC = () => {
         elapsed += intervalMs;
         if (elapsed > session.expiresInSeconds * 1000) {
           if (pollTimer.current) window.clearInterval(pollTimer.current);
-          setLoginState({ phase: "error", message: "Login window expired — try again." });
+          setLoginState({ phase: "error", message: t("twitch.loginWindowExpired") });
           return;
         }
         try {
@@ -82,7 +82,7 @@ export const TwitchConnect: React.FC = () => {
             refreshStatus();
           } else if (p.state === "error") {
             if (pollTimer.current) window.clearInterval(pollTimer.current);
-            setLoginState({ phase: "error", message: p.error ?? "Login failed" });
+            setLoginState({ phase: "error", message: p.error ?? t("twitch.loginFailed") });
           }
         } catch {
           void 0;
@@ -91,7 +91,7 @@ export const TwitchConnect: React.FC = () => {
     } catch (err) {
       setLoginState({
         phase: "error",
-        message: err instanceof Error ? err.message : "Login failed",
+        message: err instanceof Error ? err.message : t("twitch.loginFailed"),
       });
     }
   };
@@ -114,7 +114,7 @@ export const TwitchConnect: React.FC = () => {
     if (connected) {
       return {
         icon: <CheckCircle2 size={12} />,
-        label: status?.login ?? "connected",
+        label: status?.login ?? t("twitch.connectedFallback"),
         cls: "text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20",
       };
     }

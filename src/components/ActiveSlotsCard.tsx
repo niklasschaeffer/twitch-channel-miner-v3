@@ -62,7 +62,7 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
                   <Radio className="w-4 h-4" />
                 </div>
                 <p className="text-xs font-semibold text-zinc-600 dark:text-[#ADADB8]">
-                  Slot #{index + 1} Available
+                  {t("stats.slotAvailable", { index: index + 1 })}
                 </p>
                 <p className="text-[11px] text-zinc-400 dark:text-[#71717A] mt-1 max-w-xs">
                   {t("streamersList.subtitle")}
@@ -97,7 +97,7 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-mono font-medium px-2 py-0.5 bg-[#00a865]/10 dark:bg-[#00F593]/15 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/20 dark:border-[#00F593]/30 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#00a865] dark:bg-[#00F593] animate-ping" />
-                    Slot #{index + 1}
+                    {t("stats.slotNumber", { index: index + 1 })}
                   </span>
                   <span className="text-[11px] text-zinc-600 dark:text-[#ADADB8] bg-white dark:bg-[#18181B] px-2 py-0.5 border border-zinc-200 dark:border-[#26262C]">
                     {streamer.game}
@@ -174,7 +174,7 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
                     )}
                   </span>
                   <span className="font-mono text-xs text-zinc-900 dark:text-[#EFEFF1]">
-                    {streamer.chestAvailable ? "Available Now" : timeFormatted}
+                    {streamer.chestAvailable ? t("chest.availableNow") : timeFormatted}
                   </span>
                 </div>
 

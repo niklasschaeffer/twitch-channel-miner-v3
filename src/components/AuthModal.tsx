@@ -1,8 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { X, Mail, Lock, User as UserIcon, LogIn, UserPlus } from "lucide-react";
 import { User } from "../types";
-import { prisma } from "../lib/prismaClient";
 import { getGravatarUrl } from "../lib/gravatar";
 
 interface AuthModalProps {
@@ -27,8 +26,55 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    fetch("/api/auth/registration")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("failed"))))
+      .then((d: { open: boolean }) => {
+        if (active) setRegistrationOpen(!!d.open);
+      })
+      .catch(() => {
+        if (active) setRegistrationOpen(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (registrationOpen === false && mode === "register") {
+      setMode("login");
+    }
+  }, [registrationOpen, mode]);
 
   if (!isOpen) return null;
+
+  const submitAuthRequest = async (url: string, body: unknown): Promise<User> => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 403) {
+      throw new Error(t("auth.registrationClosedError"));
+    }
+    if (res.status === 429) {
+      const retryAfter = Number.parseInt(res.headers.get("Retry-After") || "", 10);
+      throw new Error(
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? t("auth.rateLimitedSeconds", { seconds: retryAfter })
+          : t("auth.rateLimited"),
+      );
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || t("auth.errorGeneric"));
+    }
+    return res.json();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,12 +84,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       if (mode === "register") {
         if (!email || !username) {
-          setError("Email and username are required");
+          setError(t("auth.errorEmailUsernameRequired"));
           setLoading(false);
           return;
         }
-        const user = await prisma.user.register({ email, username, password });
-        // Cache gravatar locally
+        const user = await submitAuthRequest("/api/auth/register", { email, username, password });
         if (user.email) {
           getGravatarUrl(user.email);
         }
@@ -51,11 +96,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onClose();
       } else {
         if (!email) {
-          setError("Email is required");
+          setError(t("auth.errorEmailRequired"));
           setLoading(false);
           return;
         }
-        const user = await prisma.user.login({ email, password });
+        const user = await submitAuthRequest("/api/auth/login", { email, password });
         if (user.email) {
           getGravatarUrl(user.email);
         }
@@ -63,7 +108,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onClose();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentication failed");
+      setError(err instanceof Error ? err.message : t("auth.errorGeneric"));
     } finally {
       setLoading(false);
     }
@@ -77,10 +122,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         window.location.href = "/api/auth/google/start";
         return;
       }
-      setError("GitHub login is not available — use email or Google.");
+      setError(t("auth.errorGithubUnavailable"));
       return;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Social login failed");
+      setError(err instanceof Error ? err.message : t("auth.errorSocialGeneric"));
     } finally {
       setLoading(false);
     }
@@ -156,21 +201,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               {t("actions.login")}
             </span>
           </button>
-          <button
-            type="button"
-            onClick={() => setMode("register")}
-            className={`flex-1 py-2 text-xs font-semibold text-center border-b-2 transition-colors ${
-              mode === "register"
-                ? "border-[#9146FF] text-[#9146FF]"
-                : "border-transparent text-zinc-500 dark:text-[#ADADB8] hover:text-zinc-900 dark:hover:text-[#EFEFF1]"
-            }`}
-          >
-            <span className="flex items-center justify-center gap-1.5">
-              <UserPlus className="w-3.5 h-3.5" />
-              {t("actions.register")}
-            </span>
-          </button>
+          {registrationOpen !== false && (
+            <button
+              type="button"
+              onClick={() => setMode("register")}
+              className={`flex-1 py-2 text-xs font-semibold text-center border-b-2 transition-colors ${
+                mode === "register"
+                  ? "border-[#9146FF] text-[#9146FF]"
+                  : "border-transparent text-zinc-500 dark:text-[#ADADB8] hover:text-zinc-900 dark:hover:text-[#EFEFF1]"
+              }`}
+            >
+              <span className="flex items-center justify-center gap-1.5">
+                <UserPlus className="w-3.5 h-3.5" />
+                {t("actions.register")}
+              </span>
+            </button>
+          )}
         </div>
+
+        {registrationOpen === false && (
+          <div className="mt-3 p-2.5 text-xs bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300">
+            {t("auth.registrationClosedNotice")}
+          </div>
+        )}
 
         {error && (
           <div className="mt-3 p-2.5 text-xs bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400">
@@ -190,7 +243,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="user@example.com"
+                placeholder={t("auth.emailPlaceholder")}
                 required
                 className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] focus:outline-hidden focus:border-[#9146FF] text-zinc-900 dark:text-[#EFEFF1]"
               />
@@ -208,7 +261,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="StreamMinerUser"
+                  placeholder={t("auth.usernamePlaceholder")}
                   required
                   className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] focus:outline-hidden focus:border-[#9146FF] text-zinc-900 dark:text-[#EFEFF1]"
                 />
@@ -237,7 +290,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             disabled={loading}
             className="w-full mt-2 py-2 px-4 bg-[#9146FF] hover:bg-[#772CE8] text-white font-medium text-sm transition-colors cursor-pointer disabled:opacity-50"
           >
-            {loading ? "..." : mode === "login" ? t("auth.signInBtn") : t("auth.registerBtn")}
+            {loading
+              ? t("auth.loadingText")
+              : mode === "login"
+                ? t("auth.signInBtn")
+                : t("auth.registerBtn")}
           </button>
         </form>
 

@@ -261,7 +261,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               )}
               {s.isMining && (
                 <span className="text-[9px] px-1 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold">
-                  MINING
+                  {t("status.activeMining")}
                 </span>
               )}
             </button>
@@ -343,7 +343,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               {streamer.watchStreak > 0 && (
                 <span className="text-[11px] font-mono text-amber-600 dark:text-amber-300 flex items-center gap-0.5">
                   <Flame className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  {streamer.watchStreak}d streak
+                  {t("streamersList.watchStreak", { days: streamer.watchStreak })}
                 </span>
               )}
             </div>
@@ -365,7 +365,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               )}
               <span className="text-zinc-300 dark:text-[#363640]">•</span>
               <span className="font-mono text-zinc-400 dark:text-[#71717A]">
-                Next chest: ~{streamer.nextChestEstimateSeconds}s
+                {t("chat.nextChestEta", { seconds: streamer.nextChestEstimateSeconds })}
               </span>
             </div>
           </div>
@@ -400,7 +400,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               className="px-2.5 py-1 text-xs font-medium border border-zinc-200 dark:border-[#26262C] hover:border-[#9146FF] text-zinc-700 dark:text-[#ADADB8] hover:text-[#9146FF] transition flex items-center gap-1.5 cursor-pointer"
             >
               <Terminal className="w-3 h-3" />
-              <span className="hidden sm:inline">Focus Console</span>
+              <span className="hidden sm:inline">{t("chat.focusConsole")}</span>
             </button>
           )}
 
@@ -414,7 +414,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                   : "text-zinc-500 hover:text-zinc-800 dark:hover:text-[#EFEFF1]"
               }`}
             >
-              IRC Feed
+              {t("chat.ircFeedTab")}
             </button>
             <button
               onClick={() => setViewMode("embed")}
@@ -424,7 +424,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                   : "text-zinc-500 hover:text-zinc-800 dark:hover:text-[#EFEFF1]"
               }`}
             >
-              Twitch Embed
+              {t("chat.twitchEmbedTab")}
             </button>
           </div>
 
@@ -517,7 +517,9 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                       key={msg.id}
                       className="py-1 px-2.5 bg-zinc-100 dark:bg-[#18181B] border-l-2 border-[#9146FF] text-[11px] text-zinc-500 dark:text-[#ADADB8]"
                     >
-                      <span className="font-semibold text-[#9146FF] mr-2">[SYSTEM]</span>
+                      <span className="font-semibold text-[#9146FF] mr-2">
+                        {t("chat.systemLabel")}
+                      </span>
                       <span>{msg.message}</span>
                     </div>
                   );
@@ -567,7 +569,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
                             return (
                               <span
                                 key={b}
-                                title="Moderator"
+                                title={t("chat.badgeModerator")}
                                 className="px-1 py-0.2 bg-[#00a865] text-white text-[9px] font-bold rounded-xs flex items-center"
                               >
                                 <Shield className="w-2.5 h-2.5" />
@@ -636,7 +638,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
           {/* Quick Emote Chips */}
           <div className="flex flex-wrap items-center gap-1.5 px-4 py-2 border-t border-zinc-200 dark:border-[#26262C] bg-zinc-50 dark:bg-[#141416]">
             <span className="text-[10px] font-mono text-zinc-400 dark:text-[#71717A] uppercase mr-1">
-              Emotes:
+              {t("chat.emotesLabel")}
             </span>
             {PRESET_EMOTES.map((emote) => (
               <button
@@ -662,7 +664,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder={`Send message to #${streamer.displayName}...`}
+              placeholder={t("chat.sendPlaceholderChannel", { channel: streamer.displayName })}
               className="flex-1 bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] px-3 py-1.5 text-xs text-zinc-900 dark:text-[#EFEFF1] font-mono focus:outline-hidden focus:border-[#9146FF]"
             />
             <button
@@ -687,13 +689,12 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
           />
           <div className="px-4 py-2 bg-zinc-900 border-t border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between">
             <span>
-              Official Twitch Web Embed ({parentDomain}). If blocked by browser sandbox cookies,
-              switch to{" "}
+              {t("chat.embedFallbackNotice", { domain: parentDomain })}{" "}
               <button
                 onClick={() => setViewMode("irc")}
                 className="text-[#9146FF] underline cursor-pointer"
               >
-                IRC Feed
+                {t("chat.ircFeedTab")}
               </button>
               .
             </span>
