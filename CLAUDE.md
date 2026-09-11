@@ -18,6 +18,7 @@ A self-hosted Twitch channel-points miner: Bun/Node + Express backend with a Vit
 - `npm run db:push` — apply `prisma/schema.prisma` to SQLite (schema-first, no migration files; **stop the container first**)
 
 Releases are fully automated via semantic-release on `main` (version bump + `CHANGELOG.md` + `chore(release)` commits) — commit messages MUST follow Conventional Commits (`feat:`, `fix:`, …) since the analyzer parses them; never hand-edit `CHANGELOG.md` or the version in `package.json`.
+
 - Pre-commit (husky): `bunx oxlint --import-plugin --vitest-plugin --react-plugin && bunx oxfmt && npm run lint`
 - Smoke-test: `GET /api/health` on `http://localhost:3000`
 
