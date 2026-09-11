@@ -55,10 +55,10 @@ Once your Twitch account is connected and channels are on the watchlist, **your 
 | **Watch earning** | Sends minute-watched heartbeats to Twitch's spade telemetry endpoint once per minute per mining channel — the same signal the Twitch web player sends |
 | **Bonus chests** | Subscribes to real-time PubSub `community-points-user-v1` events; when a chest becomes claimable it polls and executes the persisted `ClaimCommunityPoints` GQL mutation |
 | **Drops** | Polls your inventory (10-min cadence, toggleable) and claims every unclaimed drop whose watched minutes meet the requirement (and whose preconditions are met) via `DropsPage_ClaimDropRewards` with its `dropInstanceID` |
-| **Raids** | Subscribes to PubSub `raid` topics per mining channel; on a raid event it joins via the persisted `JoinRaid` mutation (auto-follow configurable) and records the raid against the watched channel |
+| **Raids** | Subscribes to PubSub `raid` topics per mining channel; on a raid event it joins via the persisted `JoinRaid` mutation (auto-follow configurable) and records the raid against the watched channel; raid bonus points come from `RAID` point gains, never an assumed amount |
 | **Watch streaks** | Tracks consecutive UTC days with accepted heartbeats per channel (Twitch's GQL exposes no streak field); resets honestly after missed days |
 | **Auto-lurk** | Optionally posts a chat message (default `!lurk`) via IRC into a channel's chat the moment it goes live — once per day per channel, with self-echo dedupe so it never repeats |
-| **Predictions** | Listens to PubSub `predictions-channel-v1`; when an event goes ACTIVE it places a bet via `MakePrediction` (capped by your `maxBetPoints` setting) |
+| **Predictions** | Listens to PubSub `predictions-channel-v1`; when an event goes ACTIVE (and auto-bet is on) it places a bet via `MakePrediction` (10% of the balance, 5% for the conservative strategy, capped by `maxBetPoints`); rejected bets retry up to 3 times, and results (won/lost/net points) arrive via `predictions-user-v1` |
 | **Live balance sync** | Per-channel balances sync via PubSub events plus a 5-minute GQL snapshot fallback |
 
 The dashboard shows **only real Twitch data** — points, claims, chat, and connection state all come from genuine Twitch API responses. No simulation mode exists; nothing displayed is fabricated.
