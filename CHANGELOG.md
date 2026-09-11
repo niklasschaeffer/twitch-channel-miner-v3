@@ -1,3 +1,10 @@
+# [1.22.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.21.1...v1.22.0) (2026-09-11)
+
+
+### Features
+
+* track prediction results and real raid points from Twitch PubSub ([c9b4f3d](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/c9b4f3da3ef8984d32709d17882ec06335737764))
+
 ## [1.21.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.21.0...v1.21.1) (2026-09-11)
 
 
