@@ -100,6 +100,45 @@ export function predictionBetAmount(
   maxBetPoints: number,
   strategy: PredictionStrategy,
 ): number {
+  if (
+    !Number.isFinite(balance) ||
+    !Number.isFinite(maxBetPoints) ||
+    balance <= 0 ||
+    maxBetPoints <= 0
+  ) {
+    return 0;
+  }
   const share = strategy === "conservative" ? 0.05 : 0.1;
-  return Math.min(maxBetPoints, Math.max(MIN_PREDICTION_BET, Math.floor(balance * share)));
+  const cappedByBalance = Math.min(maxBetPoints, balance);
+  const desired = Math.max(MIN_PREDICTION_BET, Math.floor(balance * share));
+  const amount = Math.min(cappedByBalance, desired);
+  return amount < MIN_PREDICTION_BET ? 0 : amount;
+}
+
+export const PREDICTION_FIRE_FALLBACK_MS = 15_000;
+export const PREDICTION_FIRE_LOCK_MARGIN_MS = 10_000;
+export const PREDICTION_FIRE_WINDOW_FRACTION = 0.6;
+
+export function predictionFireDelayMs(
+  createdAtIso: string | null,
+  windowSeconds: number | null,
+  nowMs: number,
+): number {
+  if (
+    !createdAtIso ||
+    windowSeconds === null ||
+    !Number.isFinite(windowSeconds) ||
+    windowSeconds <= 0
+  ) {
+    return PREDICTION_FIRE_FALLBACK_MS;
+  }
+  const createdAtMs = Date.parse(createdAtIso);
+  if (Number.isNaN(createdAtMs)) {
+    return PREDICTION_FIRE_FALLBACK_MS;
+  }
+  const windowMs = windowSeconds * 1000;
+  const lockAtMs = createdAtMs + windowMs;
+  const fractionMs = createdAtMs + windowMs * PREDICTION_FIRE_WINDOW_FRACTION;
+  const fireAtMs = Math.max(fractionMs, lockAtMs - PREDICTION_FIRE_LOCK_MARGIN_MS);
+  return Math.max(0, fireAtMs - nowMs);
 }

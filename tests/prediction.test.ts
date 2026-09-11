@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  MIN_PREDICTION_BET,
   predictionBetAmount,
+  predictionFireDelayMs,
   predictionNetPoints,
+  PREDICTION_FIRE_FALLBACK_MS,
   selectPredictionOutcome,
   SMART_RATIO_PERCENTAGE_GAP,
   type PredictionOutcomeStats,
@@ -118,5 +121,75 @@ describe("predictionBetAmount", () => {
 
   it("never stakes below the Twitch minimum", () => {
     expect(predictionBetAmount(40, 100, "conservative")).toBe(10);
+  });
+
+  it("skips the bet when the configured cap is below the Twitch minimum", () => {
+    expect(predictionBetAmount(500, 5, "smart_ratio")).toBe(0);
+  });
+
+  it("skips the bet when the balance itself is below the Twitch minimum", () => {
+    expect(predictionBetAmount(5, 100, "smart_ratio")).toBe(0);
+  });
+
+  it("never exceeds the available balance", () => {
+    expect(predictionBetAmount(30, 100, "smart_ratio")).toBeLessThanOrEqual(30);
+  });
+
+  it("skips the bet for non-finite inputs", () => {
+    expect(predictionBetAmount(Number.NaN, 100, "smart_ratio")).toBe(0);
+    expect(predictionBetAmount(500, Number.NaN, "smart_ratio")).toBe(0);
+    expect(predictionBetAmount(Number.POSITIVE_INFINITY, 100, "smart_ratio")).toBe(0);
+  });
+
+  it("skips the bet for a zero or negative balance", () => {
+    expect(predictionBetAmount(0, 100, "smart_ratio")).toBe(0);
+    expect(predictionBetAmount(-50, 100, "smart_ratio")).toBe(0);
+  });
+});
+
+describe("predictionFireDelayMs", () => {
+  const createdAt = "2026-09-11T19:00:00.000Z";
+  const createdAtMs = Date.parse(createdAt);
+
+  it("fires at 60% of the window when that is later than lock minus the margin", () => {
+    const delay = predictionFireDelayMs(createdAt, 20, createdAtMs);
+    expect(delay).toBe(20_000 * 0.6);
+  });
+
+  it("fires 10s before lock when that is later than the 60% mark", () => {
+    const delay = predictionFireDelayMs(createdAt, 60, createdAtMs);
+    expect(delay).toBe(60_000 - 10_000);
+  });
+
+  it("never returns a negative delay once past the fire point", () => {
+    const pastFire = createdAtMs + 55_000;
+    expect(predictionFireDelayMs(createdAt, 60, pastFire)).toBe(0);
+  });
+
+  it("falls back to a short delay when createdAt is missing", () => {
+    expect(predictionFireDelayMs(null, 60, createdAtMs)).toBe(PREDICTION_FIRE_FALLBACK_MS);
+  });
+
+  it("falls back to a short delay when the window is missing or invalid", () => {
+    expect(predictionFireDelayMs(createdAt, null, createdAtMs)).toBe(PREDICTION_FIRE_FALLBACK_MS);
+    expect(predictionFireDelayMs(createdAt, 0, createdAtMs)).toBe(PREDICTION_FIRE_FALLBACK_MS);
+    expect(predictionFireDelayMs(createdAt, -5, createdAtMs)).toBe(PREDICTION_FIRE_FALLBACK_MS);
+  });
+
+  it("falls back to a short delay when createdAt cannot be parsed", () => {
+    expect(predictionFireDelayMs("not-a-date", 60, createdAtMs)).toBe(PREDICTION_FIRE_FALLBACK_MS);
+  });
+
+  it("handles Twitch's nanosecond-precision created_at timestamps", () => {
+    const nanoPrecise = "2026-09-11T19:00:00.937395583Z";
+    const nanoMs = Date.parse(nanoPrecise);
+    expect(Number.isNaN(nanoMs)).toBe(false);
+    const delay = predictionFireDelayMs(nanoPrecise, 60, nanoMs);
+    expect(delay).toBeGreaterThan(0);
+    expect(delay).toBeLessThanOrEqual(60_000);
+  });
+
+  it("exposes the Twitch minimum bet constant", () => {
+    expect(MIN_PREDICTION_BET).toBe(10);
   });
 });

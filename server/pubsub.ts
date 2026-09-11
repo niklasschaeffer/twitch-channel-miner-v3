@@ -69,6 +69,8 @@ export interface PredictionEventMessage {
   id: string;
   status: string;
   outcomes: PredictionOutcomeMessage[];
+  createdAt: string | null;
+  predictionWindowSeconds: number | null;
 }
 
 export function parsePredictionEvent(payload: JsonObject): PredictionEventMessage | null {
@@ -90,7 +92,13 @@ export function parsePredictionEvent(payload: JsonObject): PredictionEventMessag
       totalPoints: points !== null && points > 0 ? points : null,
     });
   }
-  return { id, status: stringField(event, "status") ?? "", outcomes };
+  return {
+    id,
+    status: stringField(event, "status") ?? "",
+    outcomes,
+    createdAt: stringField(event, "created_at"),
+    predictionWindowSeconds: numberField(event, "prediction_window_seconds"),
+  };
 }
 
 export type PredictionUserMessage =
@@ -103,6 +111,51 @@ export type PredictionUserMessage =
     };
 
 const RESULT_TYPES: readonly PredictionResultType[] = ["WIN", "LOSE", "REFUND"];
+
+export const MAX_PUBSUB_TOPICS = 50;
+
+export function buildDesiredPubsubTopics(
+  userTopics: readonly string[],
+  channelTopics: readonly string[],
+): { topics: string[]; truncated: boolean } {
+  const combined = [...userTopics, ...channelTopics];
+  if (combined.length <= MAX_PUBSUB_TOPICS) {
+    return { topics: combined, truncated: false };
+  }
+  return { topics: combined.slice(0, MAX_PUBSUB_TOPICS), truncated: true };
+}
+
+export function diffPubsubTopics(
+  listened: ReadonlySet<string>,
+  desired: readonly string[],
+): { listen: string[]; unlisten: string[] } {
+  const desiredSet = new Set(desired);
+  const listen = desired.filter((topic) => !listened.has(topic));
+  const unlisten = [...listened].filter((topic) => !desiredSet.has(topic));
+  return { listen, unlisten };
+}
+
+export function chunkTopics(
+  topics: readonly string[],
+  size: number = MAX_PUBSUB_TOPICS,
+): string[][] {
+  if (topics.length === 0) return [];
+  const chunks: string[][] = [];
+  for (let i = 0; i < topics.length; i += size) {
+    chunks.push(topics.slice(i, i + size));
+  }
+  return chunks;
+}
+
+export function pubsubReconnectDelayMs(
+  attempt: number,
+  baseMs: number = 10_000,
+  maxMs: number = 300_000,
+): number {
+  const safeAttempt = Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0;
+  const exponential = baseMs * Math.pow(2, safeAttempt);
+  return Math.min(exponential, maxMs);
+}
 
 export function parsePredictionUserMessage(payload: JsonObject): PredictionUserMessage | null {
   const type = stringField(payload, "type");

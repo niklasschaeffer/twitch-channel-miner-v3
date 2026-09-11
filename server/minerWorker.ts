@@ -23,16 +23,21 @@ import {
   selectClaimableDrops,
 } from "./drops.js";
 import {
-  MIN_PREDICTION_BET,
   predictionBetAmount,
+  predictionFireDelayMs,
   predictionNetPoints,
   selectPredictionOutcome,
 } from "./prediction.js";
 import {
+  buildDesiredPubsubTopics,
+  chunkTopics,
   describePubsubKeys,
+  diffPubsubTopics,
+  MAX_PUBSUB_TOPICS,
   parsePointsMessage,
   parsePredictionEvent,
   parsePredictionUserMessage,
+  pubsubReconnectDelayMs,
   type PredictionEventMessage,
   type PredictionUserMessage,
 } from "./pubsub.js";
@@ -40,6 +45,11 @@ import { composeYourChannels, type ComposeYourChannelsInput } from "./yourChanne
 
 const MAX_PREDICTION_BET_ATTEMPTS = 3;
 const PUBSUB_SHAPE_WARNING_INTERVAL_MS = 3_600_000;
+const MAX_HANDLED_RAID_IDS = 200;
+const CHAT_ONLY_IDLE_MS = 10 * 60_000;
+const TICK_ERROR_LOG_INTERVAL_MS = 60_000;
+const PUBSUB_RECONNECT_BASE_MS = 10_000;
+const PUBSUB_RECONNECT_MAX_MS = 300_000;
 
 interface PredictionBet {
   username: string;
@@ -73,6 +83,7 @@ export interface ActiveSlotConnection {
   connectionState: "connecting" | "connected" | "reconnecting" | "disconnected";
   lastPing: string;
   reconnectAttempts: number;
+  lastAccessed: string;
   ws?: WebSocket;
 }
 
@@ -105,7 +116,7 @@ export class MinerWorker {
   private activeConnections = new Map<string, ActiveSlotConnection>();
   private streamerChats = new Map<string, ChatMessage[]>();
   private timer: NodeJS.Timeout | null = null;
-  private initialized = false;
+  private initPromise: Promise<void>;
   private tickCount = 0;
   private disposed = false;
   private pubsubWs: WebSocket | null = null;
@@ -114,6 +125,18 @@ export class MinerWorker {
   private pubsubSnapshotTimer: NodeJS.Timeout | null = null;
   private balanceBaselines = new Map<string, number>();
   private pubsubUserId: string | null = null;
+  private tokenInvalid = false;
+  private pubsubListenedTopics = new Set<string>();
+  private pubsubNonceCounter = 0;
+  private pubsubReconnectAttempts = 0;
+  private pubsubTopicsOverflowWarned = false;
+  private statusCheckInFlight = false;
+  private lastTickErrorLoggedAt = 0;
+  private handledRaidIds = new Set<string>();
+  private scheduledPredictions = new Map<
+    string,
+    { streamerUsername: string; latestEvent: PredictionEventMessage; timer: NodeJS.Timeout }
+  >();
   private channelIds = new Map<string, string>();
   private predictionBets = new Map<string, PredictionBet>();
   private pubsubShapeWarnings = new Map<string, number>();
@@ -168,17 +191,18 @@ export class MinerWorker {
       lastActionTimestamp: new Date().toISOString(),
     };
 
-    // Load or seed from Prisma SQLite
-    this.initDatabase().then(async () => {
+    this.initPromise = this.initDatabase();
+    this.initPromise.then(async () => {
       if (this.disposed) return;
       this.startLoop();
       const v = await this.validateStoredAuthToken();
+      if (this.disposed) return;
       if (v) {
         this.authLoginName = v.login;
         this.hasChatEditScope = v.hasChatEdit;
         this.pubsubUserId = v.userId;
         this.connectPubsub();
-      } else if (this.settings.authToken) {
+      } else if (this.settings.authToken && !this.tokenInvalid) {
         this.addLog(
           "WARN",
           undefined,
@@ -326,7 +350,6 @@ export class MinerWorker {
         this.status.totalDropsClaimed = Math.max(this.status.totalDropsClaimed, drops);
       }
 
-      this.initialized = true;
       console.log(
         `MinerWorker initialized for user ${this.userId} with Prisma SQLite: ${this.streamers.length} streamers loaded.`,
       );
@@ -563,8 +586,32 @@ export class MinerWorker {
     this.disconnectAllStreamers();
     this.predictionBets.clear();
     this.balanceBaselines.clear();
+    for (const scheduled of this.scheduledPredictions.values()) {
+      clearTimeout(scheduled.timer);
+    }
+    this.scheduledPredictions.clear();
   }
   private tick() {
+    try {
+      this.tickInner();
+    } catch (err) {
+      this.handleTickError(err);
+    }
+  }
+
+  private handleTickError(err: unknown) {
+    console.error("MinerWorker tick crashed:", err);
+    const now = Date.now();
+    if (now - this.lastTickErrorLoggedAt < TICK_ERROR_LOG_INTERVAL_MS) return;
+    this.lastTickErrorLoggedAt = now;
+    this.addLog(
+      "ERROR",
+      undefined,
+      `Tick loop error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  private tickInner() {
     if (this.disposed) return;
     if (this.status.state !== "running") return;
 
@@ -581,18 +628,21 @@ export class MinerWorker {
     if (this.tickCount % statusCheckEveryTicks === 0) {
       this.checkAllStreamersOnlineStatus().catch(() => {});
     }
-    // Rebalance active slots based on real live status and priority
     this.rebalanceActiveSlots();
+
+    if (this.tickCount % 30 === 0) {
+      this.reapIdleChatOnlyConnections();
+    }
 
     if (this.tickCount % 15 === 0) {
       for (const s of this.streamers) this.autoClaimBonus(s);
     }
 
-    if (this.settings.autoClaimDrops && this.settings.authToken) {
+    if (this.settings.autoClaimDrops && this.settings.authToken && !this.tokenInvalid) {
       this.claimDrops().catch(() => {});
     }
 
-    if (this.settings.authToken) {
+    if (this.settings.authToken && !this.tokenInvalid) {
       if (this.tickCount % 30 === 0) {
         for (const s of this.streamers) {
           if (s.isMining && s.isLive && s.enabled) {
@@ -607,7 +657,16 @@ export class MinerWorker {
 
   public async checkAllStreamersOnlineStatus(): Promise<void> {
     if (this.streamers.length === 0) return;
+    if (this.statusCheckInFlight) return;
+    this.statusCheckInFlight = true;
+    try {
+      await this.checkAllStreamersOnlineStatusInner();
+    } finally {
+      this.statusCheckInFlight = false;
+    }
+  }
 
+  private async checkAllStreamersOnlineStatusInner(): Promise<void> {
     const loginAliases: Record<string, string> = {
       xqcow: "xqc",
     };
@@ -665,6 +724,7 @@ export class MinerWorker {
         return;
       }
       const json: unknown = await res.json();
+      if (this.disposed) return;
       const root =
         Array.isArray(json) && json[0] && typeof json[0] === "object" && "data" in json[0]
           ? json[0].data
@@ -855,6 +915,8 @@ export class MinerWorker {
         }
       }
 
+      this.syncPubsubTopics();
+
       if (stateChanged) {
         this.rebalanceActiveSlots();
         this.hooks.broadcast("streamers", this.streamers);
@@ -875,6 +937,7 @@ export class MinerWorker {
   public ensureChatConnection(username: string) {
     const clean = username.trim().toLowerCase();
     const existing = this.activeConnections.get(clean);
+    if (existing) existing.lastAccessed = new Date().toISOString();
     if (
       existing &&
       (existing.connectionState === "connected" || existing.connectionState === "connecting") &&
@@ -910,6 +973,7 @@ export class MinerWorker {
       connectionState: "connecting",
       lastPing: new Date().toISOString(),
       reconnectAttempts: 0,
+      lastAccessed: new Date().toISOString(),
     };
     this.activeConnections.set(clean, connection);
 
@@ -1151,6 +1215,24 @@ export class MinerWorker {
     this.activeConnections.clear();
   }
 
+  private reapIdleChatOnlyConnections() {
+    const now = Date.now();
+    for (const [username, conn] of this.activeConnections) {
+      const streamer = this.streamers.find((s) => s.username === username);
+      if (streamer?.isMining) continue;
+      const idleMs = now - Date.parse(conn.lastAccessed);
+      if (!Number.isFinite(idleMs) || idleMs < CHAT_ONLY_IDLE_MS) continue;
+      try {
+        if (conn.ws && (conn.ws.readyState === 1 || conn.ws.readyState === 0)) {
+          conn.ws.close();
+        }
+      } catch {}
+      this.activeConnections.delete(username);
+      this.streamerChats.delete(username);
+      this.addLog("INFO", username, `Closed idle chat-only connection to #${username}.`);
+    }
+  }
+
   public getActiveConnections(): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     for (const [username, conn] of this.activeConnections.entries()) {
@@ -1218,6 +1300,7 @@ export class MinerWorker {
 
     this.status.activeSlots = targetMining;
     if (slotsChanged) {
+      this.syncPubsubTopics();
       this.hooks.broadcast("streamers", this.streamers);
       this.hooks.broadcast("status", this.getStatus());
     }
@@ -1227,7 +1310,7 @@ export class MinerWorker {
 
   public async fetchAvailableClaim(channelLogin: string): Promise<string | null> {
     try {
-      const res = await fetch("https://gql.twitch.tv/gql", {
+      const res = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
         method: "POST",
         headers: this.authenticatedGqlHeaders(),
         body: JSON.stringify({
@@ -1269,12 +1352,28 @@ export class MinerWorker {
     };
   }
 
+  private markTokenInvalid() {
+    if (this.tokenInvalid) return;
+    this.tokenInvalid = true;
+    this.addLog("WARN", undefined, "Twitch token expired/revoked — reconnect via settings.");
+    this.disconnectPubsub();
+  }
+
+  private async authenticatedFetch(url: string, init: RequestInit): Promise<Response> {
+    const res = await fetch(url, init);
+    if (res.status === 401) this.markTokenInvalid();
+    return res;
+  }
+
   public async claimRealBonus(
     streamer: Streamer,
     delaySeconds = 0,
   ): Promise<{ success: boolean; points: number; message: string }> {
     if (!this.settings.authToken) {
       return { success: false, points: 0, message: "Not connected to Twitch." };
+    }
+    if (this.tokenInvalid) {
+      return { success: false, points: 0, message: "Twitch token expired/revoked." };
     }
     if (this.claimsInFlight.has(streamer.username)) {
       return { success: false, points: 0, message: "A claim is already in progress." };
@@ -1296,7 +1395,7 @@ export class MinerWorker {
           return { success: false, points: 0, message: "Claim cancelled while waiting." };
         }
       }
-      const channelRes = await fetch("https://gql.twitch.tv/gql", {
+      const channelRes = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
         method: "POST",
         headers: this.authenticatedGqlHeaders(),
         body: JSON.stringify({
@@ -1319,7 +1418,7 @@ export class MinerWorker {
           message: `Could not resolve channel id for ${streamer.username}.`,
         };
       }
-      const claimRes = await fetch("https://gql.twitch.tv/gql", {
+      const claimRes = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
         method: "POST",
         headers: this.authenticatedGqlHeaders(),
         body: JSON.stringify({
@@ -1436,10 +1535,11 @@ export class MinerWorker {
 
     let rawBody = "";
     try {
-      const res = await fetch("https://gql.twitch.tv/gql", {
+      const res = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
         method: "POST",
         headers: this.authenticatedGqlHeaders(),
         body: JSON.stringify(ops),
+        signal: AbortSignal.timeout(10000),
       });
       rawBody = await res.text();
       if (!res.ok) {
@@ -1676,6 +1776,10 @@ export class MinerWorker {
       headers: { Authorization: `OAuth ${token}` },
       signal: AbortSignal.timeout(8000),
     });
+    if (res.status === 401) {
+      this.markTokenInvalid();
+      return null;
+    }
     if (!res.ok) return null;
     const v: unknown = await res.json();
     if (typeof v !== "object" || v === null || !("login" in v) || !("user_id" in v)) return null;
@@ -1686,50 +1790,169 @@ export class MinerWorker {
     return { login, userId, hasChatEdit: scopes.includes("chat:edit") };
   }
 
+  private nextPubsubNonce(prefix: string): string {
+    this.pubsubNonceCounter += 1;
+    return `${prefix}-${this.pubsubNonceCounter}`;
+  }
+
+  private userLevelPubsubTopics(): string[] {
+    if (!this.pubsubUserId) return [];
+    return [
+      `community-points-user-v1.${this.pubsubUserId}`,
+      `predictions-user-v1.${this.pubsubUserId}`,
+    ];
+  }
+
+  private channelLevelPubsubTopics(): string[] {
+    const topics: string[] = [];
+    for (const s of this.streamers) {
+      if (!s.isMining || !s.isLive || !s.enabled) continue;
+      const channelId = this.channelIds.get(s.username);
+      if (!channelId) continue;
+      topics.push(
+        `raid.${channelId}`,
+        `predictions-channel-v1.${channelId}`,
+        `community-points-channel-v1.${channelId}`,
+      );
+    }
+    return topics;
+  }
+
+  private syncPubsubTopics() {
+    const ws = this.pubsubWs;
+    if (this.disposed || !ws || ws.readyState !== WebSocket.OPEN || !this.pubsubUserId) return;
+    const desired = buildDesiredPubsubTopics(
+      this.userLevelPubsubTopics(),
+      this.channelLevelPubsubTopics(),
+    );
+    if (desired.truncated) {
+      if (!this.pubsubTopicsOverflowWarned) {
+        this.pubsubTopicsOverflowWarned = true;
+        this.addLog(
+          "WARN",
+          undefined,
+          `PubSub topic list exceeds the ${MAX_PUBSUB_TOPICS}-topic connection cap; some raid/prediction topics were dropped.`,
+        );
+      }
+    } else {
+      this.pubsubTopicsOverflowWarned = false;
+    }
+    const { listen, unlisten } = diffPubsubTopics(this.pubsubListenedTopics, desired.topics);
+    if (unlisten.length > 0) {
+      for (const chunk of chunkTopics(unlisten)) {
+        try {
+          ws.send(
+            JSON.stringify({
+              type: "UNLISTEN",
+              nonce: this.nextPubsubNonce("unlisten"),
+              data: { topics: chunk },
+            }),
+          );
+        } catch {
+          void 0;
+        }
+      }
+      for (const topic of unlisten) this.pubsubListenedTopics.delete(topic);
+    }
+    if (listen.length > 0) {
+      const soloTopic = `predictions-user-v1.${this.pubsubUserId}`;
+      const batch = listen.filter((t) => t !== soloTopic);
+      const solo = listen.filter((t) => t === soloTopic);
+      for (const chunk of chunkTopics(batch)) {
+        try {
+          ws.send(
+            JSON.stringify({
+              type: "LISTEN",
+              nonce: this.nextPubsubNonce("listen"),
+              data: { topics: chunk, auth_token: this.settings.authToken },
+            }),
+          );
+        } catch {
+          void 0;
+        }
+      }
+      if (solo.length > 0) {
+        try {
+          ws.send(
+            JSON.stringify({
+              type: "LISTEN",
+              nonce: this.nextPubsubNonce("listen-solo"),
+              data: { topics: solo, auth_token: this.settings.authToken },
+            }),
+          );
+        } catch {
+          void 0;
+        }
+      }
+      for (const topic of listen) this.pubsubListenedTopics.add(topic);
+    }
+  }
+
+  private markRaidHandled(raidId: string) {
+    this.handledRaidIds.add(raidId);
+    if (this.handledRaidIds.size > MAX_HANDLED_RAID_IDS) {
+      const oldest = this.handledRaidIds.values().next().value;
+      if (oldest !== undefined) this.handledRaidIds.delete(oldest);
+    }
+  }
+
+  private cancelScheduledPrediction(eventId: string) {
+    const scheduled = this.scheduledPredictions.get(eventId);
+    if (!scheduled) return;
+    clearTimeout(scheduled.timer);
+    this.scheduledPredictions.delete(eventId);
+  }
+
+  private firePredictionBet(eventId: string) {
+    const scheduled = this.scheduledPredictions.get(eventId);
+    this.scheduledPredictions.delete(eventId);
+    if (!scheduled || this.disposed || this.tokenInvalid) return;
+    const streamer = this.streamers.find((s) => s.username === scheduled.streamerUsername);
+    if (!streamer || !streamer.isMining || !this.settings.autoBetPredictions) return;
+    this.placePredictionBet(streamer, scheduled.latestEvent);
+  }
+
+  private scheduleReconnect() {
+    if (this.disposed || this.tokenInvalid || !this.settings.authToken || !this.pubsubUserId) {
+      return;
+    }
+    if (this.pubsubReconnectTimer) return;
+    const delay = pubsubReconnectDelayMs(
+      this.pubsubReconnectAttempts,
+      PUBSUB_RECONNECT_BASE_MS,
+      PUBSUB_RECONNECT_MAX_MS,
+    );
+    const jitteredDelay = delay * (0.85 + Math.random() * 0.3);
+    this.pubsubReconnectAttempts += 1;
+    this.pubsubReconnectTimer = setTimeout(() => {
+      this.pubsubReconnectTimer = null;
+      this.connectPubsub();
+    }, jitteredDelay);
+  }
+
   private connectPubsub() {
+    if (this.disposed || this.tokenInvalid) return;
     if (!this.settings.authToken || !this.pubsubUserId) return;
-    if (this.disposed) return;
-    if (this.pubsubWs && this.pubsubWs.readyState === WebSocket.OPEN) return;
+    if (
+      this.pubsubWs &&
+      (this.pubsubWs.readyState === WebSocket.OPEN ||
+        this.pubsubWs.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
     try {
       const ws = new WebSocket("wss://pubsub-edge.twitch.tv/v1");
       this.pubsubWs = ws;
+      this.pubsubListenedTopics = new Set();
       ws.onopen = () => {
+        if (ws !== this.pubsubWs) return;
+        this.pubsubReconnectAttempts = 0;
         this.addLog(
           "SUCCESS",
           undefined,
           "Authenticated Twitch PubSub connected — real Channel Points balance sync active.",
         );
-        const topics = [`community-points-user-v1.${this.pubsubUserId}`];
-        for (const s of this.streamers) {
-          if (s.isMining && s.isLive && s.enabled) {
-            const channelId = this.channelIds.get(s.username);
-            if (channelId) {
-              topics.push(`raid.${channelId}`);
-              topics.push(`predictions-channel-v1.${channelId}`);
-              topics.push(`community-points-channel-v1.${channelId}`);
-            }
-          }
-        }
-        ws.send(
-          JSON.stringify({
-            type: "LISTEN",
-            nonce: "balance-listen",
-            data: {
-              topics,
-              auth_token: this.settings.authToken,
-            },
-          }),
-        );
-        ws.send(
-          JSON.stringify({
-            type: "LISTEN",
-            nonce: "prediction-results-listen",
-            data: {
-              topics: [`predictions-user-v1.${this.pubsubUserId}`],
-              auth_token: this.settings.authToken,
-            },
-          }),
-        );
+        this.syncPubsubTopics();
         this.fetchBalanceSnapshot();
         if (this.pubsubSnapshotTimer) clearInterval(this.pubsubSnapshotTimer);
         this.pubsubSnapshotTimer = setInterval(() => this.fetchBalanceSnapshot(), 300_000);
@@ -1742,9 +1965,20 @@ export class MinerWorker {
         }, 120_000);
       };
       ws.onmessage = (event) => {
+        if (ws !== this.pubsubWs) return;
         try {
           const msg: unknown = JSON.parse(String(event.data));
           if (typeof msg !== "object" || msg === null || !("type" in msg)) return;
+          if (msg.type === "RECONNECT") {
+            this.addLog("WARN", undefined, "Twitch PubSub requested a reconnect.");
+            this.pubsubReconnectAttempts = 0;
+            try {
+              ws.close();
+            } catch {
+              void 0;
+            }
+            return;
+          }
           if (
             msg.type === "RESPONSE" &&
             "error" in msg &&
@@ -1752,6 +1986,10 @@ export class MinerWorker {
             msg.error
           ) {
             const nonce = "nonce" in msg && typeof msg.nonce === "string" ? msg.nonce : "unknown";
+            if (msg.error === "ERR_BADAUTH") {
+              this.markTokenInvalid();
+              return;
+            }
             this.addLog("ERROR", undefined, `PubSub LISTEN rejected (${nonce}): ${msg.error}`);
             return;
           }
@@ -1814,9 +2052,14 @@ export class MinerWorker {
             if (!raid) return;
             if (!("id" in raid) || typeof raid.id !== "string") return;
             if (!("target_login" in raid) || typeof raid.target_login !== "string") return;
-            if (payload.type === "raid_go_v2" && this.settings.followRaids) {
+            if (
+              payload.type === "raid_go_v2" &&
+              this.settings.followRaids &&
+              !this.handledRaidIds.has(raid.id)
+            ) {
               const watched = this.streamerForChannelId(data.topic.split(".")[1]);
               if (watched) {
+                this.markRaidHandled(raid.id);
                 this.status.totalRaids += 1;
                 this.recordStatisticalData({ raidsCount: 1, channel: watched.username });
                 this.joinRaid(raid.id, raid.target_login, watched);
@@ -1832,6 +2075,7 @@ export class MinerWorker {
               return;
             }
             if (event.status !== "ACTIVE") {
+              this.cancelScheduledPrediction(event.id);
               const bet = this.predictionBets.get(event.id);
               if (bet && !bet.placed && !bet.inFlight) this.predictionBets.delete(event.id);
               return;
@@ -1839,7 +2083,26 @@ export class MinerWorker {
             if (!this.settings.autoBetPredictions) return;
             const streamer = this.streamerForChannelId(data.topic.split(".")[1]);
             if (!streamer || !streamer.isMining) return;
-            this.placePredictionBet(streamer, event);
+            if (this.predictionBets.has(event.id)) {
+              this.placePredictionBet(streamer, event);
+              return;
+            }
+            const scheduled = this.scheduledPredictions.get(event.id);
+            if (scheduled) {
+              scheduled.latestEvent = event;
+              return;
+            }
+            const delayMs = predictionFireDelayMs(
+              event.createdAt,
+              event.predictionWindowSeconds,
+              Date.now(),
+            );
+            const timer = setTimeout(() => this.firePredictionBet(event.id), delayMs);
+            this.scheduledPredictions.set(event.id, {
+              streamerUsername: streamer.username,
+              latestEvent: event,
+              timer,
+            });
             return;
           }
 
@@ -1860,15 +2123,16 @@ export class MinerWorker {
         }
       };
       ws.onclose = () => {
+        if (ws !== this.pubsubWs) return;
         if (this.pubsubPingTimer) {
           clearInterval(this.pubsubPingTimer);
           this.pubsubPingTimer = null;
         }
-        if (!this.disposed && this.settings.authToken && this.pubsubUserId) {
-          this.pubsubReconnectTimer = setTimeout(() => this.connectPubsub(), 10_000);
-        }
+        this.pubsubWs = null;
+        this.scheduleReconnect();
       };
       ws.onerror = () => {
+        if (ws !== this.pubsubWs) return;
         try {
           ws.close();
         } catch {
@@ -1906,6 +2170,8 @@ export class MinerWorker {
       this.pubsubWs = null;
     }
     this.pubsubUserId = null;
+    this.pubsubListenedTopics = new Set();
+    this.pubsubTopicsOverflowWarned = false;
   }
 
   private async fetchBalanceSnapshot() {
@@ -1918,7 +2184,7 @@ export class MinerWorker {
     for (const mining of [...miningStreamers, ...relationshipStreamers]) {
       const relationshipOnlyLogin = relationshipOnly.has(mining.username) && !mining.isMining;
       try {
-        const res = await fetch("https://gql.twitch.tv/gql", {
+        const res = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
           method: "POST",
           headers: this.authenticatedGqlHeaders(),
           body: JSON.stringify({
@@ -1929,6 +2195,7 @@ export class MinerWorker {
           signal: AbortSignal.timeout(8000),
         });
         const j: unknown = await res.json();
+        if (this.disposed) return;
         if (
           typeof j !== "object" ||
           j === null ||
@@ -1999,7 +2266,7 @@ export class MinerWorker {
     if (Date.now() - this.lastDropSync < 10 * 60_000) return;
     this.lastDropSync = Date.now();
     try {
-      const res = await fetch("https://gql.twitch.tv/gql", {
+      const res = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
         method: "POST",
         headers: this.authenticatedGqlHeaders(),
         body: JSON.stringify({
@@ -2019,6 +2286,7 @@ export class MinerWorker {
         return;
       }
       const j: unknown = await res.json();
+      if (this.disposed) return;
       if (
         typeof j !== "object" ||
         j === null ||
@@ -2042,7 +2310,8 @@ export class MinerWorker {
       this.status.lastDropSyncAt = new Date().toISOString();
       this.hooks.broadcast("status", this.getStatus());
       for (const drop of selectClaimableDrops(campaigns)) {
-        const claimRes = await fetch("https://gql.twitch.tv/gql", {
+        if (this.disposed) return;
+        const claimRes = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
           method: "POST",
           headers: this.authenticatedGqlHeaders(),
           body: JSON.stringify({
@@ -2058,6 +2327,7 @@ export class MinerWorker {
           signal: AbortSignal.timeout(10000),
         });
         const claimJson: unknown = await claimRes.json();
+        if (this.disposed) return;
         const payload =
           typeof claimJson === "object" &&
           claimJson !== null &&
@@ -2099,7 +2369,7 @@ export class MinerWorker {
   }
 
   private async sendMinuteWatched(streamer: Streamer) {
-    const channelRes = await fetch("https://gql.twitch.tv/gql", {
+    const channelRes = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
       method: "POST",
       headers: this.authenticatedGqlHeaders(),
       body: JSON.stringify({
@@ -2109,6 +2379,7 @@ export class MinerWorker {
       signal: AbortSignal.timeout(8000),
     });
     const channelJson: unknown = await channelRes.json();
+    if (this.disposed) return;
     if (
       typeof channelJson !== "object" ||
       channelJson === null ||
@@ -2146,6 +2417,7 @@ export class MinerWorker {
       body: new URLSearchParams({ data: payload }),
       signal: AbortSignal.timeout(8000),
     });
+    if (this.disposed) return;
     if (spadeRes.status === 204) {
       streamer.uptimeMinutes = (streamer.uptimeMinutes || 0) + 1;
       streamer.watchedMinutesSinceChest = (streamer.watchedMinutesSinceChest || 0) + 1;
@@ -2169,8 +2441,8 @@ export class MinerWorker {
     const target = targetLogin.toLowerCase();
     const streamer =
       watched ?? this.streamers.find((s) => extractTwitchUsername(s.username) === target);
-    if (!streamer || !this.settings.authToken) return;
-    fetch("https://gql.twitch.tv/gql", {
+    if (!streamer || !this.settings.authToken || this.tokenInvalid) return;
+    this.authenticatedFetch("https://gql.twitch.tv/gql", {
       method: "POST",
       headers: this.authenticatedGqlHeaders(),
       body: JSON.stringify({
@@ -2247,6 +2519,7 @@ export class MinerWorker {
     if (
       !this.settings.autoClaimBonus ||
       !this.settings.authToken ||
+      this.tokenInvalid ||
       !streamer.enabled ||
       !(streamer.isPartner || streamer.isAffiliate) ||
       this.claimsInFlight.has(streamer.username)
@@ -2271,6 +2544,7 @@ export class MinerWorker {
   }
 
   private placePredictionBet(streamer: Streamer, event: PredictionEventMessage) {
+    if (this.tokenInvalid) return;
     if (event.outcomes.length < 2) return;
     const existing = this.predictionBets.get(event.id);
     if (
@@ -2282,7 +2556,12 @@ export class MinerWorker {
     let bet = existing;
     if (!bet) {
       const balance = streamer.points;
-      if (balance < MIN_PREDICTION_BET) return;
+      const amount = predictionBetAmount(
+        balance,
+        this.settings.maxBetPoints,
+        this.settings.predictionStrategy,
+      );
+      if (amount <= 0) return;
       const outcomeIndex = selectPredictionOutcome(
         event.outcomes,
         this.settings.predictionStrategy,
@@ -2293,11 +2572,7 @@ export class MinerWorker {
         username: streamer.username,
         outcomeId: outcome.id,
         outcomeTitle: outcome.title ?? (outcomeIndex === 0 ? "Blue" : "Pink"),
-        amount: predictionBetAmount(
-          balance,
-          this.settings.maxBetPoints,
-          this.settings.predictionStrategy,
-        ),
+        amount,
         transactionId: Array.from({ length: 32 }, () =>
           Math.floor(Math.random() * 16).toString(16),
         ).join(""),
@@ -2310,7 +2585,7 @@ export class MinerWorker {
     const pending = bet;
     pending.attempts += 1;
     pending.inFlight = true;
-    fetch("https://gql.twitch.tv/gql", {
+    this.authenticatedFetch("https://gql.twitch.tv/gql", {
       method: "POST",
       headers: this.authenticatedGqlHeaders(),
       body: JSON.stringify({
@@ -2466,6 +2741,7 @@ export class MinerWorker {
   public async updateSettings(
     newSettings: Partial<MinerSettings>,
   ): Promise<MinerSettings & { hasAuthToken: boolean }> {
+    await this.initPromise;
     // Guard: an invalid GQL Client-Id makes every Twitch API call fail with
     // HTTP 400 and silently freezes live telemetry. Only accept the known-good
     // public web client id or a non-empty custom one that was verified.
@@ -2509,11 +2785,24 @@ export class MinerWorker {
       this.authLoginName = null;
       this.hasChatEditScope = false;
       this.pubsubUserId = null;
+      this.tokenInvalid = false;
       this.disconnectPubsub();
     }
     this.settings = { ...this.settings, ...newSettings };
     if (newSettings.priorityMode) {
       this.rebalanceActiveSlots();
+    }
+    if (newSettings.authToken && newSettings.authToken.length > 0) {
+      this.tokenInvalid = false;
+      this.pubsubReconnectAttempts = 0;
+      const validated = await this.validateStoredAuthToken();
+      if (validated) {
+        this.disconnectPubsub();
+        this.authLoginName = validated.login;
+        this.hasChatEditScope = validated.hasChatEdit;
+        this.pubsubUserId = validated.userId;
+        this.connectPubsub();
+      }
     }
     this.addLog("INFO", undefined, "Miner configuration settings updated.");
 
@@ -2638,6 +2927,9 @@ export class MinerWorker {
       });
 
       clearTimeout(timeout);
+      if (res.status === 401 && this.settings.authToken) {
+        this.markTokenInvalid();
+      }
       if (res.ok) {
         const json: unknown = await res.json();
         let user: Record<string, unknown> | null = null;
@@ -2797,6 +3089,7 @@ export class MinerWorker {
     displayName: string,
     userId: string,
   ): Promise<Streamer> {
+    await this.initPromise;
     const cleanUsername = extractTwitchUsername(username);
     if (!cleanUsername) {
       throw new Error("Invalid Twitch channel username or URL");
@@ -2908,6 +3201,7 @@ export class MinerWorker {
   }
 
   public async removeStreamer(username: string): Promise<boolean> {
+    await this.initPromise;
     const clean = extractTwitchUsername(username);
     this.disconnectFromStreamer(clean);
     const index = this.streamers.findIndex((s) => extractTwitchUsername(s.username) === clean);
@@ -2931,72 +3225,44 @@ export class MinerWorker {
   }
 
   public async updateStreamer(username: string, patch: unknown): Promise<Streamer | null> {
+    await this.initPromise;
     const clean = extractTwitchUsername(username);
     const s = this.streamers.find((item) => extractTwitchUsername(item.username) === clean);
     if (!s) return null;
-    const p = patch as Partial<Streamer>;
-    const allowed: Array<keyof Streamer> = [
-      "points",
-      "priority",
-      "enabled",
-      "isMining",
-      "isLive",
-      "viewerCount",
-      "game",
-      "lurkEnabled",
-      "lurkMessage",
-    ];
-    for (const key of allowed) {
-      if (p[key] !== undefined) {
-        (s as Record<keyof Streamer, unknown>)[key] = p[key];
-      }
+    const p = typeof patch === "object" && patch !== null ? (patch as Record<string, unknown>) : {};
+    const data: {
+      enabled?: boolean;
+      priority?: number;
+      lurkEnabled?: boolean;
+      lurkMessage?: string;
+    } = {};
+    if (typeof p.enabled === "boolean") {
+      s.enabled = p.enabled;
+      data.enabled = p.enabled;
+    }
+    if (typeof p.priority === "number" && Number.isFinite(p.priority)) {
+      s.priority = p.priority;
+      data.priority = p.priority;
+    }
+    if (typeof p.lurkEnabled === "boolean") {
+      s.lurkEnabled = p.lurkEnabled;
+      data.lurkEnabled = p.lurkEnabled;
+    }
+    if (typeof p.lurkMessage === "string") {
+      s.lurkMessage = p.lurkMessage;
+      data.lurkMessage = p.lurkMessage;
     }
 
-    // Persist changes in Prisma SQLite
-    try {
-      await prisma.streamer.update({
-        where: { id: s.id },
-        data: {
-          points:
-            (patch as Partial<Streamer>).points !== undefined
-              ? (patch as Partial<Streamer>).points
-              : undefined,
-          priority:
-            (patch as Partial<Streamer>).priority !== undefined
-              ? (patch as Partial<Streamer>).priority
-              : undefined,
-          enabled:
-            (patch as Partial<Streamer>).enabled !== undefined
-              ? (patch as Partial<Streamer>).enabled
-              : undefined,
-          isMining:
-            (patch as Partial<Streamer>).isMining !== undefined
-              ? (patch as Partial<Streamer>).isMining
-              : undefined,
-          isLive:
-            (patch as Partial<Streamer>).isLive !== undefined
-              ? (patch as Partial<Streamer>).isLive
-              : undefined,
-          viewerCount:
-            (patch as Partial<Streamer>).viewerCount !== undefined
-              ? (patch as Partial<Streamer>).viewerCount
-              : undefined,
-          game:
-            (patch as Partial<Streamer>).game !== undefined
-              ? (patch as Partial<Streamer>).game
-              : undefined,
-          lurkEnabled:
-            (patch as Partial<Streamer>).lurkEnabled !== undefined
-              ? (patch as Partial<Streamer>).lurkEnabled
-              : undefined,
-          lurkMessage:
-            (patch as Partial<Streamer>).lurkMessage !== undefined
-              ? (patch as Partial<Streamer>).lurkMessage
-              : undefined,
-        },
-      });
-    } catch {
-      // Ignored
+    if (Object.keys(data).length > 0) {
+      try {
+        await prisma.streamer.update({ where: { id: s.id }, data });
+      } catch (err) {
+        this.addLog(
+          "WARN",
+          clean,
+          `Streamer patch DB update failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        );
+      }
     }
 
     this.streamers.sort((a, b) => a.priority - b.priority);
