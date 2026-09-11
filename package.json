@@ -13,25 +13,20 @@
     "test": "vitest run",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:migrate": "prisma migrate dev",
     "prepare": "husky || true"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@prisma/client": "^6.19.3",
-    "@tailwindcss/vite": "^4.1.14",
-    "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "i18next": "^26.4.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
-    "oxfmt": "^0.67.0",
+    "prisma": "^6.19.3",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-i18next": "^17.0.13",
-    "recharts": "^3.10.1",
-    "vite": "^6.2.3"
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^7.0.0",
@@ -40,19 +35,22 @@
     "@semantic-release/github": "^12.0.0",
     "@semantic-release/npm": "^13.0.0",
     "@semantic-release/release-notes-generator": "^14.0.3",
+    "@tailwindcss/vite": "^4.1.14",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "husky": "^9.1.7",
+    "oxfmt": "^0.67.0",
     "oxlint": "^1.82.0",
-    "prisma": "^6.19.3",
     "semantic-release": "^25.0.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
+    "vite": "^6.2.3",
     "vitest": "^5.0.0"
   }
 }
