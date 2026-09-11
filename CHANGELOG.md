@@ -1,3 +1,10 @@
+## [1.21.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.21.0...v1.21.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* repair local login, prediction betting and dashboard point math ([e013b99](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/e013b994adf8e860f3df8ee0b8dc629f3dd78d2b))
+
 # [1.21.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.20.0...v1.21.0) (2026-09-11)
 
 
