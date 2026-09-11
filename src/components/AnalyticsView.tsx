@@ -20,6 +20,7 @@ import {
   DropProgress,
   MinerStatus,
 } from "../types";
+import { sessionPointsPerHour } from "../lib/miningRate";
 
 interface AnalyticsViewProps {
   analytics: AnalyticsData | null;
@@ -38,6 +39,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
   }
 
   const { hourlyHistory, channelDistribution, categoryBreakdown, summary } = analytics;
+  const hourlyRate = status ? sessionPointsPerHour(status) : null;
+  const dailyYield = hourlyRate === null ? null : hourlyRate * 24;
   const totalEarned =
     summary.totalBonusChestPoints +
     summary.totalWatchTimePoints +
@@ -86,7 +89,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
             <span>{t("analytics.estimatedYield")}</span>
           </div>
           <p className="text-xl font-bold text-[#00a865] dark:text-[#00F593] font-mono mt-1">
-            ~10,800 pts / day
+            {dailyYield === null ? "—" : `~${dailyYield.toLocaleString()} pts / day`}
           </p>
           <p className="text-xs text-zinc-500 dark:text-[#ADADB8] mt-1">
             {t("analytics.dailyRateDesc")}

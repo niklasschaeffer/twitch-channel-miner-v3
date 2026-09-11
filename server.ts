@@ -1,11 +1,12 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
+import { randomBytes } from "crypto";
 import type { Socket } from "net";
 import type { ViteDevServer } from "vite";
 import { minerEngine, extractTwitchUsername } from "./server/minerEngine.js";
 import { prisma } from "./server/db.js";
+import { hashPassword, verifyPassword } from "./server/password.js";
 import { md5 } from "./src/lib/gravatar.js";
 import { resolveEmoteAsset, badgeMapHandler } from "./server/emoteCache.js";
 
@@ -89,14 +90,6 @@ async function startServer() {
       "Set-Cookie",
       `miner_session=${sessionId}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${30 * 24 * 3600}`,
     );
-  };
-
-  const hashPassword = (password: string) =>
-    scryptSync(password, randomBytes(16).toString("hex"), 64).toString("hex");
-  const verifyPassword = (password: string, stored: string) => {
-    const [salt, key] = [stored.slice(0, 32), stored.slice(32)];
-    const candidate = scryptSync(password, salt, 64);
-    return timingSafeEqual(Buffer.from(key, "hex"), candidate);
   };
 
   app.use(express.json());
@@ -315,6 +308,7 @@ async function startServer() {
           session.ownerUserId,
         );
         res.json({ state: "granted", login: v.login, userId: v.userId });
+        return;
       }
       // 400 = authorization_pending / slow_down — still waiting for the user.
       // The frontend drives polling cadence using `interval` from /start.
@@ -495,7 +489,13 @@ async function startServer() {
       });
       await setSessionCookie(res, user.id);
 
-      res.json(user);
+      res.json({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        avatarUrl: user.avatarUrl,
+        provider: user.provider,
+      });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }

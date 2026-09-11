@@ -73,6 +73,8 @@ export class MinerWorker {
   private pubsubUserId: string | null = null;
   private channelIds = new Map<string, string>();
   private betPredictionEventIds = new Set<string>();
+  private pointsDayKey = new Date().toISOString().slice(0, 10);
+  private pointsHourKey = new Date().toISOString().slice(0, 13);
   private authLoginName: string | null = null;
   private hasChatEditScope = false;
   private yourChannelsCache: {
@@ -107,6 +109,7 @@ export class MinerWorker {
       totalPointsMined: 0,
       pointsToday: 0,
       pointsThisHour: 0,
+      pointsThisSession: 0,
       activeSlots: [],
       activeSlotsLimit: 2,
       totalClaims: 0,
@@ -241,24 +244,35 @@ export class MinerWorker {
         const totalMined = statRecords.reduce((sum, r) => sum + r.pointsMined, 0);
         const totalClaims = statRecords.reduce((sum, r) => sum + r.claimsCount, 0);
         const totalRaids = statRecords.reduce((sum, r) => sum + r.raidsCount, 0);
-        const totalPreds = statRecords.reduce((sum, r) => sum + r.netPredictionPoints, 0);
-        const netPreds = totalPreds;
+        const predictionsWon = statRecords.reduce((sum, r) => sum + r.predictionsWon, 0);
+        const netPreds = statRecords.reduce((sum, r) => sum + r.netPredictionPoints, 0);
         const drops = statRecords.reduce((sum, r) => sum + r.dropsCount, 0);
-        const todayKey = new Date().getHours().toString().padStart(2, "0");
-        const today = new Date().toISOString().slice(0, 10);
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+        const hourStart = new Date(now);
+        hourStart.setUTCMinutes(0, 0, 0);
         const todayMined = statRecords
-          .filter((r) => r.recordedAt && r.recordedAt.toISOString().slice(0, 10) === today)
+          .filter((r) => r.recordedAt.toISOString().slice(0, 10) === today)
           .reduce((sum, r) => sum + r.pointsMined, 0);
+        const minedByChannel = new Map<string, number>();
+        for (const r of statRecords) {
+          if (r.channel) {
+            minedByChannel.set(r.channel, (minedByChannel.get(r.channel) ?? 0) + r.pointsMined);
+          }
+        }
+        for (const s of this.streamers) {
+          s.totalPointsMined = minedByChannel.get(s.username) ?? 0;
+        }
 
         this.status.totalPointsMined = Math.max(this.status.totalPointsMined, totalMined);
         this.status.totalClaims = Math.max(this.status.totalClaims, totalClaims);
         this.status.pointsToday = todayMined;
         this.status.pointsThisHour = statRecords
-          .filter((r) => r.hourKey === todayKey)
+          .filter((r) => r.recordedAt >= hourStart)
           .reduce((sum, r) => sum + r.pointsMined, 0);
         this.status.totalRaids = Math.max(this.status.totalRaids, totalRaids);
-        this.status.totalPredictionsWon = Math.max(this.status.totalPredictionsWon, totalPreds);
-        this.status.netPredictionPoints = Math.max(this.status.netPredictionPoints, netPreds);
+        this.status.totalPredictionsWon = Math.max(this.status.totalPredictionsWon, predictionsWon);
+        this.status.netPredictionPoints = netPreds;
         this.status.totalDropsClaimed = Math.max(this.status.totalDropsClaimed, drops);
       }
 
@@ -506,6 +520,7 @@ export class MinerWorker {
 
     this.status.uptimeSeconds += 2;
     this.status.lastActionTimestamp = new Date().toISOString();
+    this.rollPointWindows();
 
     this.tickCount++;
 
@@ -938,11 +953,6 @@ export class MinerWorker {
                     const k = parts[0];
                     const v = parts.slice(1).join("=");
                     if (k === "emotes" && v) {
-                      const cpAt: number[] = [0];
-                      for (let ci = 0; ci < text.length;) {
-                        cpAt.push(cpAt[cpAt.length - 1] + 1);
-                        ci += text.codePointAt(ci)! > 0xffff ? 2 : 1;
-                      }
                       for (const emoteDef of v.split("/")) {
                         const [emoteId, rangesStr] = emoteDef.split(":");
                         if (!emoteId || !rangesStr) continue;
@@ -951,9 +961,7 @@ export class MinerWorker {
                           const start = Number(s);
                           const end = Number(e);
                           if (Number.isNaN(start) || Number.isNaN(end)) continue;
-                          const cpStart = cpAt[start] ?? start;
-                          const cpEnd = cpAt[end + 1] ?? end + 1;
-                          emoteRefs.push({ id: emoteId, start: cpStart, end: cpEnd });
+                          emoteRefs.push({ id: emoteId, start, end });
                         }
                       }
                     }
@@ -1309,6 +1317,7 @@ export class MinerWorker {
         pointsMined: earned,
         claimsCount: 1,
         chestsPoints: earned,
+        channel: streamer.username,
       });
       this.hooks.broadcast("status", this.getStatus());
       this.addLog(
@@ -1769,6 +1778,7 @@ export class MinerWorker {
           }
 
           if (data.topic.startsWith("predictions-channel-v1.")) {
+            if (!this.settings.autoBetPredictions) return;
             const event =
               "event" in payload && typeof payload.event === "object" && payload.event !== null
                 ? payload.event
@@ -1790,10 +1800,13 @@ export class MinerWorker {
             );
             if (outcomesTyped.length < 2) return;
 
-            const channelLogin = data.topic.split(".")[1] ?? "";
-            const streamer = this.streamers.find(
-              (s) => extractTwitchUsername(s.username) === channelLogin,
-            );
+            const topicId = data.topic.split(".")[1];
+            const channelLogin = [...this.channelIds.entries()]
+              .find(([, id]) => id === topicId)?.[0]
+              ?.toLowerCase();
+            const streamer = channelLogin
+              ? this.streamers.find((s) => extractTwitchUsername(s.username) === channelLogin)
+              : undefined;
             if (!streamer || !streamer.isMining) return;
 
             if (this.betPredictionEventIds.has(event.id)) return;
@@ -1847,7 +1860,9 @@ export class MinerWorker {
                   typeof j.data === "object" &&
                   j.data !== null &&
                   "makePrediction" in j.data &&
-                  j.data.makePrediction !== null;
+                  typeof j.data.makePrediction === "object" &&
+                  j.data.makePrediction !== null &&
+                  !("error" in j.data.makePrediction && j.data.makePrediction.error);
                 if (ok) {
                   const outcomeTitle =
                     typeof outcome.title === "string"
@@ -2248,6 +2263,20 @@ export class MinerWorker {
       .catch(() => {});
   }
 
+  private rollPointWindows() {
+    const stamp = new Date().toISOString();
+    const dayKey = stamp.slice(0, 10);
+    const hourKey = stamp.slice(0, 13);
+    if (dayKey !== this.pointsDayKey) {
+      this.pointsDayKey = dayKey;
+      this.status.pointsToday = 0;
+    }
+    if (hourKey !== this.pointsHourKey) {
+      this.pointsHourKey = hourKey;
+      this.status.pointsThisHour = 0;
+    }
+  }
+
   private applyRealBalance(channelLogin: string, balance: number, alreadyRecorded = 0) {
     const streamer =
       this.streamers.find((s) => extractTwitchUsername(s.username) === channelLogin) ??
@@ -2269,10 +2298,11 @@ export class MinerWorker {
     const delta = balance - baseline;
 
     streamer.points = balance;
-    if (firstSync) {
-      streamer.totalPointsMined = balance;
-      this.status.totalPointsMined = this.streamers.reduce((acc, s) => acc + s.totalPointsMined, 0);
-    } else if (delta > 0) {
+    if (!firstSync && delta > 0) {
+      this.rollPointWindows();
+      streamer.totalPointsMined += delta;
+      this.status.totalPointsMined += delta;
+      this.status.pointsThisSession += delta;
       this.status.pointsToday += delta;
       this.status.pointsThisHour += delta;
       const watchDelta = delta - alreadyRecorded;
@@ -2693,7 +2723,7 @@ export class MinerWorker {
       nextChestEstimateSeconds: 900,
       totalPointsMined: 0,
       enabled: true,
-      uptimeMinutes: live.isLive ? 60 : 0,
+      uptimeMinutes: 0,
       isFollowing: live.isFollowing === true,
       isPartner: false,
       isAffiliate: false,

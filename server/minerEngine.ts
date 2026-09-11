@@ -155,6 +155,7 @@ export class MinerEngine {
       totalPointsMined: 0,
       pointsToday: 0,
       pointsThisHour: 0,
+      pointsThisSession: 0,
       activeSlots: [],
       activeSlotsLimit: 2,
       totalClaims: 0,

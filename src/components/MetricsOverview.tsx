@@ -2,6 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { Coins, Trophy, ArrowUpRight, Zap, Target, Swords } from "lucide-react";
 import { MinerStatus, AnalyticsData } from "../types";
+import { sessionPointsPerHour } from "../lib/miningRate";
 
 interface MetricsOverviewProps {
   status: MinerStatus | null;
@@ -12,10 +13,7 @@ export const MetricsOverview: React.FC<MetricsOverviewProps> = ({ status, analyt
   if (!status) return null;
 
   const uptimeHours = (status.uptimeSeconds / 3600).toFixed(1);
-  const estimatedPerHour =
-    status.uptimeSeconds > 60
-      ? Math.round((status.totalPointsMined / status.uptimeSeconds) * 3600)
-      : 450;
+  const estimatedPerHour = sessionPointsPerHour(status);
 
   const cards = [
     {
@@ -30,7 +28,7 @@ export const MetricsOverview: React.FC<MetricsOverviewProps> = ({ status, analyt
     {
       id: "metric-rate",
       label: t("stats.hourlyRate"),
-      value: `~${estimatedPerHour.toLocaleString()}`,
+      value: estimatedPerHour === null ? "—" : `~${estimatedPerHour.toLocaleString()}`,
       unit: "pts / hr",
       subtext: `Uptime: ${uptimeHours}h`,
       icon: Zap,

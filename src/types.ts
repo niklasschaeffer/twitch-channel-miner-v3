@@ -67,6 +67,7 @@ export interface MinerStatus {
   totalPointsMined: number;
   pointsToday: number;
   pointsThisHour: number;
+  pointsThisSession: number;
   activeSlots: string[]; // streamer usernames currently being watched
   activeSlotsLimit: number;
   totalClaims: number;
