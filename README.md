@@ -54,7 +54,7 @@ Once your Twitch account is connected and channels are on the watchlist, **your 
 | Feature | Mechanism |
 | **Watch earning** | Sends minute-watched heartbeats to Twitch's spade telemetry endpoint once per minute per mining channel — the same signal the Twitch web player sends |
 | **Bonus chests** | Subscribes to real-time PubSub `community-points-user-v1` events; when a chest becomes claimable it polls and executes the persisted `ClaimCommunityPoints` GQL mutation |
-| **Drops** | Polls your inventory (10-min cadence, toggleable) and claims every drop with `is_claimable` + `dropInstanceID` via `DropsPage_ClaimDropRewards` |
+| **Drops** | Polls your inventory (10-min cadence, toggleable) and claims every unclaimed drop whose watched minutes meet the requirement (and whose preconditions are met) via `DropsPage_ClaimDropRewards` with its `dropInstanceID` |
 | **Raids** | Subscribes to PubSub `raid` topics per mining channel; on a raid event it joins via the persisted `JoinRaid` mutation (auto-follow configurable) and records the raid against the watched channel |
 | **Watch streaks** | Tracks consecutive UTC days with accepted heartbeats per channel (Twitch's GQL exposes no streak field); resets honestly after missed days |
 | **Auto-lurk** | Optionally posts a chat message (default `!lurk`) via IRC into a channel's chat the moment it goes live — once per day per channel, with self-echo dedupe so it never repeats |
@@ -90,7 +90,7 @@ GOOGLE_CLIENT_SECRET=...    # optional, for Google login
 APP_URL=http://localhost:3000   # must be a real origin; OAuth redirects break otherwise
 ```
 
-> **Client-Id policy:** the TV client id (`ue6666...`) is required — device-flow tokens pair with it for GQL viewer context. Anonymous telemetry uses the public web id. Custom client ids are rejected (Twitch GQL returns HTTP 400).
+> **Client-Id policy:** `TWITCH_CLIENT_ID` must be the TV client id `ue6666qo983tsx6so1t0vnawi233wa` — device-flow tokens pair with it for GQL viewer context. Anonymous telemetry uses the public web id. **Do not use the client id of an app you registered at dev.twitch.tv:** Twitch's internal GQL API only accepts tokens minted under its first-party client ids, so such a token still passes `/oauth2/validate` but every authenticated GQL call (chests, drops, watch heartbeats, balance) fails with `401 The "Authorization" token is invalid`. After changing the id, recreate the container and reconnect Twitch in the settings.
 
 Build and start:
 
@@ -124,7 +124,9 @@ The app is now at `http://localhost:3000`. The SQLite database lives at `prisma/
 
 - **Hourly history** — points mined and claims per hour, from recorded stats
 - **Channel distribution** — earned points per channel (from actual earnings records, not balance snapshots)
-- **Category breakdown** — chests vs. watch time vs. raid bonuses vs. predictions vs. drops
+- **Category breakdown** — chests vs. watch time vs. raid bonuses vs. predictions
+- **Drop campaigns** — campaigns in progress with per-drop watched/required minutes, straight from your Twitch inventory
+- **Claimed drops** — rewards awarded to your Twitch account in the last 30 days (including ones claimed outside the miner)
 
 ### Settings
 
@@ -170,7 +172,6 @@ Analytics record **only actual earned deltas** — a claim logs its earned point
 **Known gaps / next up:**
 
 - ⚠️ Prediction strategy is outcome-index-based; porting upstream's odds-ratio expected-value calculation (`Bet.calculate()`) would improve bet quality
-- ⚠️ Drop claiming checks `is_claimable` only; upstream also gates on `has_preconditions_met` and watched-minutes thresholds
 - ⚠️ Per-user mining workers (`server/minerWorker.ts`) each run their own Twitch connections; two users mining the same channel open duplicate IRC/PubSub sockets by design (no shared connection pool)
 - ⚠️ Verification beyond the Vitest suite (`npm test`: helpers, i18n parity, chest progress) is `tsc --noEmit` + live smoke tests against the running container
 - ⚠️ Google-login users have no local password; add one via re-register or a manual hash reset if you want email login too
