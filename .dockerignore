@@ -1,0 +1,16 @@
+.git
+node_modules
+dist
+.env
+.env.*
+prisma/*.db*
+backups
+coverage
+*.log
+.wiki
+.github
+.husky
+.claude
+.agents
+tests
+assets

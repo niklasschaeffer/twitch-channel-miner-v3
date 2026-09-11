@@ -16,6 +16,8 @@ RUN npm run build
 
 FROM node:25-alpine AS runner
 
+WORKDIR /app
+
 RUN apk add --no-cache openssl curl
 
 ENV NODE_ENV=production
@@ -25,7 +27,7 @@ ENV DATABASE_URL="file:/app/data/miner.db"
 COPY --from=builder /app/package.json /app/bun.lock* /app/package-lock.json* ./
 RUN npm install --omit=dev
 
-COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma/schema.prisma ./prisma/schema.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/dist ./dist
