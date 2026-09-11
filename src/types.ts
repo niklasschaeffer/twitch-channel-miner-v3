@@ -75,7 +75,26 @@ export interface MinerStatus {
   totalPredictionsWon: number;
   netPredictionPoints: number;
   totalDropsClaimed: number;
+  activeDropCampaigns: DropCampaignProgress[];
+  lastDropSyncAt: string | null;
   lastActionTimestamp: string;
+}
+
+export interface DropProgress {
+  dropId: string;
+  name: string;
+  requiredMinutes: number;
+  currentMinutes: number;
+  isClaimed: boolean;
+}
+
+export interface DropCampaignProgress {
+  campaignId: string;
+  name: string;
+  game: string;
+  gameBoxArtUrl: string | null;
+  endsAt: string | null;
+  drops: DropProgress[];
 }
 
 export interface LogEntry {
@@ -116,7 +135,6 @@ export interface AnalyticsData {
     totalWatchTimePoints: number;
     totalRaidPoints: number;
     totalPredictionPoints: number;
-    totalDropPoints: number;
   };
 }
 

@@ -14,6 +14,7 @@ import {
 import { prisma } from "./db.js";
 import { extractTwitchUsername } from "./minerEngine.js";
 import { computeChestProgress } from "./chest.js";
+import { markDropClaimed, parseDropCampaigns, selectClaimableDrops } from "./drops.js";
 import { selectPredictionOutcome } from "./prediction.js";
 import { composeYourChannels, type ComposeYourChannelsInput } from "./yourChannels.js";
 
@@ -108,6 +109,8 @@ export class MinerWorker {
       totalPredictionsWon: 0,
       netPredictionPoints: 0,
       totalDropsClaimed: 0,
+      activeDropCampaigns: [],
+      lastDropSyncAt: null,
       lastActionTimestamp: new Date().toISOString(),
     };
 
@@ -1045,7 +1048,7 @@ export class MinerWorker {
 
         ws.onclose = () => {
           connection.connectionState = "disconnected";
-          connection.ws = null;
+          connection.ws = undefined;
           connection.reconnectAttempts += 1;
         };
       }
@@ -1657,7 +1660,7 @@ export class MinerWorker {
           }),
         );
         this.fetchBalanceSnapshot();
-        clearInterval(this.pubsubSnapshotTimer);
+        if (this.pubsubSnapshotTimer) clearInterval(this.pubsubSnapshotTimer);
         this.pubsubSnapshotTimer = setInterval(() => this.fetchBalanceSnapshot(), 300_000);
         this.pubsubPingTimer = setInterval(() => {
           try {
@@ -2049,6 +2052,10 @@ export class MinerWorker {
         }),
         signal: AbortSignal.timeout(10000),
       });
+      if (!res.ok) {
+        this.addLog("WARN", undefined, `Drop sync failed (HTTP ${res.status}).`);
+        return;
+      }
       const j: unknown = await res.json();
       if (
         typeof j !== "object" ||
@@ -2062,52 +2069,56 @@ export class MinerWorker {
         currentUser?: { inventory?: { dropCampaignsInProgress?: unknown } | null } | null;
       };
       const campaigns = data.currentUser?.inventory?.dropCampaignsInProgress;
-      if (!Array.isArray(campaigns)) return;
-      for (const campaign of campaigns) {
-        if (typeof campaign !== "object" || campaign === null) continue;
-        const drops =
-          "timeBasedDrops" in campaign && Array.isArray(campaign.timeBasedDrops)
-            ? campaign.timeBasedDrops
-            : [];
-        for (const drop of drops) {
-          if (typeof drop !== "object" || drop === null) continue;
-          const self =
-            "self" in drop && typeof drop.self === "object" && drop.self !== null ? drop.self : {};
-          const isClaimed = "isClaimed" in self && self.isClaimed === true;
-          const isClaimable = "isClaimable" in self && self.isClaimable === true;
-          const instanceId = "id" in self && typeof self.id === "string" ? self.id : null;
-          if (isClaimed || !isClaimable || !instanceId) continue;
-          const claimRes = await fetch("https://gql.twitch.tv/gql", {
-            method: "POST",
-            headers: this.authenticatedGqlHeaders(),
-            body: JSON.stringify({
-              operationName: "DropsPage_ClaimDropRewards",
-              extensions: {
-                persistedQuery: {
-                  version: 1,
-                  sha256Hash: "a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930",
-                },
+      this.status.activeDropCampaigns = parseDropCampaigns(campaigns);
+      this.status.lastDropSyncAt = new Date().toISOString();
+      this.hooks.broadcast("status", this.getStatus());
+      for (const drop of selectClaimableDrops(campaigns)) {
+        const claimRes = await fetch("https://gql.twitch.tv/gql", {
+          method: "POST",
+          headers: this.authenticatedGqlHeaders(),
+          body: JSON.stringify({
+            operationName: "DropsPage_ClaimDropRewards",
+            extensions: {
+              persistedQuery: {
+                version: 1,
+                sha256Hash: "a455deea71bdc9015b78eb49f4acfbce8baa7ccbedd28e549bb025bd0f751930",
               },
-              variables: { input: { dropInstanceID: instanceId } },
-            }),
-            signal: AbortSignal.timeout(10000),
-          });
-          const claimJson: unknown = await claimRes.json();
-          const ok =
-            typeof claimJson === "object" &&
-            claimJson !== null &&
-            "data" in claimJson &&
-            typeof claimJson.data === "object" &&
-            claimJson.data !== null &&
-            "claimDropRewards" in claimJson.data &&
-            claimJson.data.claimDropRewards !== null;
-          this.addLog(
-            ok ? "SUCCESS" : "WARN",
-            undefined,
-            `Drop claim for ${instanceId.slice(0, 8)}: ${ok ? "claimed" : "failed"} (${claimRes.status}).`,
+            },
+            variables: { input: { dropInstanceID: drop.instanceId } },
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
+        const claimJson: unknown = await claimRes.json();
+        const payload =
+          typeof claimJson === "object" &&
+          claimJson !== null &&
+          !("errors" in claimJson) &&
+          "data" in claimJson &&
+          typeof claimJson.data === "object" &&
+          claimJson.data !== null &&
+          "claimDropRewards" in claimJson.data
+            ? claimJson.data.claimDropRewards
+            : null;
+        const ok = typeof payload === "object" && payload !== null;
+        const claimStatus =
+          ok && "status" in payload && typeof payload.status === "string" ? payload.status : null;
+        if (ok) {
+          this.status.totalDropsClaimed += 1;
+          this.status.activeDropCampaigns = markDropClaimed(
+            this.status.activeDropCampaigns,
+            drop.dropId,
           );
-          await new Promise((r) => setTimeout(r, 5000 + Math.random() * 5000));
+          await this.recordStatisticalData({ dropsCount: 1 });
+          this.hooks.broadcast("status", this.getStatus());
         }
+        this.addLog(
+          ok ? "DROP" : "WARN",
+          drop.game || undefined,
+          ok
+            ? `Drop claimed: ${drop.dropName} (${drop.campaignName})${claimStatus ? ` — ${claimStatus}` : ""}.`
+            : `Drop claim failed for ${drop.dropName} (${drop.campaignName}), HTTP ${claimRes.status}.`,
+        );
+        await new Promise((r) => setTimeout(r, 5000 + Math.random() * 5000));
       }
     } catch (err) {
       this.addLog(
@@ -3044,7 +3055,6 @@ export class MinerWorker {
     let totalWatch = 0;
     let totalRaids = 0;
     let totalPreds = 0;
-    let totalDrops = 0;
 
     for (const r of records) {
       if (r.channel) {
@@ -3059,7 +3069,6 @@ export class MinerWorker {
       totalWatch += r.watchTimePoints;
       totalRaids += r.raidsCount * 250;
       totalPreds += r.netPredictionPoints;
-      totalDrops += r.dropsCount * 100;
     }
 
     // Default fallbacks if empty - ONLY in development mode
@@ -3074,7 +3083,6 @@ export class MinerWorker {
       totalWatch = 1840;
       totalRaids = 750;
       totalPreds = 1200;
-      totalDrops = 300;
     }
 
     const hourlyHistory = Array.from(hourlyMap.entries()).map(([time, data]) => ({
@@ -3111,7 +3119,6 @@ export class MinerWorker {
         points: totalPreds,
         color: "#3B82F6",
       },
-      { name: "Drops Claimed", value: totalDrops, points: totalDrops, color: "#EC4899" },
     ];
 
     return {
@@ -3123,7 +3130,6 @@ export class MinerWorker {
         totalWatchTimePoints: totalWatch,
         totalRaidPoints: totalRaids,
         totalPredictionPoints: totalPreds,
-        totalDropPoints: totalDrops,
       },
     };
   }

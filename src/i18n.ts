@@ -106,6 +106,17 @@ export const resources = {
         sourceBreakdown: "Points Source Breakdown",
         channelDist: "Points Distribution by Channel",
         noData: "Loading analytics telemetry from Prisma database...",
+        dropsTitle: "Drop Campaigns",
+        dropsSubtitle:
+          "Live progress from your Twitch drops inventory · {{count}} claimed by the miner",
+        dropsLastSync: "Last sync {{time}}",
+        dropsPending:
+          "No inventory sync yet — the inventory syncs every 10 minutes while Auto-Claim Drops is enabled.",
+        dropsNone: "No drop campaigns in progress.",
+        dropsEnds: "Ends {{time}}",
+        dropsMinutes: "{{current}} / {{required}} min",
+        dropsReady: "Ready to claim",
+        dropsClaimed: "Claimed",
       },
       logs: {
         title: "Live Engine Telemetry",
@@ -364,6 +375,17 @@ export const resources = {
         sourceBreakdown: "Punkte-Aufschlüsselung nach Quelle",
         channelDist: "Punkteverteilung nach Kanal",
         noData: "Lade Analysetelemetrie aus der Prisma-Datenbank...",
+        dropsTitle: "Drop-Kampagnen",
+        dropsSubtitle:
+          "Live-Fortschritt aus deinem Twitch-Drops-Inventar · {{count}} vom Miner abgeholt",
+        dropsLastSync: "Zuletzt synchronisiert {{time}}",
+        dropsPending:
+          "Noch keine Inventar-Synchronisierung — das Inventar wird alle 10 Minuten synchronisiert, solange „Drops automatisch abholen“ aktiv ist.",
+        dropsNone: "Keine laufenden Drop-Kampagnen.",
+        dropsEnds: "Endet {{time}}",
+        dropsMinutes: "{{current}} / {{required}} Min.",
+        dropsReady: "Bereit zum Abholen",
+        dropsClaimed: "Abgeholt",
       },
       logs: {
         title: "Live-Engine Telemetrie",

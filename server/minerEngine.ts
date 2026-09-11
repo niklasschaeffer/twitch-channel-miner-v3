@@ -163,6 +163,8 @@ export class MinerEngine {
       totalPredictionsWon: 0,
       netPredictionPoints: 0,
       totalDropsClaimed: 0,
+      activeDropCampaigns: [],
+      lastDropSyncAt: null,
       lastActionTimestamp: new Date().toISOString(),
     };
     if (!userId) return zeroed;

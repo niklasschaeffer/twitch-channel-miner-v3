@@ -12,8 +12,8 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { TooltipValueType } from "recharts";
-import { TrendingUp, PieChart, Award, Zap, Trophy, Flame } from "lucide-react";
-import { AnalyticsData, MinerStatus } from "../types";
+import { TrendingUp, PieChart, Award, Zap, Trophy, Flame, Sparkles } from "lucide-react";
+import { AnalyticsData, DropCampaignProgress, DropProgress, MinerStatus } from "../types";
 
 interface AnalyticsViewProps {
   analytics: AnalyticsData | null;
@@ -36,8 +36,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
     summary.totalBonusChestPoints +
     summary.totalWatchTimePoints +
     summary.totalRaidPoints +
-    summary.totalPredictionPoints +
-    summary.totalDropPoints;
+    summary.totalPredictionPoints;
 
   const isDarkMode =
     typeof document !== "undefined" && document.documentElement.classList.contains("dark");
@@ -128,7 +127,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
                 }}
                 labelStyle={{ color: isDarkMode ? "#EFEFF1" : "#18181B", fontWeight: 600 }}
                 itemStyle={{ color: "#9146FF" }}
-                formatter={(value: TooltipValueType) => [`${value} pts`, "Points"]}
+                formatter={(value: TooltipValueType | undefined) => [
+                  `${value ?? "–"} pts`,
+                  "Points",
+                ]}
               />
               <Area
                 type="monotone"
@@ -214,13 +216,106 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
                     borderRadius: "0.25rem",
                     fontSize: "12px",
                   }}
-                  formatter={(value: TooltipValueType) => [`${value} pts`, "Balance"]}
+                  formatter={(value: TooltipValueType | undefined) => [
+                    `${value ?? "–"} pts`,
+                    "Balance",
+                  ]}
                 />
                 <Bar dataKey="points" fill="#9146FF" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#26262C] p-5 shadow-xs">
+        <div className="flex flex-wrap items-start justify-between gap-2 mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-[#EFEFF1] flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-pink-500 dark:text-pink-300" />
+              {t("analytics.dropsTitle")}
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-[#ADADB8] mt-0.5">
+              {t("analytics.dropsSubtitle", { count: status?.totalDropsClaimed ?? 0 })}
+            </p>
+          </div>
+          {status?.lastDropSyncAt && (
+            <span className="text-[11px] font-mono text-zinc-500 dark:text-[#ADADB8]">
+              {t("analytics.dropsLastSync", {
+                time: new Date(status.lastDropSyncAt).toLocaleTimeString(),
+              })}
+            </span>
+          )}
+        </div>
+
+        {!status?.lastDropSyncAt ? (
+          <p className="text-xs text-zinc-500 dark:text-[#ADADB8]">{t("analytics.dropsPending")}</p>
+        ) : status.activeDropCampaigns.length === 0 ? (
+          <p className="text-xs text-zinc-500 dark:text-[#ADADB8]">{t("analytics.dropsNone")}</p>
+        ) : (
+          <div className="space-y-5">
+            {status.activeDropCampaigns.map((campaign: DropCampaignProgress) => (
+              <div key={campaign.campaignId} className="flex gap-3">
+                {campaign.gameBoxArtUrl && (
+                  <img
+                    src={campaign.gameBoxArtUrl}
+                    alt={campaign.game}
+                    className="w-10 h-[53px] object-cover shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0 space-y-2.5">
+                  <div>
+                    <p className="text-sm font-medium text-zinc-900 dark:text-[#EFEFF1] truncate">
+                      {campaign.name}
+                    </p>
+                    <p className="text-[11px] text-zinc-500 dark:text-[#ADADB8]">
+                      {campaign.game}
+                      {campaign.endsAt &&
+                        ` · ${t("analytics.dropsEnds", {
+                          time: new Date(campaign.endsAt).toLocaleString(),
+                        })}`}
+                    </p>
+                  </div>
+                  {campaign.drops.map((drop: DropProgress) => {
+                    const pct =
+                      drop.requiredMinutes > 0
+                        ? Math.min(
+                            100,
+                            Math.round((drop.currentMinutes / drop.requiredMinutes) * 100),
+                          )
+                        : 100;
+                    const ready = !drop.isClaimed && drop.currentMinutes >= drop.requiredMinutes;
+                    return (
+                      <div key={drop.dropId} className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-zinc-800 dark:text-[#EFEFF1] font-medium truncate">
+                            {drop.name}
+                          </span>
+                          <span className="font-mono text-zinc-500 dark:text-[#ADADB8] shrink-0">
+                            {drop.isClaimed
+                              ? t("analytics.dropsClaimed")
+                              : ready
+                                ? t("analytics.dropsReady")
+                                : t("analytics.dropsMinutes", {
+                                    current: drop.currentMinutes,
+                                    required: drop.requiredMinutes,
+                                  })}
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-zinc-100 dark:bg-[#0E0E10] overflow-hidden">
+                          <div
+                            className="h-full bg-pink-500 transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

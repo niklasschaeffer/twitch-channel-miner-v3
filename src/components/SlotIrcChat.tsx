@@ -59,7 +59,6 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
   onFilterConsole,
   incomingChatMessage,
   onClose,
-  _theme = "dark",
 }) => {
   const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
