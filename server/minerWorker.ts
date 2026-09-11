@@ -13,7 +13,7 @@ import {
   ChatMessage,
 } from "../src/types.js";
 import { prisma } from "./db.js";
-import { extractTwitchUsername } from "../src/lib/twitch.js";
+import { extractTwitchUsername, supportsChannelPoints } from "../src/lib/twitch.js";
 import { computeChestProgress, watchedMinutesFromEstimate } from "./chest.js";
 import {
   CLAIMED_DROP_HISTORY_DAYS,
@@ -94,6 +94,7 @@ interface GqlUser {
   profileImageURL: unknown;
   stream: { viewersCount?: unknown; game?: { name?: unknown } | null } | null | undefined;
   roles?: { isPartner?: unknown; isAffiliate?: unknown };
+  channel?: { communityPointsSettings?: { isEnabled?: unknown } | null } | null;
 }
 
 const KNOWN_CHAT_BOTS: ReadonlySet<string> = new Set([
@@ -702,6 +703,11 @@ export class MinerWorker {
                   isPartner
                   isAffiliate
                 }
+                channel {
+                  communityPointsSettings {
+                    isEnabled
+                  }
+                }
                 stream {
                   id
                   viewersCount
@@ -801,6 +807,15 @@ export class MinerWorker {
             typeof u.roles?.isPartner === "boolean" ? u.roles.isPartner : streamer.isPartner;
           const isAffiliate =
             typeof u.roles?.isAffiliate === "boolean" ? u.roles.isAffiliate : streamer.isAffiliate;
+          const reportedChannelPoints = u.channel?.communityPointsSettings?.isEnabled;
+          const channelPointsEnabled =
+            typeof reportedChannelPoints === "boolean"
+              ? reportedChannelPoints
+              : (streamer.channelPointsEnabled ?? null);
+          if (streamer.channelPointsEnabled !== channelPointsEnabled) {
+            streamer.channelPointsEnabled = channelPointsEnabled;
+            stateChanged = true;
+          }
           if (
             streamer.isLive !== targetLive ||
             streamer.viewerCount !== viewers ||
@@ -2438,18 +2453,20 @@ export class MinerWorker {
     if (this.disposed) return;
     if (spadeRes.status === 204) {
       streamer.uptimeMinutes = (streamer.uptimeMinutes || 0) + 1;
-      streamer.watchedMinutesSinceChest = (streamer.watchedMinutesSinceChest || 0) + 1;
-      const { nextChestEstimateSeconds, chestAvailable } = computeChestProgress(
-        streamer.watchedMinutesSinceChest,
-      );
-      streamer.nextChestEstimateSeconds = nextChestEstimateSeconds;
-      streamer.chestAvailable = chestAvailable;
-      prisma.streamer
-        .update({
-          where: { id: streamer.id },
-          data: { nextChestEstimateSeconds, chestAvailable },
-        })
-        .catch(() => {});
+      if (supportsChannelPoints(streamer)) {
+        streamer.watchedMinutesSinceChest = (streamer.watchedMinutesSinceChest || 0) + 1;
+        const { nextChestEstimateSeconds, chestAvailable } = computeChestProgress(
+          streamer.watchedMinutesSinceChest,
+        );
+        streamer.nextChestEstimateSeconds = nextChestEstimateSeconds;
+        streamer.chestAvailable = chestAvailable;
+        prisma.streamer
+          .update({
+            where: { id: streamer.id },
+            data: { nextChestEstimateSeconds, chestAvailable },
+          })
+          .catch(() => {});
+      }
       this.noteWatchedDay(streamer);
       this.hooks.broadcast("streamers", this.streamers);
     }
@@ -2539,7 +2556,7 @@ export class MinerWorker {
       !this.settings.authToken ||
       this.tokenInvalid ||
       !streamer.enabled ||
-      !(streamer.isPartner || streamer.isAffiliate) ||
+      !supportsChannelPoints(streamer) ||
       this.claimsInFlight.has(streamer.username)
     ) {
       return;
@@ -3093,6 +3110,7 @@ export class MinerWorker {
       uptimeMinutes: streamer.uptimeMinutes,
       isPartner: streamer.isPartner,
       isAffiliate: streamer.isAffiliate,
+      channelPointsEnabled: streamer.channelPointsEnabled ?? null,
       fetchedAt: new Date().toISOString(),
     };
   }

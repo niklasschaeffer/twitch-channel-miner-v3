@@ -43,6 +43,7 @@ export interface Streamer {
   isFollowing: boolean;
   isPartner: boolean; // chest feature requires partner or affiliate status
   isAffiliate: boolean;
+  channelPointsEnabled?: boolean | null;
   subscriptionTier?: string | null;
 }
 

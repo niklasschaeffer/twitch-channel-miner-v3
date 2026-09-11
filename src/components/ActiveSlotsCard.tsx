@@ -2,6 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { Gift, Radio, Eye, Flame, MessageSquare } from "lucide-react";
 import { Streamer } from "../types";
+import { supportsChannelPoints } from "../lib/twitch";
 
 interface ActiveSlotsCardProps {
   streamers: Streamer[];
@@ -72,6 +73,7 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
           }
 
           const isSelected = selectedStreamerId === streamer.id;
+          const chestSupported = supportsChannelPoints(streamer);
           const secondsRemaining = streamer.nextChestEstimateSeconds;
           const totalCycle = 900;
           const progressPercent = Math.min(
@@ -158,35 +160,47 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
                 </div>
               </div>
 
-              {/* Bonus Chest Progress or Claim Action */}
               <div className="bg-white dark:bg-[#0E0E10] p-3 border border-zinc-200 dark:border-[#26262C]">
-                <div className="flex items-center justify-between text-xs mb-1.5">
-                  <span className="text-zinc-600 dark:text-[#ADADB8] flex items-center gap-1.5">
-                    <Gift
-                      className={`w-3.5 h-3.5 ${streamer.chestAvailable ? "text-[#00a865] dark:text-[#00F593] animate-bounce" : "text-zinc-400 dark:text-[#71717A]"}`}
-                    />
-                    {streamer.chestAvailable ? (
-                      <span className="text-[#00a865] dark:text-[#00F593] font-semibold">
-                        {t("chest.ready")}
+                {chestSupported ? (
+                  <>
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="text-zinc-600 dark:text-[#ADADB8] flex items-center gap-1.5">
+                        <Gift
+                          className={`w-3.5 h-3.5 ${streamer.chestAvailable ? "text-[#00a865] dark:text-[#00F593] animate-bounce" : "text-zinc-400 dark:text-[#71717A]"}`}
+                        />
+                        {streamer.chestAvailable ? (
+                          <span className="text-[#00a865] dark:text-[#00F593] font-semibold">
+                            {t("chest.ready")}
+                          </span>
+                        ) : (
+                          <span>{t("streamersList.tableChest")}</span>
+                        )}
                       </span>
-                    ) : (
-                      <span>{t("streamersList.tableChest")}</span>
-                    )}
-                  </span>
-                  <span className="font-mono text-xs text-zinc-900 dark:text-[#EFEFF1]">
-                    {streamer.chestAvailable ? t("chest.availableNow") : timeFormatted}
-                  </span>
-                </div>
+                      <span className="font-mono text-xs text-zinc-900 dark:text-[#EFEFF1]">
+                        {streamer.chestAvailable ? t("chest.availableNow") : timeFormatted}
+                      </span>
+                    </div>
 
-                {/* Progress bar */}
-                <div className="w-full h-1.5 bg-zinc-200 dark:bg-[#1F1F23] overflow-hidden mb-2">
+                    <div className="w-full h-1.5 bg-zinc-200 dark:bg-[#1F1F23] overflow-hidden mb-2">
+                      <div
+                        className={`h-full transition-all duration-1000 ${
+                          streamer.chestAvailable
+                            ? "bg-[#00a865] dark:bg-[#00F593]"
+                            : "bg-[#9146FF]"
+                        }`}
+                        style={{ width: `${streamer.chestAvailable ? 100 : progressPercent}%` }}
+                      />
+                    </div>
+                  </>
+                ) : (
                   <div
-                    className={`h-full transition-all duration-1000 ${
-                      streamer.chestAvailable ? "bg-[#00a865] dark:bg-[#00F593]" : "bg-[#9146FF]"
-                    }`}
-                    style={{ width: `${streamer.chestAvailable ? 100 : progressPercent}%` }}
-                  />
-                </div>
+                    className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-[#71717A] mb-2"
+                    title={t("streamersList.noChestFeatureHint")}
+                  >
+                    <Gift className="w-3.5 h-3.5 text-zinc-300 dark:text-[#363640]" />
+                    <span>{t("chest.unsupported")}</span>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] text-zinc-500 dark:text-[#71717A]">
@@ -195,22 +209,24 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
                       +{streamer.totalPointsMined.toLocaleString()}
                     </span>
                   </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onClaim(streamer);
-                    }}
-                    className={`px-2.5 py-1 text-xs font-medium transition flex items-center gap-1 cursor-pointer ${
-                      streamer.chestAvailable
-                        ? "bg-[#9146FF] hover:bg-[#772CE8] text-white font-semibold"
-                        : "bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#1F1F23] text-zinc-700 dark:text-[#ADADB8] border border-zinc-200 dark:border-[#26262C]"
-                    }`}
-                  >
-                    <Gift className="w-3 h-3" />
-                    <span>
-                      {streamer.chestAvailable ? t("chest.claim") : t("chest.forceClaim")}
-                    </span>
-                  </button>
+                  {chestSupported && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClaim(streamer);
+                      }}
+                      className={`px-2.5 py-1 text-xs font-medium transition flex items-center gap-1 cursor-pointer ${
+                        streamer.chestAvailable
+                          ? "bg-[#9146FF] hover:bg-[#772CE8] text-white font-semibold"
+                          : "bg-zinc-100 hover:bg-zinc-200 dark:bg-[#18181B] dark:hover:bg-[#1F1F23] text-zinc-700 dark:text-[#ADADB8] border border-zinc-200 dark:border-[#26262C]"
+                      }`}
+                    >
+                      <Gift className="w-3 h-3" />
+                      <span>
+                        {streamer.chestAvailable ? t("chest.claim") : t("chest.forceClaim")}
+                      </span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

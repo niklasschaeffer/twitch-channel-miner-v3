@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { extractTwitchUsername } from "../src/lib/twitch.js";
+import { extractTwitchUsername, supportsChannelPoints } from "../src/lib/twitch.js";
+
+describe("supportsChannelPoints", () => {
+  it("trusts Twitch's channel points setting when it is known", () => {
+    expect(
+      supportsChannelPoints({ channelPointsEnabled: false, isPartner: true, isAffiliate: false }),
+    ).toBe(false);
+    expect(
+      supportsChannelPoints({ channelPointsEnabled: true, isPartner: false, isAffiliate: false }),
+    ).toBe(true);
+  });
+
+  it("falls back to partner or affiliate status before the setting is fetched", () => {
+    expect(supportsChannelPoints({ isPartner: false, isAffiliate: false })).toBe(false);
+    expect(
+      supportsChannelPoints({ channelPointsEnabled: null, isPartner: false, isAffiliate: true }),
+    ).toBe(true);
+    expect(supportsChannelPoints({ isPartner: true, isAffiliate: false })).toBe(true);
+  });
+});
 
 describe("extractTwitchUsername", () => {
   it("returns plain logins unchanged", () => {

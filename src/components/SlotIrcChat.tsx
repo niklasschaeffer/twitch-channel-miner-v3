@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Streamer, ChatMessage } from "../types";
 import { formatSubTier } from "../lib/badges";
+import { supportsChannelPoints } from "../lib/twitch";
 
 interface SlotIrcChatProps {
   streamer: Streamer | null;
@@ -365,7 +366,9 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               )}
               <span className="text-zinc-300 dark:text-[#363640]">•</span>
               <span className="font-mono text-zinc-400 dark:text-[#71717A]">
-                {t("chat.nextChestEta", { seconds: streamer.nextChestEstimateSeconds })}
+                {supportsChannelPoints(streamer)
+                  ? t("chat.nextChestEta", { seconds: streamer.nextChestEstimateSeconds })
+                  : t("streamersList.noChestFeature")}
               </span>
             </div>
           </div>
@@ -374,7 +377,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
         {/* Right Header Controls */}
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
           {/* Claim Chest Button */}
-          {streamer.chestAvailable ? (
+          {!supportsChannelPoints(streamer) ? null : streamer.chestAvailable ? (
             <button
               onClick={() => onClaimChest?.(streamer)}
               className="px-3 py-1.5 text-xs font-semibold bg-[#00a865] hover:bg-[#008f56] text-white transition flex items-center gap-1.5 cursor-pointer animate-pulse"

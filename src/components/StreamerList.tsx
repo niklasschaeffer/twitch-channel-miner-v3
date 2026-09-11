@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Streamer, PriorityMode } from "../types";
 import { formatSubTier } from "../lib/badges";
+import { supportsChannelPoints } from "../lib/twitch";
 
 interface StreamerListProps {
   streamers: Streamer[];
@@ -380,7 +381,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                         <Gift className="w-3 h-3" />
                         {t("chest.ready")}
                       </span>
-                    ) : !(streamer.isPartner || streamer.isAffiliate) ? (
+                    ) : !supportsChannelPoints(streamer) ? (
                       <span
                         className="px-1.5 py-0.5 text-zinc-500 dark:text-[#ADADB8] border border-zinc-300/60 dark:border-[#26262C]/60"
                         title={t("streamersList.noChestFeatureHint")}

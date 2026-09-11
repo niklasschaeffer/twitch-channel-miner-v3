@@ -83,6 +83,7 @@ export const resources = {
         forceClaim: "Force Claim",
         testClaim: "Test Claim",
         availableNow: "Available Now",
+        unsupported: "Bonus chests are not supported on this channel",
       },
       streamersList: {
         title: "Monitored Channels",
@@ -96,7 +97,8 @@ export const resources = {
         tablePoints: "Channel Points",
         tableChest: "Next Chest",
         noChestFeature: "No chest feature",
-        noChestFeatureHint: "Bonus chests require the channel to be a Twitch Partner or Affiliate",
+        noChestFeatureHint:
+          "Channel points are not enabled on this channel, so there are no bonus chests",
         tableStatus: "Mining Status",
         tableActions: "Actions",
         watchStreak: "{{days}}d watch streak",
@@ -430,6 +432,7 @@ export const resources = {
         forceClaim: "Abholen erzwingen",
         testClaim: "Test-Abholung",
         availableNow: "Jetzt verfügbar",
+        unsupported: "Bonus-Truhen werden auf diesem Kanal nicht unterstützt",
       },
       streamersList: {
         title: "Überwachte Kanäle",
@@ -443,7 +446,8 @@ export const resources = {
         tablePoints: "Kanalpunkte",
         tableChest: "Nächste Truhe",
         noChestFeature: "Keine Bonus-Truhen",
-        noChestFeatureHint: "Bonus-Truhen setzen einen Twitch-Partner oder Affiliate voraus",
+        noChestFeatureHint:
+          "Auf diesem Kanal sind keine Kanalpunkte aktiviert, daher gibt es keine Bonus-Truhen",
         tableStatus: "Mining-Status",
         tableActions: "Aktionen",
         watchStreak: "{{days}} Tage Zuschauerserie",

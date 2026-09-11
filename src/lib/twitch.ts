@@ -15,3 +15,11 @@ export function extractTwitchUsername(raw: string): string {
   const match = cleaned.match(/^[a-z0-9_]{1,35}/i);
   return match ? match[0].toLowerCase() : cleaned;
 }
+
+export function supportsChannelPoints(channel: {
+  channelPointsEnabled?: boolean | null;
+  isPartner: boolean;
+  isAffiliate: boolean;
+}): boolean {
+  return channel.channelPointsEnabled ?? (channel.isPartner || channel.isAffiliate);
+}
