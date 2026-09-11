@@ -167,7 +167,7 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
                     />
                     {streamer.chestAvailable ? (
                       <span className="text-[#00a865] dark:text-[#00F593] font-semibold">
-                        Chest Ready (+50 pts)
+                        {t("chest.ready")}
                       </span>
                     ) : (
                       <span>{t("streamersList.tableChest")}</span>
@@ -207,7 +207,9 @@ export const ActiveSlotsCard: React.FC<ActiveSlotsCardProps> = ({
                     }`}
                   >
                     <Gift className="w-3 h-3" />
-                    <span>{streamer.chestAvailable ? "Claim +50" : "Force Claim"}</span>
+                    <span>
+                      {streamer.chestAvailable ? t("chest.claim") : t("chest.forceClaim")}
+                    </span>
                   </button>
                 </div>
               </div>

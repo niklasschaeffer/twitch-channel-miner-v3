@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  predictionBetAmount,
+  predictionNetPoints,
   selectPredictionOutcome,
   SMART_RATIO_PERCENTAGE_GAP,
   type PredictionOutcomeStats,
@@ -87,5 +89,34 @@ describe("selectPredictionOutcome", () => {
 
   it("exposes the crowd-split gap constant", () => {
     expect(SMART_RATIO_PERCENTAGE_GAP).toBe(20);
+  });
+});
+
+describe("predictionNetPoints", () => {
+  it("nets the gross payout of a win against the stake", () => {
+    expect(predictionNetPoints("WIN", 100, 250)).toBe(150);
+  });
+
+  it("loses the full stake", () => {
+    expect(predictionNetPoints("LOSE", 100, 0)).toBe(-100);
+  });
+
+  it("returns nothing for a refund", () => {
+    expect(predictionNetPoints("REFUND", 100, 100)).toBe(0);
+  });
+});
+
+describe("predictionBetAmount", () => {
+  it("stakes 10% of the balance up to the configured cap", () => {
+    expect(predictionBetAmount(500, 100, "smart_ratio")).toBe(50);
+    expect(predictionBetAmount(50_000, 100, "smart_ratio")).toBe(100);
+  });
+
+  it("caps the conservative strategy at 5% of the balance", () => {
+    expect(predictionBetAmount(1000, 100, "conservative")).toBe(50);
+  });
+
+  it("never stakes below the Twitch minimum", () => {
+    expect(predictionBetAmount(40, 100, "conservative")).toBe(10);
   });
 });

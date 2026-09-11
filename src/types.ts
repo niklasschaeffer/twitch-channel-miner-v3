@@ -130,7 +130,7 @@ export interface ChannelPointsDistribution {
 }
 
 export interface CategoryBreakdown {
-  name: string;
+  key: "chests" | "watch" | "raids" | "predictions";
   value: number;
   points: number;
   color: string;
@@ -163,6 +163,8 @@ export interface StatisticalRecord {
   pointsMined: number;
   claimsCount: number;
   raidsCount: number;
+  raidPoints: number;
+  predictionsPlaced: number;
   predictionsWon: number;
   predictionsLost: number;
   netPredictionPoints: number;

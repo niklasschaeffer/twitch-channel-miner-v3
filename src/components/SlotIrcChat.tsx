@@ -380,7 +380,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               className="px-3 py-1.5 text-xs font-semibold bg-[#00a865] hover:bg-[#008f56] text-white transition flex items-center gap-1.5 cursor-pointer animate-pulse"
             >
               <Gift className="w-3.5 h-3.5" />
-              <span>Claim +50 Chest</span>
+              <span>{t("chest.claim")}</span>
             </button>
           ) : (
             <button
@@ -388,7 +388,7 @@ export const SlotIrcChat: React.FC<SlotIrcChatProps> = ({
               className="px-2.5 py-1 text-xs font-medium border border-zinc-200 dark:border-[#26262C] hover:border-[#9146FF] text-zinc-700 dark:text-[#ADADB8] hover:text-[#9146FF] transition flex items-center gap-1 cursor-pointer"
             >
               <Gift className="w-3 h-3 text-[#9146FF]" />
-              <span>Test Claim (+50)</span>
+              <span>{t("chest.testClaim")}</span>
             </button>
           )}
 

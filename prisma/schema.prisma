@@ -65,6 +65,8 @@ model StatisticalRecord {
   pointsMined          Int       @default(0)
   claimsCount          Int       @default(0)
   raidsCount           Int       @default(0)
+  raidPoints           Int       @default(0)
+  predictionsPlaced    Int       @default(0)
   predictionsWon       Int       @default(0)
   predictionsLost      Int       @default(0)
   netPredictionPoints  Int       @default(0)

@@ -4,7 +4,8 @@ import { fileURLToPath } from "url";
 import { randomBytes } from "crypto";
 import type { Socket } from "net";
 import type { ViteDevServer } from "vite";
-import { minerEngine, extractTwitchUsername } from "./server/minerEngine.js";
+import { minerEngine } from "./server/minerEngine.js";
+import { extractTwitchUsername } from "./src/lib/twitch.js";
 import { prisma } from "./server/db.js";
 import { hashPassword, verifyPassword } from "./server/password.js";
 import { md5 } from "./src/lib/gravatar.js";
@@ -724,15 +725,6 @@ async function startServer() {
     try {
       const records = await minerEngine.getStatisticalRecords(req.user!.id);
       res.json(records);
-    } catch (err) {
-      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
-    }
-  });
-
-  app.post("/api/statistics", async (req, res) => {
-    try {
-      await minerEngine.recordStatisticalData(req.body, req.user!.id);
-      res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }

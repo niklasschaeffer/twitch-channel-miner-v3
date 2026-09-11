@@ -80,3 +80,26 @@ export function selectPredictionOutcome(
   }
   return 0;
 }
+
+export type PredictionResultType = "WIN" | "LOSE" | "REFUND";
+
+export function predictionNetPoints(
+  result: PredictionResultType,
+  betAmount: number,
+  pointsWon: number,
+): number {
+  if (result === "WIN") return pointsWon - betAmount;
+  if (result === "LOSE") return -betAmount;
+  return 0;
+}
+
+export const MIN_PREDICTION_BET = 10;
+
+export function predictionBetAmount(
+  balance: number,
+  maxBetPoints: number,
+  strategy: PredictionStrategy,
+): number {
+  const share = strategy === "conservative" ? 0.05 : 0.1;
+  return Math.min(maxBetPoints, Math.max(MIN_PREDICTION_BET, Math.floor(balance * share)));
+}

@@ -4,6 +4,7 @@ import {
   MinerStatus,
   LogEntry,
   AnalyticsData,
+  CategoryBreakdown,
   PriorityMode,
   PredictionStrategy,
   LogLevel,
@@ -12,8 +13,8 @@ import {
   ChatMessage,
 } from "../src/types.js";
 import { prisma } from "./db.js";
-import { extractTwitchUsername } from "./minerEngine.js";
-import { computeChestProgress } from "./chest.js";
+import { extractTwitchUsername } from "../src/lib/twitch.js";
+import { computeChestProgress, watchedMinutesFromEstimate } from "./chest.js";
 import {
   CLAIMED_DROP_HISTORY_DAYS,
   markDropClaimed,
@@ -21,8 +22,50 @@ import {
   parseDropCampaigns,
   selectClaimableDrops,
 } from "./drops.js";
-import { selectPredictionOutcome } from "./prediction.js";
+import {
+  MIN_PREDICTION_BET,
+  predictionBetAmount,
+  predictionNetPoints,
+  selectPredictionOutcome,
+} from "./prediction.js";
+import {
+  describePubsubKeys,
+  parsePointsMessage,
+  parsePredictionEvent,
+  parsePredictionUserMessage,
+  type PredictionEventMessage,
+  type PredictionUserMessage,
+} from "./pubsub.js";
 import { composeYourChannels, type ComposeYourChannelsInput } from "./yourChannels.js";
+
+const MAX_PREDICTION_BET_ATTEMPTS = 3;
+const PUBSUB_SHAPE_WARNING_INTERVAL_MS = 3_600_000;
+
+interface PredictionBet {
+  username: string;
+  outcomeId: string;
+  outcomeTitle: string;
+  amount: number;
+  transactionId: string;
+  attempts: number;
+  placed: boolean;
+  inFlight: boolean;
+}
+
+interface StatisticalInput {
+  pointsMined?: number;
+  claimsCount?: number;
+  raidsCount?: number;
+  raidPoints?: number;
+  predictionsPlaced?: number;
+  predictionsWon?: number;
+  predictionsLost?: number;
+  netPredictionPoints?: number;
+  dropsCount?: number;
+  chestsPoints?: number;
+  watchTimePoints?: number;
+  channel?: string;
+}
 
 export interface ActiveSlotConnection {
   username: string;
@@ -72,7 +115,8 @@ export class MinerWorker {
   private balanceBaselines = new Map<string, number>();
   private pubsubUserId: string | null = null;
   private channelIds = new Map<string, string>();
-  private betPredictionEventIds = new Set<string>();
+  private predictionBets = new Map<string, PredictionBet>();
+  private pubsubShapeWarnings = new Map<string, number>();
   private pointsDayKey = new Date().toISOString().slice(0, 10);
   private pointsHourKey = new Date().toISOString().slice(0, 13);
   private authLoginName: string | null = null;
@@ -194,6 +238,7 @@ export class MinerWorker {
           enabled: s.enabled,
           chestAvailable: s.chestAvailable,
           nextChestEstimateSeconds: s.nextChestEstimateSeconds,
+          watchedMinutesSinceChest: watchedMinutesFromEstimate(s.nextChestEstimateSeconds),
           totalPointsMined: s.totalPointsMined,
           lastClaimTime: s.lastClaimTime || undefined,
           uptimeMinutes: s.uptimeMinutes,
@@ -244,6 +289,7 @@ export class MinerWorker {
         const totalMined = statRecords.reduce((sum, r) => sum + r.pointsMined, 0);
         const totalClaims = statRecords.reduce((sum, r) => sum + r.claimsCount, 0);
         const totalRaids = statRecords.reduce((sum, r) => sum + r.raidsCount, 0);
+        const predictionsPlaced = statRecords.reduce((sum, r) => sum + r.predictionsPlaced, 0);
         const predictionsWon = statRecords.reduce((sum, r) => sum + r.predictionsWon, 0);
         const netPreds = statRecords.reduce((sum, r) => sum + r.netPredictionPoints, 0);
         const drops = statRecords.reduce((sum, r) => sum + r.dropsCount, 0);
@@ -271,6 +317,10 @@ export class MinerWorker {
           .filter((r) => r.recordedAt >= hourStart)
           .reduce((sum, r) => sum + r.pointsMined, 0);
         this.status.totalRaids = Math.max(this.status.totalRaids, totalRaids);
+        this.status.totalPredictionsPlaced = Math.max(
+          this.status.totalPredictionsPlaced,
+          predictionsPlaced,
+        );
         this.status.totalPredictionsWon = Math.max(this.status.totalPredictionsWon, predictionsWon);
         this.status.netPredictionPoints = netPreds;
         this.status.totalDropsClaimed = Math.max(this.status.totalDropsClaimed, drops);
@@ -511,7 +561,7 @@ export class MinerWorker {
     }
     this.disconnectPubsub();
     this.disconnectAllStreamers();
-    this.betPredictionEventIds.clear();
+    this.predictionBets.clear();
     this.balanceBaselines.clear();
   }
   private tick() {
@@ -524,21 +574,18 @@ export class MinerWorker {
 
     this.tickCount++;
 
-    // Check all streamers real online status from Twitch GQL every 2 ticks (4 seconds)
-    if (this.tickCount % 2 === 0) {
+    const checkIntervalSeconds = Number.isFinite(this.settings.checkIntervalSeconds)
+      ? this.settings.checkIntervalSeconds
+      : 3;
+    const statusCheckEveryTicks = Math.max(1, Math.round(checkIntervalSeconds / 2));
+    if (this.tickCount % statusCheckEveryTicks === 0) {
       this.checkAllStreamersOnlineStatus().catch(() => {});
     }
     // Rebalance active slots based on real live status and priority
     this.rebalanceActiveSlots();
 
-    if (this.settings.autoClaimBonus && this.settings.authToken) {
-      if (this.tickCount % 15 === 0) {
-        for (const s of this.streamers) {
-          if (s.enabled && (s.isPartner || s.isAffiliate) && !this.claimsInFlight.has(s.username)) {
-            this.claimRealBonus(s).catch(() => {});
-          }
-        }
-      }
+    if (this.tickCount % 15 === 0) {
+      for (const s of this.streamers) this.autoClaimBonus(s);
     }
 
     if (this.settings.autoClaimDrops && this.settings.authToken) {
@@ -1224,6 +1271,7 @@ export class MinerWorker {
 
   public async claimRealBonus(
     streamer: Streamer,
+    delaySeconds = 0,
   ): Promise<{ success: boolean; points: number; message: string }> {
     if (!this.settings.authToken) {
       return { success: false, points: 0, message: "Not connected to Twitch." };
@@ -1240,6 +1288,13 @@ export class MinerWorker {
           points: 0,
           message: `No bonus chest available on ${streamer.displayName}'s channel right now.`,
         };
+      }
+      if (delaySeconds > 0) {
+        const jitteredMs = delaySeconds * 1000 * (0.75 + Math.random() * 0.5);
+        await new Promise((resolve) => setTimeout(resolve, jitteredMs));
+        if (this.disposed || !this.settings.authToken) {
+          return { success: false, points: 0, message: "Claim cancelled while waiting." };
+        }
       }
       const channelRes = await fetch("https://gql.twitch.tv/gql", {
         method: "POST",
@@ -1576,19 +1631,7 @@ export class MinerWorker {
     this.addLog(result.success ? "CLAIM" : "WARN", streamer.username, result.message);
   }
 
-  public async recordStatisticalData(data: unknown) {
-    const d = (data ?? {}) as {
-      pointsMined?: number;
-      claimsCount?: number;
-      raidsCount?: number;
-      predictionsWon?: number;
-      predictionsLost?: number;
-      netPredictionPoints?: number;
-      dropsCount?: number;
-      chestsPoints?: number;
-      watchTimePoints?: number;
-      channel?: string;
-    };
+  private async recordStatisticalData(d: StatisticalInput) {
     const hourKey = new Date().getHours().toString().padStart(2, "0") + ":00";
     try {
       await prisma.statisticalRecord.create({
@@ -1598,6 +1641,8 @@ export class MinerWorker {
           pointsMined: d.pointsMined ?? 0,
           claimsCount: d.claimsCount ?? 0,
           raidsCount: d.raidsCount ?? 0,
+          raidPoints: d.raidPoints ?? 0,
+          predictionsPlaced: d.predictionsPlaced ?? 0,
           predictionsWon: d.predictionsWon ?? 0,
           predictionsLost: d.predictionsLost ?? 0,
           netPredictionPoints: d.netPredictionPoints ?? 0,
@@ -1675,6 +1720,16 @@ export class MinerWorker {
             },
           }),
         );
+        ws.send(
+          JSON.stringify({
+            type: "LISTEN",
+            nonce: "prediction-results-listen",
+            data: {
+              topics: [`predictions-user-v1.${this.pubsubUserId}`],
+              auth_token: this.settings.authToken,
+            },
+          }),
+        );
         this.fetchBalanceSnapshot();
         if (this.pubsubSnapshotTimer) clearInterval(this.pubsubSnapshotTimer);
         this.pubsubSnapshotTimer = setInterval(() => this.fetchBalanceSnapshot(), 300_000);
@@ -1696,7 +1751,8 @@ export class MinerWorker {
             typeof msg.error === "string" &&
             msg.error
           ) {
-            this.addLog("ERROR", undefined, `PubSub LISTEN rejected: ${msg.error}`);
+            const nonce = "nonce" in msg && typeof msg.nonce === "string" ? msg.nonce : "unknown";
+            this.addLog("ERROR", undefined, `PubSub LISTEN rejected (${nonce}): ${msg.error}`);
             return;
           }
           if (
@@ -1712,37 +1768,35 @@ export class MinerWorker {
             typeof data.message === "string" ? JSON.parse(data.message) : null;
           if (typeof payload !== "object" || payload === null) return;
 
+          const message = payload as Record<string, unknown>;
+
           if (data.topic.startsWith("community-points-user-v1.")) {
-            if (typeof payload !== "object" || payload === null || !("type" in payload)) return;
-            if (
-              payload.type !== "points-earned" &&
-              payload.type !== "points-spent" &&
-              payload.type !== "claim-available" &&
-              payload.type !== "points-reward"
-            )
+            const points = parsePointsMessage(message);
+            if (!points) return;
+            const streamer = this.streamerForChannelId(points.channelId);
+            if (points.type === "claim-available") {
+              if (streamer) this.autoClaimBonus(streamer);
               return;
-            const reasonCode =
-              "reason_code" in payload && typeof payload.reason_code === "string"
-                ? payload.reason_code
-                : null;
-            const balanceData = "balance" in payload ? payload.balance : null;
-            const balance =
-              typeof balanceData === "object" &&
-              balanceData !== null &&
-              "balance" in balanceData &&
-              typeof balanceData.balance === "number"
-                ? balanceData.balance
-                : null;
-            const channelLogin =
-              "channel" in payload && typeof payload.channel === "string"
-                ? payload.channel.toLowerCase()
-                : this.streamers.find((s) => s.isMining)?.username.toLowerCase();
-            if (balance !== null && channelLogin) this.applyRealBalance(channelLogin, balance);
-            if (reasonCode === "WATCH_STREAK" && channelLogin) {
-              const streamer = this.streamers.find(
-                (s) => extractTwitchUsername(s.username) === channelLogin,
-              );
-              if (streamer) {
+            }
+            if (points.type !== "points-earned" && points.type !== "points-spent") return;
+            if (points.balance === null) {
+              this.warnPubsubShape(data.topic, message);
+              return;
+            }
+            const gained = points.type === "points-earned" ? (points.pointsGained ?? 0) : 0;
+            if (points.reasonCode === "RAID" && gained > 0) {
+              this.recordStatisticalData({
+                pointsMined: gained,
+                raidPoints: gained,
+                channel: streamer?.username,
+              }).catch(() => {});
+              if (!streamer) this.countMinedPoints(undefined, gained);
+            }
+            if (streamer) {
+              const alreadyRecorded =
+                points.reasonCode === "RAID" || points.reasonCode === "CLAIM" ? gained : 0;
+              this.applyRealBalance(streamer.username, points.balance, alreadyRecorded);
+              if (points.reasonCode === "WATCH_STREAK") {
                 this.noteWatchedDay(streamer);
                 this.hooks.broadcast("streamers", this.streamers);
               }
@@ -1751,7 +1805,7 @@ export class MinerWorker {
           }
 
           if (data.topic.startsWith("raid.")) {
-            if (typeof payload !== "object" || payload === null || !("type" in payload)) return;
+            if (!("type" in payload)) return;
             if (payload.type !== "raid_update_v2" && payload.type !== "raid_go_v2") return;
             const raid =
               "raid" in payload && typeof payload.raid === "object" && payload.raid !== null
@@ -1761,16 +1815,10 @@ export class MinerWorker {
             if (!("id" in raid) || typeof raid.id !== "string") return;
             if (!("target_login" in raid) || typeof raid.target_login !== "string") return;
             if (payload.type === "raid_go_v2" && this.settings.followRaids) {
-              const topicId = data.topic.split(".")[1];
-              const watchedLogin = [...this.channelIds.entries()]
-                .find(([, id]) => id === topicId)?.[0]
-                ?.toLowerCase();
-              const watched = watchedLogin
-                ? this.streamers.find((s) => extractTwitchUsername(s.username) === watchedLogin)
-                : undefined;
+              const watched = this.streamerForChannelId(data.topic.split(".")[1]);
               if (watched) {
                 this.status.totalRaids += 1;
-                this.recordStatisticalData({ raidsCount: 1, channel: watchedLogin });
+                this.recordStatisticalData({ raidsCount: 1, channel: watched.username });
                 this.joinRaid(raid.id, raid.target_login, watched);
               }
             }
@@ -1778,142 +1826,34 @@ export class MinerWorker {
           }
 
           if (data.topic.startsWith("predictions-channel-v1.")) {
+            const event = parsePredictionEvent(message);
+            if (!event) {
+              this.warnPubsubShape(data.topic, message);
+              return;
+            }
+            if (event.status !== "ACTIVE") {
+              const bet = this.predictionBets.get(event.id);
+              if (bet && !bet.placed && !bet.inFlight) this.predictionBets.delete(event.id);
+              return;
+            }
             if (!this.settings.autoBetPredictions) return;
-            const event =
-              "event" in payload && typeof payload.event === "object" && payload.event !== null
-                ? payload.event
-                : null;
-            if (!event || !("id" in event) || typeof event.id !== "string") return;
-            const status =
-              "status" in event && typeof event.status === "string" ? event.status : "";
-            if (status !== "ACTIVE") return;
-            if (!("outcomes" in event) || !Array.isArray(event.outcomes)) return;
-            const outcomes = event.outcomes as Array<{
-              id?: unknown;
-              title?: unknown;
-              color?: unknown;
-              total_users?: unknown;
-              total_points?: unknown;
-            }>;
-            const outcomesTyped = outcomes.filter(
-              (o) => typeof o === "object" && o !== null && "id" in o && typeof o.id === "string",
-            );
-            if (outcomesTyped.length < 2) return;
-
-            const topicId = data.topic.split(".")[1];
-            const channelLogin = [...this.channelIds.entries()]
-              .find(([, id]) => id === topicId)?.[0]
-              ?.toLowerCase();
-            const streamer = channelLogin
-              ? this.streamers.find((s) => extractTwitchUsername(s.username) === channelLogin)
-              : undefined;
+            const streamer = this.streamerForChannelId(data.topic.split(".")[1]);
             if (!streamer || !streamer.isMining) return;
+            this.placePredictionBet(streamer, event);
+            return;
+          }
 
-            if (this.betPredictionEventIds.has(event.id)) return;
-            this.betPredictionEventIds.add(event.id);
-            const strategy = this.settings.predictionStrategy;
-            const maxBet = this.settings.maxBetPoints;
-            const balance = streamer.points;
-            if (balance < 10) return;
-            const outcomeStats = outcomesTyped.map((o) => ({
-              totalUsers:
-                typeof o.total_users === "number" && o.total_users > 0 ? o.total_users : null,
-              totalPoints:
-                typeof o.total_points === "number" && o.total_points > 0 ? o.total_points : null,
-            }));
-            const outcomeIndex = selectPredictionOutcome(outcomeStats, strategy);
-            const outcome = outcomesTyped[outcomeIndex];
-            if (!outcome || typeof outcome.id !== "string") return;
-
-            const betAmount = Math.min(maxBet, Math.max(10, Math.floor(balance * 0.1)));
-            const transactionId = Array.from({ length: 32 }, () =>
-              Math.floor(Math.random() * 16).toString(16),
-            ).join("");
-            fetch("https://gql.twitch.tv/gql", {
-              method: "POST",
-              headers: this.authenticatedGqlHeaders(),
-              body: JSON.stringify({
-                operationName: "MakePrediction",
-                extensions: {
-                  persistedQuery: {
-                    version: 1,
-                    sha256Hash: "b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8",
-                  },
-                },
-                variables: {
-                  input: {
-                    eventID: event.id,
-                    outcomeID: outcome.id,
-                    points: betAmount,
-                    transactionID: transactionId,
-                  },
-                },
-              }),
-              signal: AbortSignal.timeout(10000),
-            })
-              .then((res) => res.json())
-              .then((j: unknown) => {
-                const ok =
-                  typeof j === "object" &&
-                  j !== null &&
-                  "data" in j &&
-                  typeof j.data === "object" &&
-                  j.data !== null &&
-                  "makePrediction" in j.data &&
-                  typeof j.data.makePrediction === "object" &&
-                  j.data.makePrediction !== null &&
-                  !("error" in j.data.makePrediction && j.data.makePrediction.error);
-                if (ok) {
-                  const outcomeTitle =
-                    typeof outcome.title === "string"
-                      ? outcome.title
-                      : outcomeIndex === 0
-                        ? "Blue"
-                        : "Pink";
-                  this.addLog(
-                    "PREDICTION",
-                    streamer.username,
-                    `Bet ${betAmount} pts on "${outcomeTitle}" for ${streamer.displayName} (${strategy}).`,
-                  );
-                  this.status.totalPredictionsPlaced += 1;
-                } else {
-                  this.addLog(
-                    "WARN",
-                    streamer.username,
-                    `Prediction bet rejected (${JSON.stringify(j).slice(0, 120)}).`,
-                  );
-                }
-              })
-              .catch(() => {});
+          if (data.topic.startsWith("predictions-user-v1.")) {
+            const update = parsePredictionUserMessage(message);
+            if (update) this.handlePredictionUpdate(update);
             return;
           }
 
           if (data.topic.startsWith("community-points-channel-v1.")) {
-            if (!("type" in payload) || payload.type !== "claim-available") return;
-            const claim =
-              "claim" in payload && typeof payload.claim === "object" && payload.claim !== null
-                ? payload.claim
-                : null;
-            const claimId =
-              claim && "id" in claim && typeof claim.id === "string" ? claim.id : null;
-            if (!claimId) return;
-            const topicId = data.topic.split(".")[1];
-            const watchedLogin = [...this.channelIds.entries()]
-              .find(([, id]) => id === topicId)?.[0]
-              ?.toLowerCase();
-            const streamer = watchedLogin
-              ? this.streamers.find((s) => extractTwitchUsername(s.username) === watchedLogin)
-              : undefined;
-            if (
-              streamer &&
-              this.settings.autoClaimBonus &&
-              this.settings.authToken &&
-              streamer.enabled &&
-              (streamer.isPartner || streamer.isAffiliate) &&
-              !this.claimsInFlight.has(streamer.username)
-            ) {
-              this.claimRealBonus(streamer).catch(() => {});
-            }
+            const points = parsePointsMessage(message);
+            if (points?.type !== "claim-available" || !points.claimId) return;
+            const streamer = this.streamerForChannelId(data.topic.split(".")[1]);
+            if (streamer) this.autoClaimBonus(streamer);
           }
         } catch {
           void 0;
@@ -2214,6 +2154,12 @@ export class MinerWorker {
       );
       streamer.nextChestEstimateSeconds = nextChestEstimateSeconds;
       streamer.chestAvailable = chestAvailable;
+      prisma.streamer
+        .update({
+          where: { id: streamer.id },
+          data: { nextChestEstimateSeconds, chestAvailable },
+        })
+        .catch(() => {});
       this.noteWatchedDay(streamer);
       this.hooks.broadcast("streamers", this.streamers);
     }
@@ -2277,6 +2223,191 @@ export class MinerWorker {
     }
   }
 
+  private countMinedPoints(streamer: Streamer | undefined, points: number) {
+    this.rollPointWindows();
+    if (streamer) streamer.totalPointsMined += points;
+    this.status.totalPointsMined += points;
+    this.status.pointsThisSession += points;
+    this.status.pointsToday += points;
+    this.status.pointsThisHour += points;
+  }
+
+  private streamerForChannelId(channelId: string | null | undefined): Streamer | undefined {
+    if (!channelId) return undefined;
+    for (const [login, id] of this.channelIds) {
+      if (id !== channelId) continue;
+      const clean = login.toLowerCase();
+      const streamer = this.streamers.find((s) => extractTwitchUsername(s.username) === clean);
+      if (streamer) return streamer;
+    }
+    return undefined;
+  }
+
+  private autoClaimBonus(streamer: Streamer) {
+    if (
+      !this.settings.autoClaimBonus ||
+      !this.settings.authToken ||
+      !streamer.enabled ||
+      !(streamer.isPartner || streamer.isAffiliate) ||
+      this.claimsInFlight.has(streamer.username)
+    ) {
+      return;
+    }
+    this.claimRealBonus(streamer, this.settings.claimDelaySeconds).catch(() => {});
+  }
+
+  private warnPubsubShape(topic: string, message: Record<string, unknown>) {
+    const family = topic.split(".")[0];
+    const now = Date.now();
+    if (now - (this.pubsubShapeWarnings.get(family) ?? 0) < PUBSUB_SHAPE_WARNING_INTERVAL_MS) {
+      return;
+    }
+    this.pubsubShapeWarnings.set(family, now);
+    this.addLog(
+      "WARN",
+      undefined,
+      `PubSub ${family} message had no usable fields (keys: ${describePubsubKeys(message)}).`,
+    );
+  }
+
+  private placePredictionBet(streamer: Streamer, event: PredictionEventMessage) {
+    if (event.outcomes.length < 2) return;
+    const existing = this.predictionBets.get(event.id);
+    if (
+      existing &&
+      (existing.placed || existing.inFlight || existing.attempts >= MAX_PREDICTION_BET_ATTEMPTS)
+    ) {
+      return;
+    }
+    let bet = existing;
+    if (!bet) {
+      const balance = streamer.points;
+      if (balance < MIN_PREDICTION_BET) return;
+      const outcomeIndex = selectPredictionOutcome(
+        event.outcomes,
+        this.settings.predictionStrategy,
+      );
+      const outcome = event.outcomes[outcomeIndex];
+      if (!outcome) return;
+      bet = {
+        username: streamer.username,
+        outcomeId: outcome.id,
+        outcomeTitle: outcome.title ?? (outcomeIndex === 0 ? "Blue" : "Pink"),
+        amount: predictionBetAmount(
+          balance,
+          this.settings.maxBetPoints,
+          this.settings.predictionStrategy,
+        ),
+        transactionId: Array.from({ length: 32 }, () =>
+          Math.floor(Math.random() * 16).toString(16),
+        ).join(""),
+        attempts: 0,
+        placed: false,
+        inFlight: false,
+      };
+      this.predictionBets.set(event.id, bet);
+    }
+    const pending = bet;
+    pending.attempts += 1;
+    pending.inFlight = true;
+    fetch("https://gql.twitch.tv/gql", {
+      method: "POST",
+      headers: this.authenticatedGqlHeaders(),
+      body: JSON.stringify({
+        operationName: "MakePrediction",
+        extensions: {
+          persistedQuery: {
+            version: 1,
+            sha256Hash: "b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8",
+          },
+        },
+        variables: {
+          input: {
+            eventID: event.id,
+            outcomeID: pending.outcomeId,
+            points: pending.amount,
+            transactionID: pending.transactionId,
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(10000),
+    })
+      .then((res) => res.json())
+      .then((j: unknown) => {
+        pending.inFlight = false;
+        const ok =
+          typeof j === "object" &&
+          j !== null &&
+          "data" in j &&
+          typeof j.data === "object" &&
+          j.data !== null &&
+          "makePrediction" in j.data &&
+          typeof j.data.makePrediction === "object" &&
+          j.data.makePrediction !== null &&
+          !("error" in j.data.makePrediction && j.data.makePrediction.error);
+        if (ok) {
+          this.markPredictionPlaced(pending);
+          return;
+        }
+        this.addLog(
+          "WARN",
+          streamer.username,
+          `Prediction bet rejected (attempt ${pending.attempts}/${MAX_PREDICTION_BET_ATTEMPTS}): ${JSON.stringify(j).slice(0, 120)}.`,
+        );
+      })
+      .catch(() => {
+        pending.inFlight = false;
+        pending.attempts = MAX_PREDICTION_BET_ATTEMPTS;
+        this.addLog(
+          "WARN",
+          streamer.username,
+          `Prediction bet request for ${streamer.displayName} failed without a response — not retrying in case it went through.`,
+        );
+      });
+  }
+
+  private markPredictionPlaced(bet: PredictionBet) {
+    if (bet.placed) return;
+    bet.placed = true;
+    this.status.totalPredictionsPlaced += 1;
+    this.recordStatisticalData({ predictionsPlaced: 1, channel: bet.username }).catch(() => {});
+    const displayName = this.streamers.find((s) => s.username === bet.username)?.displayName;
+    this.addLog(
+      "PREDICTION",
+      bet.username,
+      `Bet ${bet.amount} pts on "${bet.outcomeTitle}" for ${displayName ?? bet.username} (${this.settings.predictionStrategy}).`,
+    );
+    this.hooks.broadcast("status", this.getStatus());
+  }
+
+  private handlePredictionUpdate(update: PredictionUserMessage) {
+    const bet = this.predictionBets.get(update.eventId);
+    if (!bet) return;
+    this.markPredictionPlaced(bet);
+    if (update.type === "prediction-made") return;
+    this.predictionBets.delete(update.eventId);
+    const net = predictionNetPoints(update.result, bet.amount, update.pointsWon);
+    const won = update.result === "WIN" ? 1 : 0;
+    const lost = update.result === "LOSE" ? 1 : 0;
+    this.status.totalPredictionsWon += won;
+    this.status.netPredictionPoints += net;
+    this.recordStatisticalData({
+      predictionsWon: won,
+      predictionsLost: lost,
+      netPredictionPoints: net,
+      channel: bet.username,
+    }).catch(() => {});
+    const outcomeWord = won ? "won" : lost ? "lost" : "refunded";
+    const displayName = this.streamers.find((s) => s.username === bet.username)?.displayName;
+    this.addLog(
+      "PREDICTION",
+      bet.username,
+      `Prediction ${outcomeWord} on ${displayName ?? bet.username}: ${net >= 0 ? "+" : ""}${net} pts net.`,
+      net,
+    );
+    this.hooks.broadcast("status", this.getStatus());
+  }
+
   private applyRealBalance(channelLogin: string, balance: number, alreadyRecorded = 0) {
     const streamer =
       this.streamers.find((s) => extractTwitchUsername(s.username) === channelLogin) ??
@@ -2299,12 +2430,7 @@ export class MinerWorker {
 
     streamer.points = balance;
     if (!firstSync && delta > 0) {
-      this.rollPointWindows();
-      streamer.totalPointsMined += delta;
-      this.status.totalPointsMined += delta;
-      this.status.pointsThisSession += delta;
-      this.status.pointsToday += delta;
-      this.status.pointsThisHour += delta;
+      this.countMinedPoints(streamer, delta);
       const watchDelta = delta - alreadyRecorded;
       if (watchDelta > 0) {
         this.recordStatisticalData({
@@ -3076,6 +3202,8 @@ export class MinerWorker {
       pointsMined: r.pointsMined,
       claimsCount: r.claimsCount,
       raidsCount: r.raidsCount,
+      raidPoints: r.raidPoints,
+      predictionsPlaced: r.predictionsPlaced,
       predictionsWon: r.predictionsWon,
       predictionsLost: r.predictionsLost,
       netPredictionPoints: r.netPredictionPoints,
@@ -3100,18 +3228,24 @@ export class MinerWorker {
     let totalRaids = 0;
     let totalPreds = 0;
 
+    const hourlyWindowStart = new Date();
+    hourlyWindowStart.setMinutes(0, 0, 0);
+    hourlyWindowStart.setHours(hourlyWindowStart.getHours() - 23);
+
     for (const r of records) {
       if (r.channel) {
         channelEarned.set(r.channel, (channelEarned.get(r.channel) ?? 0) + r.pointsMined);
       }
-      const existing = hourlyMap.get(r.hourKey) || { points: 0, claims: 0 };
-      existing.points += r.pointsMined;
-      existing.claims += r.claimsCount;
-      hourlyMap.set(r.hourKey, existing);
+      if (r.recordedAt >= hourlyWindowStart) {
+        const existing = hourlyMap.get(r.hourKey) || { points: 0, claims: 0 };
+        existing.points += r.pointsMined;
+        existing.claims += r.claimsCount;
+        hourlyMap.set(r.hourKey, existing);
+      }
 
       totalChests += r.chestsPoints;
       totalWatch += r.watchTimePoints;
-      totalRaids += r.raidsCount * 250;
+      totalRaids += r.raidPoints;
       totalPreds += r.netPredictionPoints;
     }
 
@@ -3153,12 +3287,12 @@ export class MinerWorker {
       },
     );
 
-    const categoryBreakdown = [
-      { name: "Community Chests (+50)", value: totalChests, points: totalChests, color: "#9146FF" },
-      { name: "Watch Time Heartbeats", value: totalWatch, points: totalWatch, color: "#00F593" },
-      { name: "Raid Bonuses (+250)", value: totalRaids, points: totalRaids, color: "#F59E0B" },
+    const categoryBreakdown: CategoryBreakdown[] = [
+      { key: "chests", value: totalChests, points: totalChests, color: "#9146FF" },
+      { key: "watch", value: totalWatch, points: totalWatch, color: "#00F593" },
+      { key: "raids", value: totalRaids, points: totalRaids, color: "#F59E0B" },
       {
-        name: "Predictions & Betting",
+        key: "predictions",
         value: Math.max(0, totalPreds),
         points: totalPreds,
         color: "#3B82F6",

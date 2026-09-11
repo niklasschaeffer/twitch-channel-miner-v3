@@ -167,10 +167,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
             {categoryBreakdown.map((item) => {
               const pct = Math.round((item.points / (totalEarned || 1)) * 100);
               return (
-                <div key={item.name} className="space-y-1.5">
+                <div key={item.key} className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-zinc-800 dark:text-[#EFEFF1] font-medium">
-                      {item.name}
+                      {t(`analytics.categories.${item.key}`)}
                     </span>
                     <span className="font-mono text-zinc-500 dark:text-[#ADADB8]">
                       {item.points.toLocaleString()} pts ({pct}%)

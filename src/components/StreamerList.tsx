@@ -376,7 +376,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                     {streamer.chestAvailable ? (
                       <span className="px-1.5 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/40 font-bold flex items-center gap-1 animate-pulse">
                         <Gift className="w-3 h-3" />
-                        Chest Ready (+50)
+                        {t("chest.ready")}
                       </span>
                     ) : !(streamer.isPartner || streamer.isAffiliate) ? (
                       <span

@@ -73,15 +73,6 @@ export const prisma = {
       if (!res.ok) throw new Error("Failed to query statistical records from SQLite");
       return res.json();
     },
-    create: async ({ data }: { data: Partial<StatisticalRecord> }): Promise<StatisticalRecord> => {
-      const res = await fetch("/api/statistics", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Failed to record statistical telemetry in Prisma");
-      return res.json();
-    },
     getAnalytics: async (): Promise<AnalyticsData> => {
       const res = await fetch("/api/analytics");
       if (!res.ok) throw new Error("Failed to load analytics from Prisma SQLite");

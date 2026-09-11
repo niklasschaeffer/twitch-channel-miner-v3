@@ -12,16 +12,6 @@ import {
 import { prisma } from "./db.js";
 import { MinerWorker } from "./minerWorker.js";
 
-export function extractTwitchUsername(raw: string): string {
-  if (!raw) return "";
-  let cleaned = raw.trim().toLowerCase();
-  cleaned = cleaned.replace(/^(https?:\/\/)?(www\.)?(m\.)?twitch\.tv\//i, "");
-  cleaned = cleaned.replace(/^[@/]+/, "");
-  cleaned = cleaned.split("?")[0].split("#")[0].replace(/\/+$/, "");
-  const match = cleaned.match(/^[a-z0-9_]{1,35}/i);
-  return match ? match[0].toLowerCase() : cleaned;
-}
-
 interface SSEClient {
   id: number;
   userId?: string;
@@ -301,10 +291,6 @@ export class MinerEngine {
 
   async getStatisticalRecords(userId: string): Promise<StatisticalRecord[]> {
     return this.ensureWorker(userId).getStatisticalRecords();
-  }
-
-  async recordStatisticalData(data: unknown, userId: string): Promise<void> {
-    await this.ensureWorker(userId).recordStatisticalData(data);
   }
 
   async getAnalytics(userId: string): Promise<AnalyticsData> {

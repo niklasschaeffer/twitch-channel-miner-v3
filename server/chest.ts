@@ -10,3 +10,8 @@ export function computeChestProgress(watchedMinutes: number): {
     chestAvailable: watched >= CHEST_WATCH_MINUTES_REQUIRED,
   };
 }
+
+export function watchedMinutesFromEstimate(nextChestEstimateSeconds: number): number {
+  const remaining = Math.ceil(Math.max(0, nextChestEstimateSeconds) / 60);
+  return Math.max(0, CHEST_WATCH_MINUTES_REQUIRED - remaining);
+}
