@@ -1,3 +1,10 @@
+## [1.23.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.23.0...v1.23.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* hide chest progress on channels without channel points ([358b501](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/358b501b0dd148a8199c3ad51dc6e0bb9002f76b))
+
 # [1.23.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.22.0...v1.23.0) (2026-09-11)
 
 
