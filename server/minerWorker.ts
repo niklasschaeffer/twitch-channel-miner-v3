@@ -642,6 +642,10 @@ export class MinerWorker {
       this.claimDrops().catch(() => {});
     }
 
+    if (this.settings.authToken && this.tokenInvalid && this.tickCount % 150 === 0) {
+      this.validateStoredAuthToken().catch(() => {});
+    }
+
     if (this.settings.authToken && !this.tokenInvalid) {
       if (this.tickCount % 30 === 0) {
         for (const s of this.streamers) {
@@ -1787,7 +1791,21 @@ export class MinerWorker {
     const userId = v.user_id;
     const scopes = "scopes" in v && Array.isArray(v.scopes) ? v.scopes : [];
     if (typeof login !== "string" || typeof userId !== "string") return null;
-    return { login, userId, hasChatEdit: scopes.includes("chat:edit") };
+    const hasChatEdit = scopes.includes("chat:edit");
+    if (this.tokenInvalid && token === this.settings.authToken && !this.disposed) {
+      this.tokenInvalid = false;
+      this.pubsubReconnectAttempts = 0;
+      this.authLoginName = login;
+      this.hasChatEditScope = hasChatEdit;
+      this.pubsubUserId = userId;
+      this.addLog(
+        "INFO",
+        undefined,
+        "Twitch token is valid again — resuming authenticated mining.",
+      );
+      this.connectPubsub();
+    }
+    return { login, userId, hasChatEdit };
   }
 
   private nextPubsubNonce(prefix: string): string {
