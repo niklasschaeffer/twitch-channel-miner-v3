@@ -1,3 +1,23 @@
+# [1.23.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.22.0...v1.23.0) (2026-09-11)
+
+
+### Bug Fixes
+
+* **docker:** keep database files and host artifacts out of images ([d9d80b8](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/d9d80b8afe26f03f976107032d6bf05ceba19412))
+* **miner:** keep PubSub topics in sync, bet near prediction lock and detect revoked tokens ([51413e5](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/51413e502940dcad33d9a9851d29a6aae9066ba4))
+* **miner:** resume authenticated work when a flagged token validates again ([913e81d](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/913e81d7788e02f383fa2d38d8f468f7c50dcdd8))
+* **ui:** persistent token banner, SSE-first polling and full translations ([dbaded1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/dbaded168f0d6c97a7f910e00a4f5cece651214e))
+
+
+### Features
+
+* **auth:** close self-registration after the first account and harden login ([c6ffd45](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/c6ffd45d8d91b3834fac6c10a32908a44468bc3b))
+
+
+### Performance Improvements
+
+* **db:** index user-scoped log and statistics queries ([1ef77f5](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/1ef77f5247d22a06b51baf3eb7dacbd2558a3717))
+
 # [1.22.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.21.1...v1.22.0) (2026-09-11)
 
 
