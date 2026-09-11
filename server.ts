@@ -10,6 +10,18 @@ import { prisma } from "./server/db.js";
 import { hashPassword, verifyPassword } from "./server/password.js";
 import { md5 } from "./src/lib/gravatar.js";
 import { resolveEmoteAsset, badgeMapHandler } from "./server/emoteCache.js";
+import { parseCookieHeader } from "./server/cookies.js";
+import { AttemptRateLimiter, FailureRateLimiter } from "./server/rateLimit.js";
+import { isRegistrationOpen } from "./server/registrationPolicy.js";
+import { sanitizeSettingsPatch } from "./server/settingsValidation.js";
+import { sanitizeStreamerPatch } from "./server/streamerPatchValidation.js";
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+});
 
 // Safe path resolution for both ESM (tsx dev) and CJS (dist/server.cjs bundle)
 const getDirname = () => {
@@ -41,36 +53,39 @@ declare global {
 async function startServer() {
   const app = express();
 
-  const parseCookies = (req: express.Request): Record<string, string> => {
-    const header = req.headers.cookie;
-    const out: Record<string, string> = {};
-    if (!header) return out;
-    for (const part of header.split(";")) {
-      const idx = part.indexOf("=");
-      if (idx === -1) continue;
-      out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
-    }
-    return out;
-  };
+  const isSecureRequest = (req: express.Request): boolean =>
+    req.secure || (process.env.APP_URL || "").startsWith("https://");
+
+  const clientIp = (req: express.Request): string =>
+    req.ip ?? req.socket.remoteAddress ?? "unknown";
+
+  const DUMMY_PASSWORD_HASH = hashPassword(randomBytes(32).toString("hex"));
+  const loginIpLimiter = new FailureRateLimiter(50, 15 * 60_000, 15 * 60_000, 5000);
+  const loginEmailLimiter = new FailureRateLimiter(5, 15 * 60_000, 15 * 60_000, 5000);
+  const registerIpLimiter = new AttemptRateLimiter(5, 60 * 60_000, 5000);
 
   app.use(async (req, res, next) => {
-    const sid = parseCookies(req).miner_session;
-    if (sid) {
-      const session = await prisma.session
-        .findUnique({
-          where: { id: sid },
-          include: { user: true },
-        })
-        .catch(() => null);
-      if (session && session.expiresAt > new Date()) {
-        req.user = {
-          id: session.user.id,
-          email: session.user.email,
-          username: session.user.username,
-          avatarUrl: session.user.avatarUrl,
-          provider: session.user.provider,
-        };
+    try {
+      const sid = parseCookieHeader(req.headers.cookie).miner_session;
+      if (sid) {
+        const session = await prisma.session
+          .findUnique({
+            where: { id: sid },
+            include: { user: true },
+          })
+          .catch(() => null);
+        if (session && session.expiresAt > new Date()) {
+          req.user = {
+            id: session.user.id,
+            email: session.user.email,
+            username: session.user.username,
+            avatarUrl: session.user.avatarUrl,
+            provider: session.user.provider,
+          };
+        }
       }
+    } catch {
+      req.user = undefined;
     }
     next();
   });
@@ -83,13 +98,14 @@ async function startServer() {
     next();
   };
 
-  const setSessionCookie = async (res: express.Response, userId: string) => {
+  const setSessionCookie = async (req: express.Request, res: express.Response, userId: string) => {
     const sessionId = randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000);
     await prisma.session.create({ data: { id: sessionId, userId, expiresAt } });
+    const secure = isSecureRequest(req) ? "; Secure" : "";
     res.setHeader(
       "Set-Cookie",
-      `miner_session=${sessionId}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${30 * 24 * 3600}`,
+      `miner_session=${sessionId}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${30 * 24 * 3600}${secure}`,
     );
   };
 
@@ -116,11 +132,15 @@ async function startServer() {
   });
 
   app.post("/api/auth/logout", (req, res) => {
-    const sid = parseCookies(req).miner_session;
+    const sid = parseCookieHeader(req.headers.cookie).miner_session;
     if (sid) {
       prisma.session.delete({ where: { id: sid } }).catch(() => {});
     }
-    res.setHeader("Set-Cookie", "miner_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0");
+    const secure = isSecureRequest(req) ? "; Secure" : "";
+    res.setHeader(
+      "Set-Cookie",
+      `miner_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}`,
+    );
     res.json({ success: true });
   });
 
@@ -145,13 +165,29 @@ async function startServer() {
       interval: number;
       expiresAt: number;
       state: "pending" | "granted" | "denied" | "error";
-      token?: string;
       login?: string;
       userId?: string;
       error?: string;
       ownerUserId?: string;
     }
   >();
+
+  const MAX_TWITCH_LOGIN_SESSIONS = 500;
+  const TWITCH_LOGIN_SESSION_TTL_MS = 3600_000;
+
+  const pruneTwitchLoginSessions = (): void => {
+    const now = Date.now();
+    for (const [id, session] of twitchLoginSessions) {
+      if (now - session.expiresAt > TWITCH_LOGIN_SESSION_TTL_MS) {
+        twitchLoginSessions.delete(id);
+      }
+    }
+    while (twitchLoginSessions.size > MAX_TWITCH_LOGIN_SESSIONS) {
+      const oldestKey = twitchLoginSessions.keys().next().value;
+      if (oldestKey === undefined) break;
+      twitchLoginSessions.delete(oldestKey);
+    }
+  };
 
   interface TwitchTokenValidation {
     login: string;
@@ -209,7 +245,8 @@ async function startServer() {
         res.status(502).json({ error: "Device flow start failed" });
         return;
       }
-      const sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      pruneTwitchLoginSessions();
+      const sessionId = randomBytes(32).toString("hex");
       twitchLoginSessions.set(sessionId, {
         deviceCode,
         userCode,
@@ -298,7 +335,6 @@ async function startServer() {
           return;
         }
         session.state = "granted";
-        session.token = token;
         session.login = v.login;
         session.userId = v.userId;
         await minerEngine.updateSettings({ authToken: token }, session.ownerUserId);
@@ -344,9 +380,13 @@ async function startServer() {
   });
 
   app.post("/api/twitch/disconnect", async (req, res) => {
-    await minerEngine.updateSettings({ authToken: "" }, req.user!.id);
-    minerEngine.addLog("INFO", undefined, "Twitch account disconnected.", req.user!.id);
-    res.json({ connected: false });
+    try {
+      await minerEngine.updateSettings({ authToken: "" }, req.user!.id);
+      minerEngine.addLog("INFO", undefined, "Twitch account disconnected.", req.user!.id);
+      res.json({ connected: false });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   app.get("/api/twitch/your-channels", async (req, res) => {
@@ -365,6 +405,22 @@ async function startServer() {
   const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
   const googleRedirectUri = `${process.env.APP_URL || "http://localhost:3000"}/api/auth/google/callback`;
   const googleOauthStates = new Map<string, number>();
+  const MAX_GOOGLE_OAUTH_STATES = 500;
+  const GOOGLE_OAUTH_STATE_TTL_MS = 600_000;
+
+  const pruneGoogleOauthStates = (): void => {
+    const now = Date.now();
+    for (const [state, issuedAt] of googleOauthStates) {
+      if (now - issuedAt > GOOGLE_OAUTH_STATE_TTL_MS) {
+        googleOauthStates.delete(state);
+      }
+    }
+    while (googleOauthStates.size > MAX_GOOGLE_OAUTH_STATES) {
+      const oldestKey = googleOauthStates.keys().next().value;
+      if (oldestKey === undefined) break;
+      googleOauthStates.delete(oldestKey);
+    }
+  };
 
   app.get("/api/auth/google/start", (req, res) => {
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
@@ -374,7 +430,8 @@ async function startServer() {
       });
       return;
     }
-    const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    pruneGoogleOauthStates();
+    const state = randomBytes(32).toString("hex");
     googleOauthStates.set(state, Date.now());
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.searchParams.set("client_id", GOOGLE_CLIENT_ID);
@@ -434,18 +491,46 @@ async function startServer() {
         res.status(502).send("Google userinfo fetch failed.");
         return;
       }
+      if (!("email_verified" in ui) || ui.email_verified !== true) {
+        res.status(403).send("Google OAuth failed: email is not verified.");
+        return;
+      }
       const email = ui.email.toLowerCase();
       const name = "name" in ui && typeof ui.name === "string" ? ui.name : email.split("@")[0];
       const picture = "picture" in ui && typeof ui.picture === "string" ? ui.picture : undefined;
       const gravatarHash = md5(email);
       const avatarUrl =
         picture ?? `https://www.gravatar.com/avatar/${gravatarHash}?s=100&d=identicon`;
-      const user = await prisma.user.upsert({
-        where: { email },
-        update: { provider: "google", avatarUrl },
-        create: { email, username: name, avatarUrl, provider: "google" },
+      const existingUser = await prisma.user.findUnique({ where: { email } });
+      if (!existingUser) {
+        const userCount = await prisma.user.count();
+        if (!isRegistrationOpen(process.env.ALLOW_REGISTRATION, userCount)) {
+          res
+            .status(403)
+            .send(
+              "Registration is closed. Ask the administrator to enable ALLOW_REGISTRATION, or sign in with an existing account.",
+            );
+          return;
+        }
+        const created = await prisma.user.create({
+          data: { email, username: name, avatarUrl, provider: "google" },
+        });
+        await setSessionCookie(req, res, created.id);
+        res.redirect(`/`);
+        return;
+      }
+      if (existingUser.password) {
+        await prisma.session.deleteMany({ where: { userId: existingUser.id } });
+      }
+      const user = await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          provider: "google",
+          avatarUrl,
+          password: existingUser.password ? null : undefined,
+        },
       });
-      await setSessionCookie(res, user.id);
+      await setSessionCookie(req, res, user.id);
       res.redirect(`/`);
     } catch (err) {
       res.status(502).send(`Google OAuth error: ${err instanceof Error ? err.message : "unknown"}`);
@@ -460,15 +545,44 @@ async function startServer() {
     res.json(req.user);
   });
 
+  app.get("/api/auth/registration", async (req, res) => {
+    try {
+      const userCount = await prisma.user.count();
+      res.json({ open: isRegistrationOpen(process.env.ALLOW_REGISTRATION, userCount) });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   app.post("/api/auth/register", async (req, res) => {
-    const { email, username, password } = req.body;
-    if (!email || !username || typeof password !== "string" || password.length < 8) {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const { email, username, password } = body;
+    if (
+      typeof email !== "string" ||
+      !email.trim() ||
+      typeof username !== "string" ||
+      !username.trim() ||
+      typeof password !== "string" ||
+      password.length < 8
+    ) {
       res
         .status(400)
         .json({ error: "Email, username and a password of at least 8 characters are required" });
       return;
     }
+    const ip = clientIp(req);
+    const registerCheck = registerIpLimiter.consume(ip);
+    if (!registerCheck.allowed) {
+      res.setHeader("Retry-After", String(registerCheck.retryAfterSeconds));
+      res.status(429).json({ error: "Too many registration attempts. Try again later." });
+      return;
+    }
     try {
+      const userCount = await prisma.user.count();
+      if (!isRegistrationOpen(process.env.ALLOW_REGISTRATION, userCount)) {
+        res.status(403).json({ error: "Registration is closed" });
+        return;
+      }
       const cleanEmail = email.trim().toLowerCase();
       const existing = await prisma.user.findUnique({ where: { email: cleanEmail } });
       if (existing) {
@@ -488,7 +602,7 @@ async function startServer() {
           provider: "local",
         },
       });
-      await setSessionCookie(res, user.id);
+      await setSessionCookie(req, res, user.id);
 
       res.json({
         id: user.id,
@@ -503,34 +617,45 @@ async function startServer() {
   });
 
   app.post("/api/auth/login", async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || typeof password !== "string") {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const { email, password } = body;
+    if (typeof email !== "string" || !email.trim() || typeof password !== "string") {
       res.status(400).json({ error: "Email and password are required" });
       return;
     }
+    const ip = clientIp(req);
+    const cleanEmail = email.trim().toLowerCase();
+    const ipCheck = loginIpLimiter.check(ip);
+    const emailCheck = loginEmailLimiter.check(cleanEmail);
+    if (!ipCheck.allowed || !emailCheck.allowed) {
+      res.setHeader(
+        "Retry-After",
+        String(Math.max(ipCheck.retryAfterSeconds, emailCheck.retryAfterSeconds)),
+      );
+      res.status(429).json({ error: "Too many login attempts. Try again later." });
+      return;
+    }
     try {
-      const cleanEmail = email.trim().toLowerCase();
       const user = await prisma.user.findUnique({
         where: { email: cleanEmail },
       });
 
-      if (!user || !user.password) {
-        res.status(401).json({ error: "Invalid email or password" });
-        return;
-      }
-
       let valid = false;
       try {
-        valid = verifyPassword(password, user.password);
+        valid = verifyPassword(password, user?.password ?? DUMMY_PASSWORD_HASH);
       } catch {
         valid = false;
       }
-      if (!valid) {
+      if (!user || !user.password || !valid) {
+        loginIpLimiter.recordFailure(ip);
+        loginEmailLimiter.recordFailure(cleanEmail);
         res.status(401).json({ error: "Invalid email or password" });
         return;
       }
 
-      await setSessionCookie(res, user.id);
+      loginIpLimiter.recordSuccess(ip);
+      loginEmailLimiter.recordSuccess(cleanEmail);
+      await setSessionCookie(req, res, user.id);
       res.json({
         id: user.id,
         email: user.email,
@@ -568,10 +693,14 @@ async function startServer() {
   });
 
   app.post("/api/miner/test-claim", async (req, res) => {
-    const { channel } = (req.body || {}) as { channel?: unknown };
-    const channelName = typeof channel === "string" ? channel : undefined;
-    const result = await minerEngine.triggerTestClaim(channelName, req.user!.id);
-    res.json(result);
+    try {
+      const { channel } = (req.body || {}) as { channel?: unknown };
+      const channelName = typeof channel === "string" ? channel : undefined;
+      const result = await minerEngine.triggerTestClaim(channelName, req.user!.id);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   app.get("/api/streamers", requireAuth, (req, res) => {
@@ -625,7 +754,16 @@ async function startServer() {
         res.status(404).json({ error: "Streamer not found" });
         return;
       }
-      const updated = await minerEngine.updateStreamer(cleanUsername, req.body, req.user!.id);
+      const patchResult = sanitizeStreamerPatch(req.body);
+      if (!patchResult.ok) {
+        res.status(400).json({ error: patchResult.error });
+        return;
+      }
+      const updated = await minerEngine.updateStreamer(
+        cleanUsername,
+        patchResult.patch,
+        req.user!.id,
+      );
       if (!updated) {
         res.status(404).json({ error: "Streamer not found" });
         return;
@@ -699,8 +837,13 @@ async function startServer() {
   });
 
   app.post("/api/settings", async (req, res) => {
+    const patchResult = sanitizeSettingsPatch(req.body);
+    if (!patchResult.ok) {
+      res.status(400).json({ error: patchResult.error });
+      return;
+    }
     try {
-      const updated = await minerEngine.updateSettings(req.body, req.user!.id);
+      const updated = await minerEngine.updateSettings(patchResult.patch, req.user!.id);
       res.json(updated);
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
@@ -716,8 +859,12 @@ async function startServer() {
   });
 
   app.post("/api/logs/clear", async (req, res) => {
-    await minerEngine.clearLogs(req.user!.id);
-    res.json({ success: true });
+    try {
+      await minerEngine.clearLogs(req.user!.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   // Statistical Records (Stored in SQLite via Prisma ORM)
