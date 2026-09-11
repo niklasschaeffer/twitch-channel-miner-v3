@@ -12,8 +12,14 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { TooltipValueType } from "recharts";
-import { TrendingUp, PieChart, Award, Zap, Trophy, Flame, Sparkles } from "lucide-react";
-import { AnalyticsData, DropCampaignProgress, DropProgress, MinerStatus } from "../types";
+import { TrendingUp, PieChart, Award, Zap, Trophy, Flame, Sparkles, Gift } from "lucide-react";
+import {
+  AnalyticsData,
+  ClaimedDropReward,
+  DropCampaignProgress,
+  DropProgress,
+  MinerStatus,
+} from "../types";
 
 interface AnalyticsViewProps {
   analytics: AnalyticsData | null;
@@ -312,6 +318,62 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics, status 
                     );
                   })}
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#26262C] p-5 shadow-xs">
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-[#EFEFF1] flex items-center gap-2">
+            <Gift className="w-4 h-4 text-pink-500 dark:text-pink-300" />
+            {t("analytics.claimedDropsTitle")}
+          </h3>
+          <p className="text-xs text-zinc-500 dark:text-[#ADADB8] mt-0.5">
+            {t("analytics.claimedDropsSubtitle", {
+              count: status?.claimedDropRewards.length ?? 0,
+            })}
+          </p>
+        </div>
+
+        {!status?.lastDropSyncAt ? (
+          <p className="text-xs text-zinc-500 dark:text-[#ADADB8]">{t("analytics.dropsPending")}</p>
+        ) : status.claimedDropRewards.length === 0 ? (
+          <p className="text-xs text-zinc-500 dark:text-[#ADADB8]">
+            {t("analytics.claimedDropsNone")}
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {status.claimedDropRewards.map((reward: ClaimedDropReward) => (
+              <div
+                key={reward.id}
+                className="flex items-center gap-3 border border-zinc-200 dark:border-[#26262C] p-2.5"
+              >
+                {reward.imageUrl ? (
+                  <img
+                    src={reward.imageUrl}
+                    alt={reward.name}
+                    className="w-12 h-12 object-contain shrink-0 bg-zinc-100 dark:bg-[#0E0E10]"
+                  />
+                ) : (
+                  <div className="w-12 h-12 shrink-0 flex items-center justify-center bg-zinc-100 dark:bg-[#0E0E10]">
+                    <Gift className="w-5 h-5 text-zinc-400" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-zinc-900 dark:text-[#EFEFF1] truncate">
+                    {reward.name}
+                  </p>
+                  <p className="text-[11px] font-mono text-zinc-500 dark:text-[#ADADB8]">
+                    {new Date(reward.lastAwardedAt).toLocaleDateString()}
+                  </p>
+                </div>
+                {reward.totalCount > 1 && (
+                  <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-pink-500/15 text-pink-600 dark:text-pink-300 border border-pink-500/40 shrink-0">
+                    {t("analytics.claimedDropsTimes", { count: reward.totalCount })}
+                  </span>
+                )}
               </div>
             ))}
           </div>

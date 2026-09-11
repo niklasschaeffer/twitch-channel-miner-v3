@@ -1,4 +1,6 @@
-import type { DropCampaignProgress, DropProgress } from "../src/types.js";
+import type { ClaimedDropReward, DropCampaignProgress, DropProgress } from "../src/types.js";
+
+export const CLAIMED_DROP_HISTORY_DAYS = 30;
 
 export interface ClaimableDrop {
   dropId: string;
@@ -112,4 +114,29 @@ export function markDropClaimed(
       drops: c.drops.map((d) => (d.dropId === dropId ? { ...d, isClaimed: true } : d)),
     }))
     .filter(hasUnclaimedDrop);
+}
+
+export function parseClaimedDropRewards(rawRewards: unknown, since: Date): ClaimedDropReward[] {
+  if (!Array.isArray(rawRewards)) return [];
+  const rewards: { reward: ClaimedDropReward; awardedAtMs: number }[] = [];
+  for (const raw of rawRewards) {
+    const reward = asRecord(raw);
+    const id = asString(reward.id);
+    const name = asString(reward.name);
+    const lastAwardedAt = asString(reward.lastAwardedAt);
+    if (id === null || name === null || lastAwardedAt === null) continue;
+    const awardedAtMs = Date.parse(lastAwardedAt);
+    if (Number.isNaN(awardedAtMs) || awardedAtMs < since.getTime()) continue;
+    rewards.push({
+      reward: {
+        id,
+        name,
+        imageUrl: asString(reward.imageURL),
+        lastAwardedAt,
+        totalCount: asNumber(reward.totalCount) ?? 1,
+      },
+      awardedAtMs,
+    });
+  }
+  return rewards.sort((a, b) => b.awardedAtMs - a.awardedAtMs).map((r) => r.reward);
 }

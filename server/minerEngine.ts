@@ -164,6 +164,7 @@ export class MinerEngine {
       netPredictionPoints: 0,
       totalDropsClaimed: 0,
       activeDropCampaigns: [],
+      claimedDropRewards: [],
       lastDropSyncAt: null,
       lastActionTimestamp: new Date().toISOString(),
     };

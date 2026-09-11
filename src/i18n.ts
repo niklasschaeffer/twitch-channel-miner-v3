@@ -117,6 +117,11 @@ export const resources = {
         dropsMinutes: "{{current}} / {{required}} min",
         dropsReady: "Ready to claim",
         dropsClaimed: "Claimed",
+        claimedDropsTitle: "Claimed Drops",
+        claimedDropsSubtitle:
+          "{{count}} rewards awarded to your Twitch account in the last 30 days · newest first",
+        claimedDropsNone: "No drops claimed in the last 30 days.",
+        claimedDropsTimes: "×{{count}}",
       },
       logs: {
         title: "Live Engine Telemetry",
@@ -386,6 +391,11 @@ export const resources = {
         dropsMinutes: "{{current}} / {{required}} Min.",
         dropsReady: "Bereit zum Abholen",
         dropsClaimed: "Abgeholt",
+        claimedDropsTitle: "Abgeholte Drops",
+        claimedDropsSubtitle:
+          "{{count}} Belohnungen in den letzten 30 Tagen deinem Twitch-Konto gutgeschrieben · neueste zuerst",
+        claimedDropsNone: "In den letzten 30 Tagen keine Drops abgeholt.",
+        claimedDropsTimes: "×{{count}}",
       },
       logs: {
         title: "Live-Engine Telemetrie",

@@ -14,7 +14,13 @@ import {
 import { prisma } from "./db.js";
 import { extractTwitchUsername } from "./minerEngine.js";
 import { computeChestProgress } from "./chest.js";
-import { markDropClaimed, parseDropCampaigns, selectClaimableDrops } from "./drops.js";
+import {
+  CLAIMED_DROP_HISTORY_DAYS,
+  markDropClaimed,
+  parseClaimedDropRewards,
+  parseDropCampaigns,
+  selectClaimableDrops,
+} from "./drops.js";
 import { selectPredictionOutcome } from "./prediction.js";
 import { composeYourChannels, type ComposeYourChannelsInput } from "./yourChannels.js";
 
@@ -110,6 +116,7 @@ export class MinerWorker {
       netPredictionPoints: 0,
       totalDropsClaimed: 0,
       activeDropCampaigns: [],
+      claimedDropRewards: [],
       lastDropSyncAt: null,
       lastActionTimestamp: new Date().toISOString(),
     };
@@ -2066,10 +2073,17 @@ export class MinerWorker {
       )
         return;
       const data = j.data as {
-        currentUser?: { inventory?: { dropCampaignsInProgress?: unknown } | null } | null;
+        currentUser?: {
+          inventory?: { dropCampaignsInProgress?: unknown; gameEventDrops?: unknown } | null;
+        } | null;
       };
-      const campaigns = data.currentUser?.inventory?.dropCampaignsInProgress;
+      const inventory = data.currentUser?.inventory;
+      const campaigns = inventory?.dropCampaignsInProgress;
       this.status.activeDropCampaigns = parseDropCampaigns(campaigns);
+      this.status.claimedDropRewards = parseClaimedDropRewards(
+        inventory?.gameEventDrops,
+        new Date(Date.now() - CLAIMED_DROP_HISTORY_DAYS * 86_400_000),
+      );
       this.status.lastDropSyncAt = new Date().toISOString();
       this.hooks.broadcast("status", this.getStatus());
       for (const drop of selectClaimableDrops(campaigns)) {

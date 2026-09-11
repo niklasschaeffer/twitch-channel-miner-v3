@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { markDropClaimed, parseDropCampaigns, selectClaimableDrops } from "../server/drops.js";
+import {
+  markDropClaimed,
+  parseClaimedDropRewards,
+  parseDropCampaigns,
+  selectClaimableDrops,
+} from "../server/drops.js";
 
 type DropOverrides = {
   id?: string;
@@ -139,5 +144,74 @@ describe("markDropClaimed", () => {
   it("removes a campaign once its last drop is claimed", () => {
     const campaigns = parseDropCampaigns([campaign([drop({ id: "a" })])]);
     expect(markDropClaimed(campaigns, "a")).toEqual([]);
+  });
+});
+
+describe("parseClaimedDropRewards", () => {
+  const since = new Date("2026-08-12T00:00:00Z");
+
+  function reward(overrides: Record<string, unknown> = {}) {
+    return {
+      game: null,
+      id: "reward-1",
+      imageURL: "https://static-cdn.jtvnw.net/twitch-quests-assets/REWARD/hood.jpeg",
+      isConnected: true,
+      lastAwardedAt: "2026-09-11T17:44:49.231Z",
+      name: "Scavenger Hood",
+      totalCount: 1,
+      ...overrides,
+    };
+  }
+
+  it("maps awarded rewards", () => {
+    expect(parseClaimedDropRewards([reward()], since)).toEqual([
+      {
+        id: "reward-1",
+        name: "Scavenger Hood",
+        imageUrl: "https://static-cdn.jtvnw.net/twitch-quests-assets/REWARD/hood.jpeg",
+        lastAwardedAt: "2026-09-11T17:44:49.231Z",
+        totalCount: 1,
+      },
+    ]);
+  });
+
+  it("keeps only rewards awarded since the cutoff, newest first", () => {
+    const parsed = parseClaimedDropRewards(
+      [
+        reward({ id: "old", lastAwardedAt: "2026-08-11T23:59:59Z" }),
+        reward({ id: "mid", lastAwardedAt: "2026-09-04T09:35:25.251Z" }),
+        reward({ id: "edge", lastAwardedAt: "2026-08-12T00:00:00Z" }),
+        reward({ id: "new", lastAwardedAt: "2026-09-11T17:44:49.231Z" }),
+      ],
+      since,
+    );
+    expect(parsed.map((r) => r.id)).toEqual(["new", "mid", "edge"]);
+  });
+
+  it("skips entries without an id, name or parseable award date", () => {
+    const parsed = parseClaimedDropRewards(
+      [
+        reward({ id: null }),
+        reward({ name: 5 }),
+        reward({ lastAwardedAt: "not a date" }),
+        reward({ lastAwardedAt: undefined }),
+      ],
+      since,
+    );
+    expect(parsed).toEqual([]);
+  });
+
+  it("falls back for a missing image and count", () => {
+    const [parsed] = parseClaimedDropRewards(
+      [reward({ imageURL: undefined, totalCount: undefined })],
+      since,
+    );
+    expect(parsed.imageUrl).toBeNull();
+    expect(parsed.totalCount).toBe(1);
+  });
+
+  it("returns nothing for malformed input", () => {
+    expect(parseClaimedDropRewards(undefined, since)).toEqual([]);
+    expect(parseClaimedDropRewards([null, "x"], since)).toEqual([]);
   });
 });

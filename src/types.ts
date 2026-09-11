@@ -76,6 +76,7 @@ export interface MinerStatus {
   netPredictionPoints: number;
   totalDropsClaimed: number;
   activeDropCampaigns: DropCampaignProgress[];
+  claimedDropRewards: ClaimedDropReward[];
   lastDropSyncAt: string | null;
   lastActionTimestamp: string;
 }
@@ -95,6 +96,14 @@ export interface DropCampaignProgress {
   gameBoxArtUrl: string | null;
   endsAt: string | null;
   drops: DropProgress[];
+}
+
+export interface ClaimedDropReward {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  lastAwardedAt: string;
+  totalCount: number;
 }
 
 export interface LogEntry {
