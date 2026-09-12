@@ -17,7 +17,7 @@ import {
   RefreshCw,
   Eye,
 } from "lucide-react";
-import { Streamer, PriorityMode } from "../types";
+import { LURK_MESSAGE_MAX_LENGTH, PriorityMode, Streamer } from "../types";
 import { formatSubTier } from "../lib/badges";
 import { supportsChannelPoints } from "../lib/twitch";
 
@@ -28,6 +28,7 @@ interface StreamerListProps {
   onChangePriorityMode: (mode: PriorityMode) => void;
   onToggleEnabled: (username: string, enabled: boolean) => void;
   onToggleLurk: (username: string, lurkEnabled: boolean) => void;
+  onUpdateLurkMessage: (username: string, lurkMessage: string) => Promise<void>;
   onDeleteStreamer: (username: string) => void;
   onAddStreamerClick: () => void;
   onRefreshLive?: () => void;
@@ -45,6 +46,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
   onChangePriorityMode,
   onToggleEnabled,
   onToggleLurk,
+  onUpdateLurkMessage,
   onDeleteStreamer,
   onAddStreamerClick,
   onRefreshLive,
@@ -56,6 +58,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
 }) => {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
+  const [lurkDrafts, setLurkDrafts] = useState<Record<string, string>>({});
 
   const filteredStreamers = streamers.filter(
     (s) =>
@@ -361,6 +364,47 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                     </span>
                   )}
                 </div>
+
+                {streamer.lurkEnabled && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-1.5 pt-1.5 border-t border-zinc-200/70 dark:border-[#26262C]/70"
+                  >
+                    <Eye className="w-3 h-3 text-[#9146FF] shrink-0" />
+                    <input
+                      type="text"
+                      maxLength={LURK_MESSAGE_MAX_LENGTH}
+                      value={lurkDrafts[streamer.username] ?? streamer.lurkMessage ?? "!lurk"}
+                      onChange={(e) =>
+                        setLurkDrafts((prev) => ({ ...prev, [streamer.username]: e.target.value }))
+                      }
+                      placeholder={t("streamersList.lurkMessagePlaceholder")}
+                      title={t("streamersList.lurkMessageLabel")}
+                      className="flex-1 min-w-0 bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-200 dark:border-[#26262C] px-2 py-1 text-[11px] font-mono text-zinc-900 dark:text-[#EFEFF1] placeholder-zinc-400 dark:placeholder-[#71717A] focus:outline-hidden focus:border-[#9146FF]"
+                    />
+                    <button
+                      onClick={async () => {
+                        const draft = lurkDrafts[streamer.username];
+                        if (draft === undefined) return;
+                        await onUpdateLurkMessage(streamer.username, draft);
+                        setLurkDrafts((prev) => {
+                          const next = { ...prev };
+                          delete next[streamer.username];
+                          return next;
+                        });
+                      }}
+                      disabled={
+                        lurkDrafts[streamer.username] === undefined ||
+                        lurkDrafts[streamer.username].trim().length === 0 ||
+                        lurkDrafts[streamer.username].trim() ===
+                          (streamer.lurkMessage ?? "!lurk").trim()
+                      }
+                      className="px-2 py-1 text-[10px] font-semibold bg-[#9146FF] hover:bg-[#772CE8] disabled:opacity-30 disabled:cursor-not-allowed text-white transition cursor-pointer shrink-0"
+                    >
+                      {t("actions.save")}
+                    </button>
+                  </div>
+                )}
 
                 <div className="pt-2 border-t border-zinc-200/70 dark:border-[#26262C]/70 flex items-center justify-between text-[11px] gap-2 flex-wrap">
                   <div className="flex items-center gap-2">

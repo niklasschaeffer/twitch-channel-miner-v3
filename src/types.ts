@@ -3,6 +3,23 @@ export type PredictionStrategy = "lowest_odds" | "highest_odds" | "smart_ratio" 
 
 export type MinerState = "running" | "paused" | "stopped";
 
+export interface NumericSettingBound {
+  min: number;
+  max: number;
+}
+
+export const SETTINGS_BOUNDS = {
+  maxConcurrentStreams: { min: 1, max: 2 },
+  claimDelaySeconds: { min: 1, max: 15 },
+  maxBetPoints: { min: 10, max: 1_000_000 },
+  checkIntervalSeconds: { min: 2, max: 300 },
+} as const satisfies Record<string, NumericSettingBound>;
+
+export const clampSetting = (value: number, bound: NumericSettingBound): number =>
+  Math.min(bound.max, Math.max(bound.min, Math.round(value)));
+
+export const LURK_MESSAGE_MAX_LENGTH = 500;
+
 export type LogLevel =
   | "INFO"
   | "SUCCESS"

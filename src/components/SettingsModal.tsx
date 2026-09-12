@@ -1,17 +1,19 @@
 import React, { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { X, Sliders, Zap, Gift, Target, Key, CheckCircle2 } from "lucide-react";
-import { MinerSettings, PriorityMode } from "../types";
+import { X, Sliders, Zap, Gift, Target, Key, CheckCircle2, AlertTriangle } from "lucide-react";
+import { clampSetting, MinerSettings, PriorityMode, SETTINGS_BOUNDS } from "../types";
 import { TwitchConnect } from "./TwitchConnect";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: MinerSettings | null;
-  onSaveSettings: (settings: Partial<MinerSettings>) => void;
+  onSaveSettings: (settings: Partial<MinerSettings>) => Promise<boolean>;
 }
 
 type SettingsSection = "queue" | "claiming" | "predictions" | "account";
+
+type DraftField = "maxBetPoints" | "checkIntervalSeconds";
 
 const sections: { id: SettingsSection; labelKey: string; icon: React.ReactNode }[] = [
   { id: "queue", labelKey: "settings.navQueue", icon: <Zap className="w-3.5 h-3.5" /> },
@@ -31,25 +33,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSaveSettings,
 }) => {
   const { t } = useTranslation();
-  const [form, setForm] = useState<MinerSettings>(
-    () =>
-      settings || {
-        id: "default",
-        authToken: "",
-        clientId: "kimne78kx3ncx6brgo4mv6wki5h1ko",
-        maxConcurrentStreams: 2,
-        priorityMode: "points_asc",
-        autoClaimBonus: true,
-        claimDelaySeconds: 4,
-        followRaids: true,
-        autoClaimDrops: true,
-        autoBetPredictions: true,
-        predictionStrategy: "smart_ratio",
-        maxBetPoints: 100,
-        checkIntervalSeconds: 3,
-      },
-  );
+  const [form, setForm] = useState<MinerSettings | null>(settings);
+  const [drafts, setDrafts] = useState<Record<DraftField, string>>(() => ({
+    maxBetPoints: String(settings?.maxBetPoints ?? ""),
+    checkIntervalSeconds: String(settings?.checkIntervalSeconds ?? ""),
+  }));
   const [savedAlert, setSavedAlert] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<SettingsSection>("queue");
   const wasOpenRef = useRef(isOpen);
   const seededRef = useRef(false);
@@ -58,22 +49,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = isOpen;
     if (!settings) return;
-    if (isOpen && !wasOpen) {
+    const seed = () => {
       setForm({ ...settings });
+      setDrafts({
+        maxBetPoints: String(settings.maxBetPoints),
+        checkIntervalSeconds: String(settings.checkIntervalSeconds),
+      });
+      setSaveError(null);
       seededRef.current = true;
+    };
+    if (isOpen && !wasOpen) {
+      seed();
       return;
     }
-    if (!isOpen && !seededRef.current) {
-      setForm({ ...settings });
-      seededRef.current = true;
-    }
+    if (!isOpen && !seededRef.current) seed();
   }, [isOpen, settings]);
 
-  if (!isOpen || !settings) return null;
+  if (!isOpen || !settings || !form) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const resolveDraft = (field: DraftField): number => {
+    const parsed = Number.parseInt(drafts[field], 10);
+    return Number.isFinite(parsed) ? clampSetting(parsed, SETTINGS_BOUNDS[field]) : settings[field];
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveSettings({
+    if (isSaving) return;
+    const maxBetPoints = resolveDraft("maxBetPoints");
+    const checkIntervalSeconds = resolveDraft("checkIntervalSeconds");
+    setDrafts({
+      maxBetPoints: String(maxBetPoints),
+      checkIntervalSeconds: String(checkIntervalSeconds),
+    });
+    setForm({ ...form, maxBetPoints, checkIntervalSeconds });
+    setIsSaving(true);
+    setSaveError(null);
+    const ok = await onSaveSettings({
       maxConcurrentStreams: form.maxConcurrentStreams,
       priorityMode: form.priorityMode,
       autoClaimBonus: form.autoClaimBonus,
@@ -82,8 +93,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       autoClaimDrops: form.autoClaimDrops,
       autoBetPredictions: form.autoBetPredictions,
       predictionStrategy: form.predictionStrategy,
-      maxBetPoints: form.maxBetPoints,
+      maxBetPoints,
+      checkIntervalSeconds,
     });
+    setIsSaving(false);
+    if (!ok) {
+      setSaveError(t("settings.saveFailed"));
+      return;
+    }
     setSavedAlert(true);
     setTimeout(() => {
       setSavedAlert(false);
@@ -143,6 +160,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             )}
 
+            {saveError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{saveError}</span>
+              </div>
+            )}
+
             {activeSection === "queue" && (
               <div className="space-y-4">
                 <h3 className="text-xs font-semibold text-zinc-500 dark:text-[#ADADB8] uppercase tracking-wider flex items-center gap-1.5 font-mono">
@@ -199,7 +223,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <select
                       value={form.maxConcurrentStreams}
                       onChange={(e) =>
-                        setForm({ ...form, maxConcurrentStreams: parseInt(e.target.value) })
+                        setForm({
+                          ...form,
+                          maxConcurrentStreams: clampSetting(
+                            Number.parseInt(e.target.value, 10),
+                            SETTINGS_BOUNDS.maxConcurrentStreams,
+                          ),
+                        })
                       }
                       className="w-full bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] px-3 py-2 text-xs text-zinc-900 dark:text-[#EFEFF1] focus:outline-hidden focus:border-[#9146FF]"
                     >
@@ -218,6 +248,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </select>
                     <p className="text-[11px] text-zinc-500 dark:text-[#71717A] mt-1">
                       {t("settings.concurrencyHint")}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-[#EFEFF1] mb-1.5">
+                      {t("settings.checkIntervalLabel")}
+                    </label>
+                    <input
+                      type="number"
+                      min={SETTINGS_BOUNDS.checkIntervalSeconds.min}
+                      max={SETTINGS_BOUNDS.checkIntervalSeconds.max}
+                      step={1}
+                      value={drafts.checkIntervalSeconds}
+                      onChange={(e) =>
+                        setDrafts({ ...drafts, checkIntervalSeconds: e.target.value })
+                      }
+                      className="w-full bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] px-3 py-2 text-xs text-zinc-900 dark:text-[#EFEFF1] focus:outline-hidden focus:border-[#9146FF]"
+                    />
+                    <p className="text-[11px] text-zinc-500 dark:text-[#71717A] mt-1">
+                      {t("settings.checkIntervalHint", {
+                        effective:
+                          Math.max(1, Math.round(resolveDraft("checkIntervalSeconds") / 2)) * 2,
+                      })}
                     </p>
                   </div>
                 </div>
@@ -294,8 +347,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </label>
                     <input
                       type="range"
-                      min={1}
-                      max={15}
+                      min={SETTINGS_BOUNDS.claimDelaySeconds.min}
+                      max={SETTINGS_BOUNDS.claimDelaySeconds.max}
                       value={form.claimDelaySeconds}
                       onChange={(e) =>
                         setForm({ ...form, claimDelaySeconds: parseInt(e.target.value) })
@@ -382,14 +435,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </label>
                     <input
                       type="number"
-                      min={10}
-                      max={5000}
-                      value={form.maxBetPoints}
-                      onChange={(e) =>
-                        setForm({ ...form, maxBetPoints: parseInt(e.target.value) || 100 })
-                      }
+                      min={SETTINGS_BOUNDS.maxBetPoints.min}
+                      max={SETTINGS_BOUNDS.maxBetPoints.max}
+                      value={drafts.maxBetPoints}
+                      onChange={(e) => setDrafts({ ...drafts, maxBetPoints: e.target.value })}
                       className="w-full bg-zinc-50 dark:bg-[#0E0E10] border border-zinc-300 dark:border-[#26262C] px-3 py-2 text-xs text-zinc-900 dark:text-[#EFEFF1] focus:outline-hidden focus:border-[#9146FF]"
                     />
+                    <p className="text-[11px] text-zinc-500 dark:text-[#71717A] mt-1">
+                      {t("settings.maxBetHint", {
+                        min: SETTINGS_BOUNDS.maxBetPoints.min,
+                        max: SETTINGS_BOUNDS.maxBetPoints.max.toLocaleString(),
+                      })}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -418,9 +475,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <button
             type="button"
             onClick={handleSubmit}
-            className="px-4 py-2 text-xs font-semibold bg-[#9146FF] hover:bg-[#772CE8] text-white transition cursor-pointer"
+            disabled={isSaving}
+            className="px-4 py-2 text-xs font-semibold bg-[#9146FF] hover:bg-[#772CE8] disabled:opacity-50 disabled:cursor-not-allowed text-white transition cursor-pointer"
           >
-            {t("actions.save")}
+            {isSaving ? t("actions.saving") : t("actions.save")}
           </button>
         </div>
       </div>

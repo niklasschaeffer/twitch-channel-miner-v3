@@ -1,4 +1,4 @@
-import { PredictionStrategy, PriorityMode } from "../src/types.js";
+import { clampSetting, PredictionStrategy, PriorityMode, SETTINGS_BOUNDS } from "../src/types.js";
 
 const PRIORITY_MODES = [
   "points_asc",
@@ -28,22 +28,10 @@ export interface SettingsPatch {
 
 export type SettingsPatchResult = { ok: true; patch: SettingsPatch } | { ok: false; error: string };
 
-const MIN_CONCURRENT_STREAMS = 1;
-const MAX_CONCURRENT_STREAMS = 2;
-const MIN_CLAIM_DELAY_SECONDS = 1;
-const MAX_CLAIM_DELAY_SECONDS = 15;
-const MIN_BET_POINTS = 10;
-const MAX_BET_POINTS = 1_000_000;
-const MIN_CHECK_INTERVAL_SECONDS = 2;
-const MAX_CHECK_INTERVAL_SECONDS = 300;
-
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
-const clampInt = (value: number, min: number, max: number): number =>
-  Math.min(max, Math.max(min, Math.round(value)));
-
-const BOOLEAN_FIELDS = [
+export const BOOLEAN_SETTINGS_FIELDS = [
   "autoClaimBonus",
   "followRaids",
   "autoClaimDrops",
@@ -61,10 +49,9 @@ export function sanitizeSettingsPatch(body: unknown): SettingsPatchResult {
     if (!isFiniteNumber(input.maxConcurrentStreams)) {
       return { ok: false, error: "maxConcurrentStreams must be a number" };
     }
-    patch.maxConcurrentStreams = clampInt(
+    patch.maxConcurrentStreams = clampSetting(
       input.maxConcurrentStreams,
-      MIN_CONCURRENT_STREAMS,
-      MAX_CONCURRENT_STREAMS,
+      SETTINGS_BOUNDS.maxConcurrentStreams,
     );
   }
 
@@ -72,10 +59,9 @@ export function sanitizeSettingsPatch(body: unknown): SettingsPatchResult {
     if (!isFiniteNumber(input.claimDelaySeconds)) {
       return { ok: false, error: "claimDelaySeconds must be a number" };
     }
-    patch.claimDelaySeconds = clampInt(
+    patch.claimDelaySeconds = clampSetting(
       input.claimDelaySeconds,
-      MIN_CLAIM_DELAY_SECONDS,
-      MAX_CLAIM_DELAY_SECONDS,
+      SETTINGS_BOUNDS.claimDelaySeconds,
     );
   }
 
@@ -83,10 +69,9 @@ export function sanitizeSettingsPatch(body: unknown): SettingsPatchResult {
     if (!isFiniteNumber(input.checkIntervalSeconds)) {
       return { ok: false, error: "checkIntervalSeconds must be a number" };
     }
-    patch.checkIntervalSeconds = clampInt(
+    patch.checkIntervalSeconds = clampSetting(
       input.checkIntervalSeconds,
-      MIN_CHECK_INTERVAL_SECONDS,
-      MAX_CHECK_INTERVAL_SECONDS,
+      SETTINGS_BOUNDS.checkIntervalSeconds,
     );
   }
 
@@ -94,7 +79,7 @@ export function sanitizeSettingsPatch(body: unknown): SettingsPatchResult {
     if (!isFiniteNumber(input.maxBetPoints)) {
       return { ok: false, error: "maxBetPoints must be a number" };
     }
-    patch.maxBetPoints = clampInt(input.maxBetPoints, MIN_BET_POINTS, MAX_BET_POINTS);
+    patch.maxBetPoints = clampSetting(input.maxBetPoints, SETTINGS_BOUNDS.maxBetPoints);
   }
 
   if ("priorityMode" in input) {
@@ -120,7 +105,7 @@ export function sanitizeSettingsPatch(body: unknown): SettingsPatchResult {
     patch.predictionStrategy = input.predictionStrategy as PredictionStrategy;
   }
 
-  for (const key of BOOLEAN_FIELDS) {
+  for (const key of BOOLEAN_SETTINGS_FIELDS) {
     if (key in input) {
       const value = input[key];
       if (typeof value !== "boolean") {

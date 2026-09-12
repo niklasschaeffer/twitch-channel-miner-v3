@@ -1,3 +1,10 @@
+# [1.24.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.23.1...v1.24.0) (2026-09-12)
+
+
+### Features
+
+* **settings:** expose hidden settings and align frontend bounds with the server ([1c13b6b](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/1c13b6baf70a0715a3169d6eda0b5d1671c43a2e))
+
 ## [1.23.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.23.0...v1.23.1) (2026-09-11)
 
 
