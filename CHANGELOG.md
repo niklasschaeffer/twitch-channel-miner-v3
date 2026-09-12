@@ -1,3 +1,10 @@
+## [1.24.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.24.0...v1.24.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **deps:** update dependency lucide-react to ^0.577.0 ([de69183](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/de6918328cb72aab79dd84c0e1b3113812abba55))
+
 # [1.24.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.23.1...v1.24.0) (2026-09-12)
 
 
