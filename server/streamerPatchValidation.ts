@@ -1,3 +1,5 @@
+import { LURK_MESSAGE_MAX_LENGTH } from "../src/types.js";
+
 export interface StreamerPatch {
   enabled?: boolean;
   priority?: number;
@@ -9,7 +11,6 @@ export type StreamerPatchResult = { ok: true; patch: StreamerPatch } | { ok: fal
 
 const MIN_PRIORITY = 1;
 const MAX_PRIORITY = 1_000_000;
-const MAX_LURK_MESSAGE_LENGTH = 500;
 
 export function sanitizeStreamerPatch(body: unknown): StreamerPatchResult {
   if (typeof body !== "object" || body === null) {
@@ -54,10 +55,10 @@ export function sanitizeStreamerPatch(body: unknown): StreamerPatchResult {
       return { ok: false, error: "lurkMessage must be a string" };
     }
     const trimmed = input.lurkMessage.trim();
-    if (trimmed.length === 0 || trimmed.length > MAX_LURK_MESSAGE_LENGTH) {
+    if (trimmed.length === 0 || trimmed.length > LURK_MESSAGE_MAX_LENGTH) {
       return {
         ok: false,
-        error: `lurkMessage must be 1-${MAX_LURK_MESSAGE_LENGTH} characters`,
+        error: `lurkMessage must be 1-${LURK_MESSAGE_MAX_LENGTH} characters`,
       };
     }
     patch.lurkMessage = trimmed;

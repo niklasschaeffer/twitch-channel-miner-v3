@@ -1,13 +1,12 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Play, Pause, Gift, Settings, Sun, Moon, Globe, User as UserIcon } from "lucide-react";
-import { MinerStatus, MinerSettings, User } from "../types";
+import { MinerStatus, User } from "../types";
 import { getGravatarUrl } from "../lib/gravatar";
 import logoUrl from "../assets/logo.png";
 
 interface HeaderProps {
   status: MinerStatus | null;
-  settings: MinerSettings | null;
   currentUser: User | null;
   onTogglePlay: () => void;
   onTriggerTestClaim: () => void;
@@ -22,7 +21,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   status,
-  settings,
   currentUser,
   onTogglePlay,
   onTriggerTestClaim,
