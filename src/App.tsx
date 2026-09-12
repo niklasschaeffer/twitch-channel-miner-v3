@@ -360,18 +360,50 @@ export default function App() {
     }
   };
 
-  const handleSaveSettings = async (newSettings: Partial<MinerSettings>) => {
+  const handleSaveSettings = async (newSettings: Partial<MinerSettings>): Promise<boolean> => {
     try {
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newSettings),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const reason = typeof data?.error === "string" ? data.error : null;
+        showToast(reason ?? t("toast.settingsUpdateFailed"));
+        return false;
+      }
       setSettings(data);
       showToast(t("toast.settingsUpdated"));
+      return true;
     } catch (err) {
       console.error(err);
+      showToast(t("toast.settingsUpdateFailed"));
+      return false;
+    }
+  };
+
+  const handleUpdateLurkMessage = async (username: string, lurkMessage: string) => {
+    const trimmed = lurkMessage.trim();
+    if (!trimmed) return;
+    try {
+      const res = await fetch(`/api/streamers/${username}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lurkMessage: trimmed }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        showToast(typeof data?.error === "string" ? data.error : t("toast.lurkMessageFailed"));
+        return;
+      }
+      setStreamers((prev) =>
+        prev.map((s) => (s.username === username ? { ...s, lurkMessage: trimmed } : s)),
+      );
+      showToast(t("toast.lurkMessageSaved", { username }));
+    } catch (err) {
+      console.error(err);
+      showToast(t("toast.lurkMessageFailed"));
     }
   };
 
@@ -561,7 +593,6 @@ export default function App() {
           {/* Header Navigation */}
           <Header
             status={status}
-            settings={settings}
             currentUser={currentUser}
             onTogglePlay={handleTogglePlay}
             onTriggerTestClaim={handleTriggerTestClaim}
@@ -612,6 +643,7 @@ export default function App() {
                       onChangePriorityMode={handleChangePriorityMode}
                       onToggleEnabled={handleToggleEnabled}
                       onToggleLurk={handleToggleLurk}
+                      onUpdateLurkMessage={handleUpdateLurkMessage}
                       onAddStreamerClick={() => setIsAddStreamerOpen(true)}
                       onRefreshLive={handleRefreshLive}
                       isRefreshingLive={isRefreshingLive}
