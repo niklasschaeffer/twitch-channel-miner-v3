@@ -36,6 +36,8 @@ Once your Twitch account is connected and channels are on the watchlist, **your 
 | **Live balance sync** | Per-channel balances sync via PubSub events plus a 5-minute GQL snapshot fallback                                                                                                                                                                                                                                                                              |
 | **Token health**      | If Twitch rejects the stored token (401 / `ERR_BADAUTH`), authenticated work pauses with a single warning instead of retrying forever; the token is re-validated every 5 minutes and mining resumes on its own once it's valid again                                                                                                                           |
 
+Connections are per-user by necessity: every IRC and PubSub socket authenticates with that account's own Twitch token, so two users mining the same channel each open their own — there is no shared connection pool, and there cannot be one. An IRC socket carries a single identity (`PASS oauth:…` / `NICK …`), which is what auto-lurk posts under and what the self-echo dedupe matches against; `community-points-user-v1` and `predictions-user-v1` are keyed to the account anyway; and PubSub `MESSAGE` frames identify only the topic, so two accounts listening to the same channel topic on one socket would produce indistinguishable events. The cost is small: one PubSub socket per user, plus at most two mining IRC sockets and any chat-view sockets, which close after 10 idle minutes.
+
 PubSub subscriptions follow the active watch slots: when a channel starts or stops mining, its `raid`, `predictions-channel-v1`, and `community-points-channel-v1` topics are subscribed or unsubscribed on the open socket (capped at Twitch's 50 topics per connection). Twitch `RECONNECT` messages are honored, and reconnects use exponential backoff.
 
 The dashboard shows **only real Twitch data** — points, claims, chat, and connection state all come from genuine Twitch API responses. No simulation mode exists; nothing displayed is fabricated.
@@ -210,7 +212,6 @@ Analytics record **only actual earned deltas** — a claim logs its earned point
 
 **Known gaps / next up:**
 
-- ⚠️ Two users mining the same channel open duplicate IRC/PubSub sockets by design (no shared connection pool)
 - ⚠️ The per-IP login limit sees every client behind Docker's port forwarding or a reverse proxy as the same address (no `trust proxy` configured), so the per-email limit is what protects individual accounts
 - ⚠️ The container runs as root; switching users needs care because `prisma/dev.db` is bind-mounted from the host
 - ⚠️ Google-login users have no local password; a Google sign-in on an email that has one removes it (by design, see [Security](#security))
