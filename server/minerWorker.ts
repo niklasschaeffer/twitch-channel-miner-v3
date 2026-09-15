@@ -18,6 +18,7 @@ import { computeChestProgress, watchedMinutesFromEstimate } from "./chest.js";
 import {
   buildSpendSubscriptionCreditRequest,
   decidePrimeSubRedemption,
+  latestPrimeSubMonth,
   readSpendSubscriptionCreditResponse,
   utcMonthKey,
 } from "./primeSub.js";
@@ -3361,7 +3362,8 @@ export class MinerWorker {
     const target = this.streamers.find((s) => s.autoPrimeSub === true);
     if (!target) return;
     const currentMonth = utcMonthKey(new Date());
-    if (target.lastPrimeSubMonth === currentMonth) return;
+    const accountPrimeSubMonth = latestPrimeSubMonth(this.streamers);
+    if (accountPrimeSubMonth === currentMonth) return;
 
     this.primeSubInFlight = true;
     const login = extractTwitchUsername(target.username);
@@ -3384,7 +3386,7 @@ export class MinerWorker {
         hasPrime: state.hasPrime,
         canPrimeSubscribe: state.canPrimeSubscribe,
         subscriptionTier: state.subscriptionTier,
-        lastPrimeSubMonth: target.lastPrimeSubMonth ?? null,
+        lastPrimeSubMonth: accountPrimeSubMonth,
         currentMonth,
       });
 
@@ -3431,7 +3433,7 @@ export class MinerWorker {
         }
         this.primeSubRetryAfter =
           Date.now() +
-          (outcome.reason === "TOO_MANY_RECENT_SPENDS"
+          (outcome.reason === "TOO_MANY_RECENT_SPENDS" || outcome.reason === "UNABLE_TO_SPEND"
             ? PRIME_SUB_IDLE_RETRY_MS
             : PRIME_SUB_RETRY_MS);
         this.addLog(
@@ -3443,14 +3445,15 @@ export class MinerWorker {
       }
 
       target.lastPrimeSubMonth = currentMonth;
-      target.subscriptionTier = outcome.tier;
       this.primeSubLastSkipReason = null;
-      prisma.streamer
-        .update({
-          where: { id: target.id },
-          data: { lastPrimeSubMonth: currentMonth, subscriptionTier: outcome.tier },
-        })
-        .catch(() => {});
+      const confirmedData: { lastPrimeSubMonth: string; subscriptionTier?: string } = {
+        lastPrimeSubMonth: currentMonth,
+      };
+      if (outcome.tier !== null) {
+        target.subscriptionTier = outcome.tier;
+        confirmedData.subscriptionTier = outcome.tier;
+      }
+      prisma.streamer.update({ where: { id: target.id }, data: confirmedData }).catch(() => {});
       this.addLog(
         "SUCCESS",
         login,
@@ -3516,6 +3519,7 @@ export class MinerWorker {
     this.hooks.broadcast("streamers", this.streamers);
     if (armedPrimeSub) {
       this.primeSubRetryAfter = 0;
+      this.primeSubLastSkipReason = null;
       this.runAutoPrimeSub().catch(() => {});
     }
     return s;

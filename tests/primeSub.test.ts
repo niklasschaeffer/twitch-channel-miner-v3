@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSpendSubscriptionCreditRequest,
   decidePrimeSubRedemption,
+  latestPrimeSubMonth,
   readSpendSubscriptionCreditResponse,
   utcMonthKey,
   type PrimeSubEligibility,
@@ -88,6 +89,33 @@ describe("decidePrimeSubRedemption", () => {
   });
 });
 
+describe("latestPrimeSubMonth", () => {
+  it("reports the most recent month any channel spent the account credit", () => {
+    expect(
+      latestPrimeSubMonth([
+        { lastPrimeSubMonth: "2026-08" },
+        { lastPrimeSubMonth: "2026-09" },
+        { lastPrimeSubMonth: null },
+      ]),
+    ).toBe("2026-09");
+  });
+
+  it("is null when no channel has ever spent a credit", () => {
+    expect(latestPrimeSubMonth([{ lastPrimeSubMonth: null }, {}])).toBeNull();
+  });
+
+  it("blocks a freshly armed channel when another channel already spent this month", () => {
+    const target = { lastPrimeSubMonth: null };
+    const other = { lastPrimeSubMonth: "2026-09" };
+    expect(
+      decidePrimeSubRedemption({
+        ...eligible,
+        lastPrimeSubMonth: latestPrimeSubMonth([target, other]),
+      }),
+    ).toEqual({ redeem: false, reason: "already_spent_this_month" });
+  });
+});
+
 describe("buildSpendSubscriptionCreditRequest", () => {
   it("targets the Prime credit mutation with only the broadcaster and user ids", () => {
     const request = buildSpendSubscriptionCreditRequest("44741426", "37441513");
@@ -141,6 +169,19 @@ describe("readSpendSubscriptionCreditResponse", () => {
         },
       }),
     ).toEqual({ ok: true, tier: "1000" });
+  });
+
+  it("reports no tier rather than inventing one when Twitch omits it", () => {
+    expect(
+      readSpendSubscriptionCreditResponse({
+        data: {
+          spendSubscriptionCredit: {
+            error: null,
+            subscriptionBenefit: { purchasedWithPrime: true },
+          },
+        },
+      }),
+    ).toEqual({ ok: true, tier: null });
   });
 
   it("rejects a benefit that was not purchased with Prime", () => {

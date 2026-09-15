@@ -21,13 +21,24 @@ export interface SpendSubscriptionCreditRequest {
   variables: { input: { broadcasterID: string; userID: string } };
 }
 
-export type PrimeSubOutcome = { ok: true; tier: string } | { ok: false; reason: string };
+export type PrimeSubOutcome = { ok: true; tier: string | null } | { ok: false; reason: string };
 
 const SPEND_SUBSCRIPTION_CREDIT_QUERY =
   "mutation($input: SpendSubscriptionCreditInput!) { spendSubscriptionCredit(input: $input) { userID error { code } subscriptionBenefit { tier purchasedWithPrime } } }";
 
 export function utcMonthKey(now: Date): string {
   return now.toISOString().slice(0, 7);
+}
+
+export function latestPrimeSubMonth(
+  streamers: { lastPrimeSubMonth?: string | null }[],
+): string | null {
+  let latest: string | null = null;
+  for (const streamer of streamers) {
+    const month = streamer.lastPrimeSubMonth ?? null;
+    if (month !== null && (latest === null || month > latest)) latest = month;
+  }
+  return latest;
 }
 
 export function decidePrimeSubRedemption(eligibility: PrimeSubEligibility): PrimeSubDecision {
@@ -77,5 +88,5 @@ export function readSpendSubscriptionCreditResponse(raw: unknown): PrimeSubOutco
   if (benefit.purchasedWithPrime !== true) {
     return { ok: false, reason: "not_purchased_with_prime" };
   }
-  return { ok: true, tier: typeof benefit.tier === "string" ? benefit.tier : "prime" };
+  return { ok: true, tier: typeof benefit.tier === "string" ? benefit.tier : null };
 }
