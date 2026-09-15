@@ -78,4 +78,21 @@ describe("sanitizeStreamerPatch", () => {
       error: "lurkMessage must be a string",
     });
   });
+  it("accepts an autoPrimeSub toggle", () => {
+    expect(sanitizeStreamerPatch({ autoPrimeSub: true })).toEqual({
+      ok: true,
+      patch: { autoPrimeSub: true },
+    });
+    expect(sanitizeStreamerPatch({ autoPrimeSub: false })).toEqual({
+      ok: true,
+      patch: { autoPrimeSub: false },
+    });
+  });
+
+  it("rejects a non-boolean autoPrimeSub", () => {
+    expect(sanitizeStreamerPatch({ autoPrimeSub: "yes" })).toEqual({
+      ok: false,
+      error: "autoPrimeSub must be a boolean",
+    });
+  });
 });

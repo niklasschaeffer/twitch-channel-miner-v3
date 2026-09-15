@@ -5,6 +5,7 @@ export interface StreamerPatch {
   priority?: number;
   lurkEnabled?: boolean;
   lurkMessage?: string;
+  autoPrimeSub?: boolean;
 }
 
 export type StreamerPatchResult = { ok: true; patch: StreamerPatch } | { ok: false; error: string };
@@ -48,6 +49,13 @@ export function sanitizeStreamerPatch(body: unknown): StreamerPatchResult {
       return { ok: false, error: "lurkEnabled must be a boolean" };
     }
     patch.lurkEnabled = input.lurkEnabled;
+  }
+
+  if ("autoPrimeSub" in input) {
+    if (typeof input.autoPrimeSub !== "boolean") {
+      return { ok: false, error: "autoPrimeSub must be a boolean" };
+    }
+    patch.autoPrimeSub = input.autoPrimeSub;
   }
 
   if ("lurkMessage" in input) {

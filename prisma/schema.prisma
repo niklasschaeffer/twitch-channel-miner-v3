@@ -39,6 +39,8 @@ model Streamer {
   lurkEnabled              Boolean   @default(false)
   lurkMessage              String    @default("!lurk")
   lastLurkDay              String?
+  autoPrimeSub             Boolean   @default(false)
+  lastPrimeSubMonth        String?
   isFollowing              Boolean   @default(false)
   priority                 Int       @default(1)
   enabled                  Boolean   @default(true)

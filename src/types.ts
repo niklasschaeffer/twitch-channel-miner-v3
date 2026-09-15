@@ -49,6 +49,8 @@ export interface Streamer {
   lurkEnabled?: boolean; // post the lurk command in chat when the channel goes live
   lurkMessage?: string;
   lastLurkDay?: string; // last UTC day (YYYY-MM-DD) the lurk message was posted
+  autoPrimeSub?: boolean;
+  lastPrimeSubMonth?: string;
   priority: number; // order rank
   enabled: boolean;
   chestAvailable: boolean;

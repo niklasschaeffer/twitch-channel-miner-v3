@@ -16,6 +16,12 @@ import { prisma } from "./db.js";
 import { extractTwitchUsername, supportsChannelPoints } from "../src/lib/twitch.js";
 import { computeChestProgress, watchedMinutesFromEstimate } from "./chest.js";
 import {
+  buildSpendSubscriptionCreditRequest,
+  decidePrimeSubRedemption,
+  readSpendSubscriptionCreditResponse,
+  utcMonthKey,
+} from "./primeSub.js";
+import {
   CLAIMED_DROP_HISTORY_DAYS,
   markDropClaimed,
   parseClaimedDropRewards,
@@ -47,6 +53,9 @@ const MAX_PREDICTION_BET_ATTEMPTS = 3;
 const PUBSUB_SHAPE_WARNING_INTERVAL_MS = 3_600_000;
 const MAX_HANDLED_RAID_IDS = 200;
 const CHAT_ONLY_IDLE_MS = 10 * 60_000;
+const PRIME_SUB_CHECK_EVERY_TICKS = 900;
+const PRIME_SUB_RETRY_MS = 60 * 60_000;
+const PRIME_SUB_IDLE_RETRY_MS = 6 * 60 * 60_000;
 const TICK_ERROR_LOG_INTERVAL_MS = 60_000;
 const PUBSUB_RECONNECT_BASE_MS = 10_000;
 const PUBSUB_RECONNECT_MAX_MS = 300_000;
@@ -139,6 +148,9 @@ export class MinerWorker {
     { streamerUsername: string; latestEvent: PredictionEventMessage; timer: NodeJS.Timeout }
   >();
   private channelIds = new Map<string, string>();
+  private primeSubInFlight = false;
+  private primeSubRetryAfter = 0;
+  private primeSubLastSkipReason: string | null = null;
   private predictionBets = new Map<string, PredictionBet>();
   private pubsubShapeWarnings = new Map<string, number>();
   private pointsDayKey = new Date().toISOString().slice(0, 10);
@@ -259,6 +271,8 @@ export class MinerWorker {
           lurkEnabled: s.lurkEnabled,
           lurkMessage: s.lurkMessage,
           lastLurkDay: s.lastLurkDay ?? undefined,
+          autoPrimeSub: s.autoPrimeSub,
+          lastPrimeSubMonth: s.lastPrimeSubMonth ?? undefined,
           priority: s.priority,
           enabled: s.enabled,
           chestAvailable: s.chestAvailable,
@@ -499,6 +513,8 @@ export class MinerWorker {
         points: created.points,
         watchStreak: created.watchStreak,
         isMining: created.isMining,
+        autoPrimeSub: created.autoPrimeSub,
+        lastPrimeSubMonth: created.lastPrimeSubMonth ?? undefined,
         priority: created.priority,
         enabled: created.enabled,
         chestAvailable: created.chestAvailable,
@@ -648,6 +664,9 @@ export class MinerWorker {
     }
 
     if (this.settings.authToken && !this.tokenInvalid) {
+      if (this.tickCount % PRIME_SUB_CHECK_EVERY_TICKS === 0) {
+        this.runAutoPrimeSub().catch(() => {});
+      }
       if (this.tickCount % 30 === 0) {
         for (const s of this.streamers) {
           if (s.isMining && s.isLive && s.enabled) {
@@ -3213,6 +3232,8 @@ export class MinerWorker {
       lurkEnabled: savedInDb.lurkEnabled,
       lurkMessage: savedInDb.lurkMessage,
       lastLurkDay: savedInDb.lastLurkDay ?? undefined,
+      autoPrimeSub: savedInDb.autoPrimeSub,
+      lastPrimeSubMonth: savedInDb.lastPrimeSubMonth ?? undefined,
       priority: savedInDb.priority,
       enabled: savedInDb.enabled,
       chestAvailable: savedInDb.chestAvailable,
@@ -3260,6 +3281,187 @@ export class MinerWorker {
     return false;
   }
 
+  private async disarmOtherPrimeSubTargets(keepStreamerId: string): Promise<void> {
+    const others = this.streamers.filter((s) => s.id !== keepStreamerId && s.autoPrimeSub === true);
+    if (others.length === 0) return;
+    for (const other of others) other.autoPrimeSub = false;
+    try {
+      await prisma.streamer.updateMany({
+        where: { id: { in: others.map((s) => s.id) } },
+        data: { autoPrimeSub: false },
+      });
+    } catch (err) {
+      this.addLog(
+        "WARN",
+        undefined,
+        `Could not clear the previous Prime sub target: ${err instanceof Error ? err.message : "unknown error"}`,
+      );
+    }
+  }
+
+  private async fetchPrimeSubState(login: string): Promise<{
+    viewerId: string;
+    hasPrime: boolean;
+    broadcasterId: string;
+    canPrimeSubscribe: boolean;
+    subscriptionTier: string | null;
+  } | null> {
+    try {
+      const res = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
+        method: "POST",
+        headers: this.authenticatedGqlHeaders(),
+        body: JSON.stringify({
+          query:
+            "query($login: String!) { currentUser { id hasPrime } user(login: $login) { id self { canPrimeSubscribe subscriptionBenefit { tier purchasedWithPrime } } } }",
+          variables: { login },
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const raw: unknown = await res.json();
+      if (typeof raw !== "object" || raw === null) return null;
+      if ("errors" in raw && Array.isArray(raw.errors) && raw.errors.length > 0) return null;
+      if (!("data" in raw)) return null;
+      const data = raw.data as {
+        currentUser?: { id?: unknown; hasPrime?: unknown } | null;
+        user?: {
+          id?: unknown;
+          self?: {
+            canPrimeSubscribe?: unknown;
+            subscriptionBenefit?: { tier?: unknown } | null;
+          } | null;
+        } | null;
+      };
+      const viewerId = data.currentUser?.id;
+      const broadcasterId = data.user?.id;
+      if (typeof viewerId !== "string" || typeof broadcasterId !== "string") return null;
+      const tier = data.user?.self?.subscriptionBenefit?.tier;
+      return {
+        viewerId,
+        hasPrime: data.currentUser?.hasPrime === true,
+        broadcasterId,
+        canPrimeSubscribe: data.user?.self?.canPrimeSubscribe === true,
+        subscriptionTier: typeof tier === "string" ? tier : null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private noteAutoPrimeSubSkip(login: string, reason: string, message: string, backoffMs: number) {
+    this.primeSubRetryAfter = Date.now() + backoffMs;
+    if (this.primeSubLastSkipReason === reason) return;
+    this.primeSubLastSkipReason = reason;
+    this.addLog("INFO", login, message);
+  }
+
+  private async runAutoPrimeSub(): Promise<void> {
+    if (this.disposed || this.primeSubInFlight) return;
+    if (!this.settings.authToken || this.tokenInvalid) return;
+    if (Date.now() < this.primeSubRetryAfter) return;
+    const target = this.streamers.find((s) => s.autoPrimeSub === true);
+    if (!target) return;
+    const currentMonth = utcMonthKey(new Date());
+    if (target.lastPrimeSubMonth === currentMonth) return;
+
+    this.primeSubInFlight = true;
+    const login = extractTwitchUsername(target.username);
+    try {
+      const state = await this.fetchPrimeSubState(login);
+      if (this.disposed) return;
+      if (state === null) {
+        this.primeSubRetryAfter = Date.now() + PRIME_SUB_RETRY_MS;
+        return;
+      }
+      if (state.subscriptionTier !== (target.subscriptionTier ?? null)) {
+        target.subscriptionTier = state.subscriptionTier;
+        prisma.streamer
+          .update({ where: { id: target.id }, data: { subscriptionTier: state.subscriptionTier } })
+          .catch(() => {});
+      }
+
+      const decision = decidePrimeSubRedemption({
+        armed: true,
+        hasPrime: state.hasPrime,
+        canPrimeSubscribe: state.canPrimeSubscribe,
+        subscriptionTier: state.subscriptionTier,
+        lastPrimeSubMonth: target.lastPrimeSubMonth ?? null,
+        currentMonth,
+      });
+
+      if (!decision.redeem) {
+        const skipMessages: Record<string, string> = {
+          no_prime: `Auto Prime sub for ${target.displayName} is waiting: this Twitch account has no active Prime.`,
+          already_subscribed: `Auto Prime sub for ${target.displayName} is idle: the channel is already subscribed.`,
+          already_spent_this_month: `Auto Prime sub for ${target.displayName} is idle: this month's Prime credit is already spent.`,
+          channel_not_eligible: `Auto Prime sub for ${target.displayName} is waiting: Twitch reports no Prime credit available for this channel right now.`,
+          not_armed: `Auto Prime sub for ${target.displayName} is not armed.`,
+        };
+        this.noteAutoPrimeSubSkip(
+          login,
+          decision.reason,
+          skipMessages[decision.reason] ?? `Auto Prime sub skipped (${decision.reason}).`,
+          decision.reason === "channel_not_eligible" ? PRIME_SUB_RETRY_MS : PRIME_SUB_IDLE_RETRY_MS,
+        );
+        return;
+      }
+
+      const request = buildSpendSubscriptionCreditRequest(state.broadcasterId, state.viewerId);
+      const res = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
+        method: "POST",
+        headers: this.authenticatedGqlHeaders(),
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(10000),
+      });
+      const outcome = readSpendSubscriptionCreditResponse(await res.json());
+      if (this.disposed) return;
+
+      if (!outcome.ok) {
+        if (outcome.reason === "not_purchased_with_prime") {
+          target.autoPrimeSub = false;
+          prisma.streamer
+            .update({ where: { id: target.id }, data: { autoPrimeSub: false } })
+            .catch(() => {});
+          this.addLog(
+            "ERROR",
+            login,
+            `Auto Prime sub disarmed for ${target.displayName}: Twitch did not confirm the subscription came from the Prime credit.`,
+          );
+          this.hooks.broadcast("streamers", this.streamers);
+          return;
+        }
+        this.primeSubRetryAfter =
+          Date.now() +
+          (outcome.reason === "TOO_MANY_RECENT_SPENDS"
+            ? PRIME_SUB_IDLE_RETRY_MS
+            : PRIME_SUB_RETRY_MS);
+        this.addLog(
+          "WARN",
+          login,
+          `Auto Prime sub for ${target.displayName} did not go through (${outcome.reason}) — no money was spent, retrying later.`,
+        );
+        return;
+      }
+
+      target.lastPrimeSubMonth = currentMonth;
+      target.subscriptionTier = outcome.tier;
+      this.primeSubLastSkipReason = null;
+      prisma.streamer
+        .update({
+          where: { id: target.id },
+          data: { lastPrimeSubMonth: currentMonth, subscriptionTier: outcome.tier },
+        })
+        .catch(() => {});
+      this.addLog(
+        "SUCCESS",
+        login,
+        `Subscribed to ${target.displayName} with the free monthly Twitch Prime credit.`,
+      );
+      this.hooks.broadcast("streamers", this.streamers);
+    } finally {
+      this.primeSubInFlight = false;
+    }
+  }
+
   public async updateStreamer(username: string, patch: unknown): Promise<Streamer | null> {
     await this.initPromise;
     const clean = extractTwitchUsername(username);
@@ -3271,6 +3473,7 @@ export class MinerWorker {
       priority?: number;
       lurkEnabled?: boolean;
       lurkMessage?: string;
+      autoPrimeSub?: boolean;
     } = {};
     if (typeof p.enabled === "boolean") {
       s.enabled = p.enabled;
@@ -3288,6 +3491,13 @@ export class MinerWorker {
       s.lurkMessage = p.lurkMessage;
       data.lurkMessage = p.lurkMessage;
     }
+    let armedPrimeSub = false;
+    if (typeof p.autoPrimeSub === "boolean") {
+      s.autoPrimeSub = p.autoPrimeSub;
+      data.autoPrimeSub = p.autoPrimeSub;
+      armedPrimeSub = p.autoPrimeSub;
+      if (p.autoPrimeSub) await this.disarmOtherPrimeSubTargets(s.id);
+    }
 
     if (Object.keys(data).length > 0) {
       try {
@@ -3304,6 +3514,10 @@ export class MinerWorker {
     this.streamers.sort((a, b) => a.priority - b.priority);
     this.rebalanceActiveSlots();
     this.hooks.broadcast("streamers", this.streamers);
+    if (armedPrimeSub) {
+      this.primeSubRetryAfter = 0;
+      this.runAutoPrimeSub().catch(() => {});
+    }
     return s;
   }
 

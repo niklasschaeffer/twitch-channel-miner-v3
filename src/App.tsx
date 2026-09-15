@@ -453,6 +453,35 @@ export default function App() {
     }
   };
 
+  const handleToggleAutoPrimeSub = async (username: string, autoPrimeSub: boolean) => {
+    try {
+      const res = await fetch(`/api/streamers/${username}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoPrimeSub }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        showToast(typeof data?.error === "string" ? data.error : t("toast.autoPrimeSubFailed"));
+        return;
+      }
+      setStreamers((prev) =>
+        prev.map((s) => {
+          if (s.username === username) return { ...s, autoPrimeSub };
+          return autoPrimeSub ? { ...s, autoPrimeSub: false } : s;
+        }),
+      );
+      showToast(
+        autoPrimeSub
+          ? t("toast.autoPrimeSubArmed", { username })
+          : t("toast.autoPrimeSubDisarmed", { username }),
+      );
+    } catch (err) {
+      console.error(err);
+      showToast(t("toast.autoPrimeSubFailed"));
+    }
+  };
+
   const handleDeleteStreamer = async (username: string) => {
     try {
       const res = await fetch(`/api/streamers/${username}`, { method: "DELETE" });
@@ -643,6 +672,7 @@ export default function App() {
                       onChangePriorityMode={handleChangePriorityMode}
                       onToggleEnabled={handleToggleEnabled}
                       onToggleLurk={handleToggleLurk}
+                      onToggleAutoPrimeSub={handleToggleAutoPrimeSub}
                       onUpdateLurkMessage={handleUpdateLurkMessage}
                       onAddStreamerClick={() => setIsAddStreamerOpen(true)}
                       onRefreshLive={handleRefreshLive}

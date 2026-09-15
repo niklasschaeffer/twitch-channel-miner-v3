@@ -16,6 +16,7 @@ import {
   Gift,
   RefreshCw,
   Eye,
+  Crown,
 } from "lucide-react";
 import { LURK_MESSAGE_MAX_LENGTH, PriorityMode, Streamer } from "../types";
 import { formatSubTier } from "../lib/badges";
@@ -28,6 +29,7 @@ interface StreamerListProps {
   onChangePriorityMode: (mode: PriorityMode) => void;
   onToggleEnabled: (username: string, enabled: boolean) => void;
   onToggleLurk: (username: string, lurkEnabled: boolean) => void;
+  onToggleAutoPrimeSub: (username: string, autoPrimeSub: boolean) => void;
   onUpdateLurkMessage: (username: string, lurkMessage: string) => Promise<void>;
   onDeleteStreamer: (username: string) => void;
   onAddStreamerClick: () => void;
@@ -46,6 +48,7 @@ export const StreamerList: React.FC<StreamerListProps> = ({
   onChangePriorityMode,
   onToggleEnabled,
   onToggleLurk,
+  onToggleAutoPrimeSub,
   onUpdateLurkMessage,
   onDeleteStreamer,
   onAddStreamerClick,
@@ -59,6 +62,8 @@ export const StreamerList: React.FC<StreamerListProps> = ({
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [lurkDrafts, setLurkDrafts] = useState<Record<string, string>>({});
+  const [primeSubCandidate, setPrimeSubCandidate] = useState<Streamer | null>(null);
+  const currentPrimeSubTarget = streamers.find((s) => s.autoPrimeSub === true) ?? null;
 
   const filteredStreamers = streamers.filter(
     (s) =>
@@ -288,6 +293,28 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                       <Eye className="w-3.5 h-3.5" />
                     </button>
 
+                    <button
+                      onClick={() => {
+                        if (streamer.autoPrimeSub) {
+                          onToggleAutoPrimeSub(streamer.username, false);
+                          return;
+                        }
+                        setPrimeSubCandidate(streamer);
+                      }}
+                      className={`p-1.5 border transition cursor-pointer ${
+                        streamer.autoPrimeSub
+                          ? "bg-[#00a865]/10 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] border-[#00a865]/40 hover:border-[#00a865]/70"
+                          : "bg-zinc-100 dark:bg-[#0E0E10] text-zinc-400 dark:text-[#71717A] border-zinc-200 dark:border-[#26262C] hover:text-zinc-600"
+                      }`}
+                      title={
+                        streamer.autoPrimeSub
+                          ? t("streamersList.primeSubOn")
+                          : t("streamersList.primeSubOff")
+                      }
+                    >
+                      <Crown className="w-3.5 h-3.5" />
+                    </button>
+
                     <a
                       href={`https://twitch.tv/${streamer.username}`}
                       target="_blank"
@@ -356,6 +383,16 @@ export const StreamerList: React.FC<StreamerListProps> = ({
                         })}
                       </span>
                     )}
+
+                  {streamer.autoPrimeSub === true && (
+                    <span
+                      title={t("streamersList.primeSubOn")}
+                      className="px-1 py-0.5 bg-[#00a865]/15 dark:bg-[#00F593]/20 text-[#00a865] dark:text-[#00F593] font-bold flex items-center gap-1"
+                    >
+                      <Crown className="w-2.5 h-2.5" />
+                      {t("streamersList.primeSubBadge")}
+                    </span>
+                  )}
 
                   {streamer.watchStreak > 0 && (
                     <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
@@ -463,6 +500,56 @@ export const StreamerList: React.FC<StreamerListProps> = ({
           })}
         </span>
       </div>
+
+      {primeSubCandidate !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+          <div className="bg-white dark:bg-[#18181B] border border-zinc-200 dark:border-[#26262C] w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="flex items-center gap-2 px-5 py-4 border-b border-zinc-200 dark:border-[#26262C] bg-zinc-50 dark:bg-[#141416]">
+              <div className="p-1.5 bg-[#00a865]/15 text-[#00a865] dark:text-[#00F593] border border-[#00a865]/30">
+                <Crown className="w-4 h-4" />
+              </div>
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-[#EFEFF1]">
+                {t("streamersList.primeSubConfirmTitle")}
+              </h3>
+            </div>
+            <div className="px-5 py-4 space-y-3 text-[12px] text-zinc-600 dark:text-[#ADADB8]">
+              <p>
+                {t("streamersList.primeSubConfirmBody", {
+                  username: primeSubCandidate.displayName,
+                })}
+              </p>
+              <p className="px-3 py-2 bg-[#00a865]/10 dark:bg-[#00F593]/10 border border-[#00a865]/30 text-[#00a865] dark:text-[#00F593]">
+                {t("streamersList.primeSubConfirmNoMoney")}
+              </p>
+              {currentPrimeSubTarget !== null &&
+                currentPrimeSubTarget.id !== primeSubCandidate.id && (
+                  <p className="text-amber-600 dark:text-amber-300">
+                    {t("streamersList.primeSubConfirmReplaces", {
+                      username: currentPrimeSubTarget.username,
+                    })}
+                  </p>
+                )}
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-200 dark:border-[#26262C]">
+              <button
+                onClick={() => setPrimeSubCandidate(null)}
+                className="px-3 py-1.5 text-[12px] border border-zinc-200 dark:border-[#26262C] text-zinc-600 dark:text-[#ADADB8] hover:bg-zinc-100 dark:hover:bg-[#1F1F23] transition cursor-pointer"
+              >
+                {t("streamersList.primeSubConfirmCancel")}
+              </button>
+              <button
+                onClick={() => {
+                  onToggleAutoPrimeSub(primeSubCandidate.username, true);
+                  setPrimeSubCandidate(null);
+                }}
+                className="px-3 py-1.5 text-[12px] font-bold bg-[#00a865] dark:bg-[#00F593] text-white dark:text-[#0E0E10] border border-[#00a865] hover:opacity-90 transition cursor-pointer"
+              >
+                {t("streamersList.primeSubConfirmAccept")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
