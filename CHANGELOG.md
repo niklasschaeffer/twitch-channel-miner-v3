@@ -1,3 +1,10 @@
+## [1.25.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.25.0...v1.25.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* gate the Prime credit per account instead of per channel ([980be61](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/980be61578186cdf3c389ab4c53432ece0d41c43))
+
 # [1.25.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.24.1...v1.25.0) (2026-09-15)
 
 
