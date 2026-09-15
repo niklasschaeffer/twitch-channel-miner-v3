@@ -1,3 +1,10 @@
+# [1.25.0](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.24.1...v1.25.0) (2026-09-15)
+
+
+### Features
+
+* auto-subscribe a preferred channel with the free Prime credit ([8bb2cfe](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/8bb2cfef3a8782e9c0d4a68c735d772928b47d94))
+
 ## [1.24.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.24.0...v1.24.1) (2026-09-12)
 
 
