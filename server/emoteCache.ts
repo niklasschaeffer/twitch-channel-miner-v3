@@ -233,7 +233,7 @@ function parseAssetKind(req: Request): AssetKind | null {
     return { kind: "badge", setId, versionId };
   }
   if (req.path.startsWith("/api/emotes/avatar/")) {
-    const login = req.params.login?.toLowerCase();
+    const login = String(req.params.login ?? "").toLowerCase();
     if (typeof login !== "string" || !KEY_PATTERN.test(login)) return null;
     return { kind: "avatar", login };
   }

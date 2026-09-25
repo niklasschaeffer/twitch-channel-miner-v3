@@ -709,14 +709,21 @@ async function startServer() {
   });
 
   app.post("/api/streamers", requireAuth, async (req, res) => {
-    const { username, displayName } = req.body;
-    const cleanUsername = extractTwitchUsername(username);
+    const { username, displayName } = (req.body || {}) as {
+      username?: unknown;
+      displayName?: unknown;
+    };
+    const cleanUsername = extractTwitchUsername(typeof username === "string" ? username : "");
     if (!cleanUsername) {
       res.status(400).json({ error: "Valid channel username or Twitch URL is required" });
       return;
     }
     try {
-      const streamer = await minerEngine.addStreamer(cleanUsername, displayName, req.user!.id);
+      const streamer = await minerEngine.addStreamer(
+        cleanUsername,
+        typeof displayName === "string" ? displayName : "",
+        req.user!.id,
+      );
       res.json(streamer);
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
@@ -725,7 +732,7 @@ async function startServer() {
 
   app.delete("/api/streamers/:username", requireAuth, async (req, res) => {
     try {
-      const cleanUsername = extractTwitchUsername(req.params.username);
+      const cleanUsername = extractTwitchUsername(String(req.params.username));
       const owned = minerEngine
         .getStreamers(req.user!.id)
         .find(
@@ -744,7 +751,7 @@ async function startServer() {
 
   app.patch("/api/streamers/:username", requireAuth, async (req, res) => {
     try {
-      const cleanUsername = extractTwitchUsername(req.params.username);
+      const cleanUsername = extractTwitchUsername(String(req.params.username));
       const owned = minerEngine
         .getStreamers(req.user!.id)
         .find(
@@ -777,7 +784,7 @@ async function startServer() {
   // Fetch real-time live stats (viewers, points, live status) for a specific streamer
   app.get("/api/streamers/:username/live-stats", async (req, res) => {
     try {
-      const cleanUsername = extractTwitchUsername(req.params.username);
+      const cleanUsername = extractTwitchUsername(String(req.params.username));
       const stats = await minerEngine.getLiveStats(cleanUsername, req.user!.id);
       if (!stats) {
         res.status(404).json({ error: "Streamer not found" });
@@ -792,7 +799,7 @@ async function startServer() {
   // Get streamer IRC chat history
   app.get("/api/streamers/:username/chat", (req, res) => {
     try {
-      const cleanUsername = extractTwitchUsername(req.params.username);
+      const cleanUsername = extractTwitchUsername(String(req.params.username));
       const messages = minerEngine.getStreamerChat(cleanUsername, req.user!.id);
       res.json(messages);
     } catch (err) {
@@ -803,7 +810,7 @@ async function startServer() {
   // Send IRC chat message or miner command
   app.post("/api/streamers/:username/chat", (req, res) => {
     try {
-      const cleanUsername = extractTwitchUsername(req.params.username);
+      const cleanUsername = extractTwitchUsername(String(req.params.username));
       const { message, senderName } = req.body || {};
       if (!message || typeof message !== "string") {
         res.status(400).json({ error: "Message is required" });
@@ -926,7 +933,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("/{*splat}", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
