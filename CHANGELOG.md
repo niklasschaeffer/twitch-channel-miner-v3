@@ -1,3 +1,10 @@
+## [1.25.4](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.25.3...v1.25.4) (2026-09-25)
+
+
+### Bug Fixes
+
+* **deps:** update express to v5 ([2574da8](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/2574da84414e4ade46460cacb0998e4bd95d0916))
+
 ## [1.25.3](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.25.2...v1.25.3) (2026-09-25)
 
 
