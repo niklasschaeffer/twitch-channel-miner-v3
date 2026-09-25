@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { YourChannelSuggestion } from "../src/types.js";
-import { composeYourChannels } from "../server/yourChannels.js";
+import { composeYourChannels, parseChannelFollowsLogins } from "../server/yourChannels.js";
 
 const make = (
   username: string,
@@ -83,5 +83,49 @@ describe("composeYourChannels", () => {
     expect(subs).toEqual(subsSnapshot);
     expect(follows).toEqual(followsSnapshot);
     expect(gameStreams).toEqual(gameStreamsSnapshot);
+  });
+});
+
+describe("parseChannelFollowsLogins", () => {
+  it("extracts logins from a ChannelFollows persisted-op response", () => {
+    const body = {
+      data: {
+        user: {
+          id: "37441513",
+          follows: {
+            edges: [
+              {
+                cursor: "a",
+                node: { id: "1", login: "streamerhouse", displayName: "StreamerHouse" },
+              },
+              { cursor: "b", node: { id: "2", login: "warframe", displayName: "Warframe" } },
+              { cursor: "c", node: null },
+              { cursor: "d", node: { id: "3", login: "" } },
+            ],
+            pageInfo: { hasNextPage: false },
+          },
+        },
+      },
+    };
+
+    expect(parseChannelFollowsLogins(body)).toEqual(["streamerhouse", "warframe"]);
+  });
+
+  it("returns an empty list for an account that follows nobody", () => {
+    expect(parseChannelFollowsLogins({ data: { user: { follows: { edges: [] } } } })).toEqual([]);
+  });
+
+  it("returns null when Twitch reports an error or omits the follows connection", () => {
+    expect(
+      parseChannelFollowsLogins({
+        errors: [{ message: "service error", path: ["user", "follows"] }],
+        data: { user: { follows: null } },
+      }),
+    ).toBeNull();
+    expect(
+      parseChannelFollowsLogins({ errors: [{ message: "PersistedQueryNotFound" }] }),
+    ).toBeNull();
+    expect(parseChannelFollowsLogins([])).toBeNull();
+    expect(parseChannelFollowsLogins(null)).toBeNull();
   });
 });

@@ -48,7 +48,11 @@ import {
   type PredictionEventMessage,
   type PredictionUserMessage,
 } from "./pubsub.js";
-import { composeYourChannels, type ComposeYourChannelsInput } from "./yourChannels.js";
+import {
+  composeYourChannels,
+  parseChannelFollowsLogins,
+  type ComposeYourChannelsInput,
+} from "./yourChannels.js";
 
 const MAX_PREDICTION_BET_ATTEMPTS = 3;
 const PUBSUB_SHAPE_WARNING_INTERVAL_MS = 3_600_000;
@@ -1551,13 +1555,57 @@ export class MinerWorker {
       });
     }
 
-    const ops: { query: string; variables: Record<string, string> }[] = [
-      {
+    let followLogins: string[] = [];
+    try {
+      const followsRes = await this.authenticatedFetch("https://gql.twitch.tv/gql", {
+        method: "POST",
+        headers: this.authenticatedGqlHeaders(),
+        body: JSON.stringify({
+          operationName: "ChannelFollows",
+          extensions: {
+            persistedQuery: {
+              version: 1,
+              sha256Hash: "eecf815273d3d949e5cf0085cc5084cd8a1b5b7b6f7990cf43cb0beadf546907",
+            },
+          },
+          variables: { limit: 100, order: "DESC" },
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const followsBody = await followsRes.text();
+      let followsJson: unknown = null;
+      try {
+        followsJson = JSON.parse(followsBody);
+      } catch {
+        followsJson = null;
+      }
+      const logins = followsRes.ok ? parseChannelFollowsLogins(followsJson) : null;
+      if (logins === null) {
+        this.addLog(
+          "WARN",
+          undefined,
+          `Your channels follows op failed: HTTP ${followsRes.status} — ${followsBody.slice(0, 400)}`,
+        );
+      } else {
+        followLogins = logins;
+      }
+    } catch (err) {
+      this.addLog(
+        "WARN",
+        undefined,
+        `Your channels follows op failed: ${err instanceof Error ? err.message : "unknown error"}`,
+      );
+    }
+
+    const ops: { query: string; variables: Record<string, string | string[]> }[] = [];
+    if (followLogins.length > 0) {
+      ops.push({
         query:
-          "query($id: ID!) { user(id: $id) { follows(first: 100) { edges { node { login displayName stream { viewersCount game { name } } self { subscriptionBenefit { tier } } } } } } }",
-        variables: { id: this.pubsubUserId },
-      },
-    ];
+          "query($logins: [String!]) { users(logins: $logins) { login displayName stream { viewersCount game { name } } self { subscriptionBenefit { tier } } } }",
+        variables: { logins: followLogins },
+      });
+    }
+    const gameOpOffset = ops.length;
     const watchedGames: string[] = [];
     for (const s of this.streamers) {
       if (!s.game || s.game === "Offline" || watchedGames.includes(s.game)) continue;
@@ -1570,6 +1618,11 @@ export class MinerWorker {
           "query($name: String) { game(name: $name) { streams(first: 8) { edges { node { broadcaster { login displayName } viewersCount } } } } }",
         variables: { name: game },
       });
+    }
+
+    if (ops.length === 0) {
+      this.yourChannelsCache = { at: Date.now(), subs: [], follows: [], gameStreams: [] };
+      return composeYourChannels(empty);
     }
 
     let rawBody = "";
@@ -1623,35 +1676,21 @@ export class MinerWorker {
     const gameStreams: YourChannelSuggestion[] = [];
     const followedLogins = new Set<string>();
 
-    const followsOp: unknown = parsed[0];
-    if (
-      typeof followsOp === "object" &&
-      followsOp !== null &&
-      "data" in followsOp &&
-      typeof followsOp.data === "object" &&
-      followsOp.data !== null &&
-      !("errors" in followsOp)
-    ) {
-      const data = followsOp.data as { user?: unknown };
-      const user: unknown = data.user;
-      if (
-        typeof user === "object" &&
-        user !== null &&
-        "follows" in user &&
-        typeof user.follows === "object" &&
-        user.follows !== null &&
-        "edges" in user.follows &&
-        Array.isArray(user.follows.edges)
-      ) {
-        for (const edge of user.follows.edges) {
-          const node =
-            typeof edge === "object" &&
-            edge !== null &&
-            "node" in edge &&
-            typeof edge.node === "object"
-              ? edge.node
-              : null;
-          if (node === null) continue;
+    if (followLogins.length > 0) {
+      const usersOp: unknown = parsed[0];
+      const users: unknown =
+        typeof usersOp === "object" &&
+        usersOp !== null &&
+        !("errors" in usersOp) &&
+        "data" in usersOp &&
+        typeof usersOp.data === "object" &&
+        usersOp.data !== null &&
+        "users" in usersOp.data
+          ? usersOp.data.users
+          : undefined;
+      if (Array.isArray(users)) {
+        for (const node of users) {
+          if (typeof node !== "object" || node === null) continue;
           const login: unknown = "login" in node ? node.login : undefined;
           const displayName: unknown = "displayName" in node ? node.displayName : undefined;
           if (typeof login !== "string" || login.length === 0) continue;
@@ -1697,16 +1736,18 @@ export class MinerWorker {
           followedLogins.add(login.toLowerCase());
         }
       } else {
-        this.addLog("WARN", undefined, `Your channels follows op failed: ${rawBody.slice(0, 400)}`);
+        this.addLog(
+          "WARN",
+          undefined,
+          `Your channels followed-users op failed: ${rawBody.slice(0, 400)}`,
+        );
       }
-    } else {
-      this.addLog("WARN", undefined, `Your channels follows op failed: ${rawBody.slice(0, 400)}`);
     }
 
-    for (let i = 1; i < parsed.length; i += 1) {
+    for (let i = gameOpOffset; i < parsed.length; i += 1) {
       const op: unknown = parsed[i];
-      const game: string | undefined = watchedGames[i - 1];
-      const label = `Your channels directory op ${i - 1} (${game ?? "unknown game"}) failed`;
+      const game: string | undefined = watchedGames[i - gameOpOffset];
+      const label = `Your channels directory op ${i - gameOpOffset} (${game ?? "unknown game"}) failed`;
       if (
         typeof op !== "object" ||
         op === null ||

@@ -58,3 +58,29 @@ export function composeYourChannels(input: ComposeYourChannelsInput): YourChanne
 
   return result;
 }
+
+export function parseChannelFollowsLogins(body: unknown): string[] | null {
+  if (typeof body !== "object" || body === null || Array.isArray(body) || "errors" in body)
+    return null;
+  const data: unknown = "data" in body ? body.data : undefined;
+  const user: unknown =
+    typeof data === "object" && data !== null && "user" in data ? data.user : undefined;
+  const follows: unknown =
+    typeof user === "object" && user !== null && "follows" in user ? user.follows : undefined;
+  if (
+    typeof follows !== "object" ||
+    follows === null ||
+    !("edges" in follows) ||
+    !Array.isArray(follows.edges)
+  )
+    return null;
+  const logins: string[] = [];
+  for (const edge of follows.edges) {
+    const node: unknown =
+      typeof edge === "object" && edge !== null && "node" in edge ? edge.node : undefined;
+    const login: unknown =
+      typeof node === "object" && node !== null && "login" in node ? node.login : undefined;
+    if (typeof login === "string" && login.length > 0) logins.push(login);
+  }
+  return logins;
+}
