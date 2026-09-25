@@ -1,3 +1,10 @@
+## [1.25.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.25.1...v1.25.2) (2026-09-25)
+
+
+### Bug Fixes
+
+* load Your Channels follows via the persisted ChannelFollows op ([889ac81](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/889ac81646c02b81c02257d9b6d88d529183613a))
+
 ## [1.25.1](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.25.0...v1.25.1) (2026-09-15)
 
 
