@@ -33,7 +33,7 @@ Releases are fully automated via semantic-release on `main` (version bump + `CHA
 - `server/minerWorker.ts` — one worker per user: 2-second tick loop, PubSub + IRC websockets, spade heartbeats, balances, chat buffers, stats; every Prisma query scoped by `userId`
 - `server/chest.ts`, `server/prediction.ts`, `server/yourChannels.ts` — pure logic extracted from the worker (chest progress math, prediction strategy/outcome stats, channel suggestions); they map 1:1 to the unit tests in `tests/`
 - `src/` — React frontend; `src/i18n.ts` holds all translation resources (en + de)
-- `prisma/schema.prisma` — SQLite schema; live DB is `prisma/dev.db` (gitignored, never commit)
+- `prisma/schema.prisma` — SQLite schema; live DB is `prisma/dev.db` (gitignored, never commit). Prisma 7: the datasource URL lives in `prisma.config.ts`, and `server/db.ts` connects through `@prisma/adapter-libsql` with `timestampFormat: "unixepoch-ms"` — existing rows store DateTime as integer ms, and the adapter default (ISO text) would break date comparisons. Run `bunx prisma generate` after installing (CI does); relative `DATABASE_URL`s resolve from the repo root (`file:./prisma/dev.db`)
 - `Dockerfile` (Bun, needs AVX2) and `Dockerfile.node` (Node 25, older/ARM hardware) — same `dist/server.cjs` app; the Node image is for CPUs without AVX2 that crash with `Illegal instruction` on the Bun image
 - `tests/` — vitest; CI runs `bun run test`
 

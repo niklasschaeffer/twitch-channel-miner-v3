@@ -28,6 +28,7 @@ COPY --from=builder /app/package.json /app/bun.lock* /app/package-lock.json* ./
 RUN npm install --omit=dev
 
 COPY --from=builder /app/prisma/schema.prisma ./prisma/schema.prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/dist ./dist
@@ -36,4 +37,4 @@ RUN mkdir -p /app/data
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/server.cjs"]
+CMD ["sh", "-c", "npx prisma db push && node dist/server.cjs"]
