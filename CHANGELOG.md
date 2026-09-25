@@ -1,3 +1,10 @@
+## [1.25.3](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.25.2...v1.25.3) (2026-09-25)
+
+
+### Bug Fixes
+
+* **deps:** update dotenv, @types/node, motion, lucide-react, vite and @vitejs/plugin-react ([ee9e2d9](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/ee9e2d997b230fc81a411416feeb86a0f2d6c914)), closes [#21](https://github.com/niklasschaeffer/twitch-channel-miner-v3/issues/21) [#19](https://github.com/niklasschaeffer/twitch-channel-miner-v3/issues/19) [#18](https://github.com/niklasschaeffer/twitch-channel-miner-v3/issues/18) [#17](https://github.com/niklasschaeffer/twitch-channel-miner-v3/issues/17) [#13](https://github.com/niklasschaeffer/twitch-channel-miner-v3/issues/13) [#12](https://github.com/niklasschaeffer/twitch-channel-miner-v3/issues/12)
+
 ## [1.25.2](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.25.1...v1.25.2) (2026-09-25)
 
 
