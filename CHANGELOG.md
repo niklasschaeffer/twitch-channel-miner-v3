@@ -1,3 +1,10 @@
+## [1.25.6](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.25.5...v1.25.6) (2026-09-26)
+
+
+### Bug Fixes
+
+* **deps:** downgrade prisma and @prisma/client to v6 ([c9ad8de](https://github.com/niklasschaeffer/twitch-channel-miner-v3/commit/c9ad8de7198598b53e03a66853a21def75d919d6))
+
 ## [1.25.5](https://github.com/niklasschaeffer/twitch-channel-miner-v3/compare/v1.25.4...v1.25.5) (2026-09-25)
 
 
