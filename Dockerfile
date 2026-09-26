@@ -28,7 +28,6 @@ COPY --from=builder /app/package.json /app/bun.lock ./
 RUN bun install --production
 
 COPY --from=builder /app/prisma/schema.prisma ./prisma/schema.prisma
-COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/dist ./dist
@@ -37,4 +36,4 @@ RUN mkdir -p /app/data
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "bunx prisma db push && bun dist/server.cjs"]
+CMD ["sh", "-c", "bunx prisma db push --skip-generate && bun dist/server.cjs"]

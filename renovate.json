@@ -14,6 +14,11 @@
       "matchDepTypes": ["devDependencies"],
       "matchPackageNames": ["oxfmt", "oxlint"],
       "automerge": true
+    },
+    {
+      "description": "Prisma 7 requires a driver adapter whose native SQLite binding crashes with Illegal instruction on pre-SSE4 CPUs served by the Node image",
+      "matchPackageNames": ["prisma", "@prisma/client", "@prisma/**"],
+      "allowedVersions": "<7"
     }
   ],
   "hostRules": [

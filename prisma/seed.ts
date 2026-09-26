@@ -1,4 +1,3 @@
-import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { PrismaClient } from "@prisma/client";
 import { execSync } from "child_process";
 import dotenv from "dotenv";
@@ -6,12 +5,10 @@ import dotenv from "dotenv";
 dotenv.config();
 
 if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = "file:./prisma/dev.db";
+  process.env.DATABASE_URL = "file:./dev.db";
 }
 
-const prisma = new PrismaClient({
-  adapter: new PrismaLibSql({ url: process.env.DATABASE_URL }, { timestampFormat: "unixepoch-ms" }),
-});
+const prisma = new PrismaClient();
 
 async function ensureTablesExist() {
   try {
@@ -21,7 +18,7 @@ async function ensureTablesExist() {
     if (error?.code === "P2021" || error?.message?.includes("does not exist")) {
       console.log("Database tables not yet initialized. Running prisma db push automatically...");
       const cli = process.versions.bun ? "bunx" : "npx";
-      execSync(`${cli} prisma db push`, { stdio: "inherit" });
+      execSync(`${cli} prisma db push --skip-generate`, { stdio: "inherit" });
     }
   }
 }
@@ -216,7 +213,7 @@ async function main() {
       {
         level: "INFO",
         channel: undefined,
-        message: "Connected to local SQLite database file:./prisma/dev.db via Prisma.",
+        message: "Connected to local SQLite database file:./dev.db via Prisma.",
       },
     ];
     for (const log of defaultLogs) {
