@@ -12,6 +12,7 @@ A self-hosted web dashboard that **autonomously earns Twitch Channel Points** on
 - [Requirements](#requirements)
 - [Two runtimes: Bun and Node](#two-runtimes-bun-and-node)
 - [Installation](#installation)
+- [Deployment examples (Docker Compose, Unraid)](docs/deployment.md)
 - [First-run setup](#first-run-setup)
 - [Using the app](#using-the-app)
 - [How earning works](#how-earning-works)
@@ -77,6 +78,8 @@ services:
 Both images run the exact same application code (`dist/server.cjs`), database, and features — only the JavaScript runtime differs. The images contain only the built app and `prisma/schema.prisma`; no database or `.env` file is ever baked in. On every start the container runs `prisma db push` (with the pinned Prisma CLI) to apply the schema to your database — a change that would drop data is refused instead of applied, so the container won't start until you've dealt with it (see [Troubleshooting](#troubleshooting)).
 
 ## Installation
+
+> **Just want to run it?** Use a prebuilt image: [`docs/deployment.md`](docs/deployment.md) has a ready-made [Docker Compose file](docs/docker-compose.example.yaml) and an [Unraid template](docs/unraid/twitch-channel-miner.xml). The steps below build the image from source.
 
 ```bash
 git clone <repo-url> twitch-miner

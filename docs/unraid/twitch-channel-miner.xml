@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>twitch-channel-miner</Name>
+  <Repository>ghcr.io/niklasschaeffer/twitch-channel-miner-v3:latest</Repository>
+  <Registry>https://github.com/niklasschaeffer/twitch-channel-miner-v3/pkgs/container/twitch-channel-miner-v3</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/niklasschaeffer/twitch-channel-miner-v3/issues</Support>
+  <Project>https://github.com/niklasschaeffer/twitch-channel-miner-v3</Project>
+  <Overview>Self-hosted multi-user Twitch Channel Points miner with a web dashboard. Earns watch-time points and claims bonus chests, drops, raids and predictions through real Twitch APIs. Use the :latest-node tag if the container exits with "Illegal instruction" (CPU without AVX2).</Overview>
+  <Category>Tools: Other:</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/niklasschaeffer/twitch-channel-miner-v3/main/docs/unraid/twitch-channel-miner.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/niklasschaeffer/twitch-channel-miner-v3/main/public/logo-256.png</Icon>
+  <ExtraParams>--health-cmd="curl -f http://localhost:3000/api/health" --health-interval=30s --health-timeout=10s --health-retries=3 --health-start-period=20s</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <Requires/>
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Host port for the dashboard." Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Data" Target="/app/data" Default="/mnt/user/appdata/twitch-channel-miner" Mode="rw" Description="SQLite database (miner.db plus its -wal/-shm files). Stop the container before copying it." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/twitch-channel-miner</Config>
+  <Config Name="APP_URL" Target="APP_URL" Default="http://192.168.1.10:3000" Description="The exact origin you open the dashboard on (scheme, host and port). OAuth redirects and the session cookie depend on it." Type="Variable" Display="always" Required="true" Mask="false">http://192.168.1.10:3000</Config>
+  <Config Name="TWITCH_CLIENT_ID" Target="TWITCH_CLIENT_ID" Default="ue6666qo983tsx6so1t0vnawi233wa" Description="Must stay the Twitch TV client id. A client id from dev.twitch.tv gets 401 on every authenticated GQL call." Type="Variable" Display="advanced" Required="true" Mask="false">ue6666qo983tsx6so1t0vnawi233wa</Config>
+  <Config Name="ALLOW_REGISTRATION" Target="ALLOW_REGISTRATION" Default="false|true" Description="The first account can always register. Set to true to allow additional accounts." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="GOOGLE_CLIENT_ID" Target="GOOGLE_CLIENT_ID" Default="" Description="Optional. Enables Sign in with Google. Redirect URI: APP_URL/api/auth/google/callback" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="GOOGLE_CLIENT_SECRET" Target="GOOGLE_CLIENT_SECRET" Default="" Description="Optional. Google OAuth client secret." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+</Container>
