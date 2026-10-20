@@ -6,6 +6,8 @@
 
 A self-hosted web dashboard that **autonomously earns Twitch Channel Points** on your account: it watches channels, claims bonus chests, claims drops, follows raids, and places prediction bets — all through real Twitch APIs, never simulated. You get a live IRC chat view, per-channel point tracking, and honest analytics backed by a SQLite database you can inspect directly.
 
+> **Built for Unraid.** This project is designed specifically to be deployed as a Docker container on an Unraid server: a ready-made [Unraid template](docs/unraid/twitch-channel-miner.xml) installs it from the Docker tab, its data lives in `appdata`, and the [`:latest-node` image](#two-runtimes-bun-and-node) exists so it also runs on older Unraid hardware without AVX2. Setup steps: [Deployment examples → Unraid](docs/deployment.md#unraid). Plain Docker Compose works too.
+
 ## Table of Contents
 
 - [What it does](#what-it-does)
