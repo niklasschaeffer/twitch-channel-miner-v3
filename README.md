@@ -22,6 +22,7 @@ A self-hosted web dashboard that **autonomously earns Twitch Channel Points** on
 - [Development status](#development-status)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ## What it does
 
@@ -278,3 +279,7 @@ Conventions (enforced): no `any`, no comments (hook-blocked), no tiny wrapper fu
 - **Container keeps restarting after an update** — check `docker compose logs`: if `prisma db push` refuses a change that would drop data, the container won't start. Stop it, back up `prisma/dev.db`, then decide whether to apply the change manually (`npm run db:push` with the container stopped) or roll back.
 - **Database corruption** — the DB is in WAL mode; never run `prisma db push` or copy `prisma/dev.db` while the container is running. `sqlite3 prisma/dev.db "PRAGMA integrity_check"` diagnoses; `.recover` rebuilds.
 - **`prisma db push` fails with "malformed"** — the live container may be mid-write; `docker compose stop`, retry, `docker compose start`.
+
+## License
+
+[MIT](LICENSE) © 2026 Niklas Schäffer
